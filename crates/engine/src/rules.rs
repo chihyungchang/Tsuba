@@ -247,11 +247,12 @@ pub fn offline_verdict(findings: &[Finding]) -> Verdict {
     if findings.iter().any(|f| f.severity == High) {
         return Verdict::Block;
     }
-    // 只有低风险命中时不打扰：正常的工具几乎都会调用系统命令、自动激活
-    let has_medium = findings.iter().any(|f| f.severity == Medium);
-    match score(findings) {
+    // 低风险命中只作为证据，不参与判断：正常的工具几乎都会调用系统命令、自动激活，
+    // 大型打包代码也会命中很多条 GuardDog 的“可疑写法”规则
+    let mediums: Vec<Finding> = findings.iter().filter(|f| f.severity == Medium).cloned().collect();
+    match score(&mediums) {
         s if s >= 30 => Verdict::Block,
-        _ if has_medium => Verdict::Warn,
+        s if s > 0 => Verdict::Warn,
         _ => Verdict::Allow,
     }
 }

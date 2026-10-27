@@ -7,6 +7,7 @@ import {
   Config,
   ExtensionScan,
   Finding,
+  IntelManifest,
   LogEntry,
   Overview,
   QuarantineItem,
@@ -474,6 +475,86 @@ function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; relo
   );
 }
 
+/* ---------- 威胁情报 ---------- */
+
+function IntelCard({ cfg, onChange }: { cfg: Config; onChange: (c: Config) => void }) {
+  const [m, setM] = useState<IntelManifest | null>(null);
+  const [progress, setProgress] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    invoke<IntelManifest>("intel_status").then(setM);
+    const uns = [
+      listen<string>("intel-progress", (e) => setProgress(e.payload)),
+      listen("intel-updated", () => {
+        setProgress("");
+        invoke<IntelManifest>("intel_status").then(setM);
+      }),
+    ];
+    return () => {
+      uns.forEach((u) => u.then((f) => f()));
+    };
+  }, []);
+
+  const update = async () => {
+    setError("");
+    setProgress("开始更新");
+    try {
+      setM(await invoke<IntelManifest>("intel_update"));
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setProgress("");
+    }
+  };
+  const setIntel = (patch: Partial<Config["intel"]>) => onChange({ ...cfg, intel: { ...cfg.intel, ...patch } });
+
+  return (
+    <section className="card">
+      <div className="row">
+        <div>
+          <h3>威胁情报</h3>
+          <p className="muted">
+            从公开来源下载的恶意包名单、恶意扩展名单和 YARA 规则，每天自动更新。
+            {m?.updated ? ` 上次更新：${m.updated.replace("T", " ")}` : " 还没有更新过。"}
+          </p>
+        </div>
+        <button className="primary" disabled={!!progress} onClick={update}>
+          {progress ? `${progress}…` : "立即更新"}
+        </button>
+      </div>
+      {error && <div className="error">{error}</div>}
+      {m && m.sources.length > 0 && (
+        <table className="sources">
+          <tbody>
+            {m.sources.map((s) => (
+              <tr key={s.id}>
+                <td>{s.name}</td>
+                <td className={s.error ? "error-text small" : "small"}>{s.error ? s.error : `${s.count.toLocaleString()} 条`}</td>
+                <td className="muted small">{s.license}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="form">
+        <label className="check">
+          <input type="checkbox" checked={cfg.intel.auto_update} onChange={(e) => setIntel({ auto_update: e.target.checked })} />
+          每天自动更新
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={cfg.intel.online_lookup} onChange={(e) => setIntel({ online_lookup: e.target.checked })} />
+          检查 npm / PyPI 包时在线查询 OSV.dev（比本地名单更新得更快，只发送包名和版本）
+        </label>
+        <label>
+          abuse.ch Auth-Key（可选，免费注册：auth.abuse.ch；免费版仅限非营利使用）
+          <input type="password" value={cfg.intel.abusech_key} onChange={(e) => setIntel({ abusech_key: e.target.value.trim() })} />
+        </label>
+      </div>
+    </section>
+  );
+}
+
 /* ---------- 设置 ---------- */
 
 // 都走 OpenAI 兼容接口。前沿模型默认信任，其他默认只能给“提醒”
@@ -703,6 +784,14 @@ function SettingsPage({ reload }: { reload: () => void }) {
           {status && <span className={status.ok ? "ok-text" : "error-text"}>{status.text}</span>}
         </div>
       </section>
+
+      <IntelCard
+        cfg={cfg}
+        onChange={async (next) => {
+          setCfg(next);
+          await invoke("save_config", { config: next });
+        }}
+      />
 
       <section className="card">
         <div className="row">

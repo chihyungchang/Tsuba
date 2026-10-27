@@ -723,3 +723,19 @@ select:focus {
   width: auto;
   accent-color: var(--accent);
 }
+
+.sources {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.sources td {
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.sources td:nth-child(2) {
+  padding: 6px 12px;
+}

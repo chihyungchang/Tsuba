@@ -4,6 +4,7 @@
 //! tsuba check --paste -- <文本>                       粘贴时的快速提醒，不联网，总是返回 0
 //! tsuba scan <路径> [--json]                          检查安装包、扩展、项目目录或脚本文件
 //! tsuba doctor                                        检查本机是否已有已知的感染痕迹
+//! tsuba intel update [--force] | status               更新 / 查看威胁情报（开源规则和名单）
 
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -226,12 +227,43 @@ fn cmd_doctor() -> i32 {
     2
 }
 
+fn cmd_intel(args: &[String]) -> i32 {
+    let s = style();
+    let show = |m: &tsuba_engine::intel::Manifest| {
+        for src in &m.sources {
+            let state = match &src.error {
+                Some(e) => format!("{}✗ {e}{}", s.yel, s.rst),
+                None => format!("{}✓{} {} 条", s.grn, s.rst, src.count),
+            };
+            eprintln!("  {:<28} {state}  {}{}{}", src.name, s.dim, src.version.chars().take(40).collect::<String>(), s.rst);
+        }
+        eprintln!("  {}更新时间：{}{}", s.dim, if m.updated.is_empty() { "从未" } else { &m.updated }, s.rst);
+    };
+    match args.first().map(String::as_str) {
+        Some("update") => {
+            let cfg = Config::load();
+            let m = tsuba_engine::intel::update(&cfg, args.iter().any(|a| a == "--force"), |step| eprintln!("{}更新 {step} …{}", s.dim, s.rst));
+            show(&m);
+            0
+        }
+        Some("status") | None => {
+            show(&tsuba_engine::intel::Manifest::load());
+            0
+        }
+        _ => {
+            eprintln!("用法：tsuba intel update [--force] | tsuba intel status");
+            2
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         Some("check") => cmd_check(&args[1..]),
         Some("scan") => cmd_scan(&args[1..]),
         Some("doctor") => cmd_doctor(),
+        Some("intel") => cmd_intel(&args[1..]),
         Some("--version" | "version") => {
             println!("tsuba {}", env!("CARGO_PKG_VERSION"));
             0

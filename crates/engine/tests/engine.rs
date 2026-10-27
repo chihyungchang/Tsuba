@@ -370,3 +370,23 @@ fn fake_meeting_dmg_volume_blocked() {
     assert_eq!(rules::offline_verdict(&findings), Verdict::Block);
     assert!(info["scripts"]["Installer.file"].is_string());
 }
+
+#[test]
+fn lockfile_parsing() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("package-lock.json"), r#"{"lockfileVersion":3,"packages":{"":{"name":"app"},"node_modules/axios":{"version":"1.7.0"},"node_modules/a/node_modules/@scope/b":{"version":"2.0.1"}}}"#).unwrap();
+    std::fs::write(dir.path().join("yarn.lock"), "\"left-pad@^1.3.0\", left-pad@^1.2:\n  version \"1.3.0\"\n\n\"@babel/core@^7.0.0\":\n  version \"7.24.0\"\n").unwrap();
+    std::fs::write(dir.path().join("pnpm-lock.yaml"), "packages:\n\n  /lodash@4.17.21:\n    resolution: {}\n\n  '@types/node@20.11.0':\n    resolution: {}\n").unwrap();
+    let got = collect::lockfile_packages(dir.path());
+    for want in [("axios", "1.7.0"), ("@scope/b", "2.0.1"), ("left-pad", "1.3.0"), ("@babel/core", "7.24.0"), ("lodash", "4.17.21"), ("@types/node", "20.11.0")] {
+        assert!(got.contains(&(want.0.to_string(), want.1.to_string())), "缺少 {want:?}: {got:?}");
+    }
+}
+
+#[test]
+fn pip_detection() {
+    assert_eq!(kinds("pip install requests==2.31.0"), vec![Kind::PipInstall]);
+    assert_eq!(detect("python3 -m pip install -r req.txt flask")[0].strs("packages"), vec!["flask"]);
+    assert_eq!(kinds("uv add httpx"), vec![Kind::PipInstall]);
+    assert_eq!(kinds("pip list"), vec![]);
+}

@@ -18,6 +18,22 @@ Tsuba（鍔，刀的护手）是一个 macOS 菜单栏应用。假面试项目�
 
 在扩展商店里装的扩展不经过终端，只能装完马上查；在 Finder 里双击打开的程序目前拦不住，需要苹果的 Endpoint Security 权限（见 PRD 第 12 节）。
 
+## 威胁情报
+
+离线规则之外，Tsuba 每天从公开来源更新一次威胁情报，存放在 `~/.tsuba/intel`（也可以在终端运行 `tsuba intel update`）：
+
+| 来源 | 内容 | 许可 |
+| --- | --- | --- |
+| [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) | 约 23 万条已确认的恶意 npm / PyPI 包，也会检查 lockfile 里的间接依赖 | Apache-2.0 |
+| [OSV.dev](https://osv.dev)（在线，可关闭） | 同上，检查时实时查询，只发送包名和版本 | - |
+| VS Code 官方恶意扩展名单 | 微软下架的恶意扩展 | - |
+| [Elastic](https://github.com/elastic/protections-artifacts)、[ReversingLabs](https://github.com/reversinglabs/reversinglabs-yara-rules) YARA 规则 | 已知恶意软件家族特征 | Elastic License 2.0 / MIT |
+| [GuardDog](https://github.com/DataDog/guarddog) YARA 规则 | 恶意包常见的可疑写法（只作为证据，不单独触发提醒） | Apache-2.0 |
+| 本机 XProtect 规则 | 苹果自己的恶意软件特征，只在本机使用 | Apple |
+| [abuse.ch](https://abuse.ch) ThreatFox / URLhaus（可选） | 恶意域名、IP、网址；需要免费 Auth-Key，免费版仅限非营利使用 | - |
+
+规则用 [YARA-X](https://github.com/VirusTotal/yara-x) 编译执行。
+
 ## AI 判断
 
 离线规则总是先跑，AI 在此基础上结合上下文判断。可以在设置里选：

@@ -7,6 +7,7 @@ pub mod collect;
 pub mod detect;
 pub mod doctor;
 pub mod extension;
+pub mod intel;
 pub mod judge;
 pub mod macos;
 pub mod net;
@@ -126,7 +127,7 @@ pub fn judge_evidence(cfg: &Config, evidence: &Value, findings: Vec<Finding>) ->
 
 /// 检查一条即将执行的命令。pasted 表示命令是粘贴进终端的。
 pub fn evaluate_command(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target], pasted: bool) -> (Value, Report) {
-    let (mut evidence, mut findings) = collect::collect(cmd, cwd, targets);
+    let (mut evidence, mut findings) = collect::collect(cfg, cmd, cwd, targets);
     if pasted {
         evidence["pasted"] = json!(true);
         if targets.iter().any(|t| matches!(t.kind, Kind::RemoteScript | Kind::ObfuscatedExec | Kind::Osascript)) {
@@ -181,7 +182,8 @@ pub fn evaluate_path(cfg: &Config, path: &Path) -> (&'static str, Value, Report)
     } else {
         let text = read_limited(path, 2_000_000);
         let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let findings = rules::scan_text(&text, &name);
+        let mut findings = rules::scan_text(&text, &name);
+        findings.extend(intel::yara::scan_file(path, &name));
         let content: String = text.chars().take(40_000).collect();
         let ev = json!({ "command": title, "targets": [{ "kind": "file", "path": path.to_string_lossy(), "content": content }], "findings": findings });
         ("file", ev.clone(), judge_evidence(cfg, &ev, findings))

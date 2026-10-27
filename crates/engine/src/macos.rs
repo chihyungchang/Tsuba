@@ -114,10 +114,11 @@ pub fn inspect_app(app: &Path, findings: &mut Vec<Finding>) -> Value {
             if !small {
                 continue;
             }
+            let loc = format!("{name}/Contents/MacOS/{}", p.file_name().unwrap().to_string_lossy());
+            findings.extend(crate::intel::yara::scan_file(p, &loc));
             let (code, out) = run(&["strings", "-n", "8", &p.to_string_lossy()], 20);
             if code == 0 {
                 let text: String = out.chars().take(3_000_000).collect();
-                let loc = format!("{name}/Contents/MacOS/{}", p.file_name().unwrap().to_string_lossy());
                 // 二进制里的字符串噪声大（系统库也会带这些路径），统一降为中等，交给模型结合上下文判断
                 for mut f in rules::scan_text(&text, &loc) {
                     if f.severity == Severity::High {
@@ -202,6 +203,7 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
         let text = crate::read_limited(f, 200_000);
         findings.push(Finding::new(Severity::Medium, format!("安装镜像里带了一个可以直接运行的脚本 {fname}"), label));
         findings.extend(rules::scan_text(&text, &fname));
+        findings.extend(crate::intel::yara::scan_file(f, &fname));
         scripts.insert(fname, json!(text.chars().take(6000).collect::<String>()));
     }
 
@@ -211,6 +213,7 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
         let files = if p.is_dir() { crate::walk_files(p, 200) } else { vec![p.clone()] };
         for f in files.iter().filter(|f| is_macho(f) || is_script(f)) {
             let rel = f.strip_prefix(root).unwrap_or(f).to_string_lossy().to_string();
+            findings.extend(crate::intel::yara::scan_file(f, &rel));
             let (code, out) = run(&["codesign", "-dv", &f.to_string_lossy()], 15);
             let signed = code == 0 && !out.contains("Signature=adhoc");
             findings.push(Finding::new(

@@ -58,6 +58,9 @@ pub fn scan_extension(dir: &Path) -> (Value, Vec<Finding>) {
     }
     info.insert("engines".into(), pkg["engines"].clone());
 
+    if crate::intel::feeds::vscode_malicious(&id) {
+        findings.push(Finding::new(Severity::High, format!("VS Code 官方已经把 {id} 列为恶意扩展并下架"), &id));
+    }
     let events: Vec<&str> = pkg["activationEvents"].as_array().map(|a| a.iter().filter_map(|v| v.as_str()).collect()).unwrap_or_default();
     if events.contains(&"*") {
         findings.push(Finding::new(Severity::Low, "扩展在编辑器一启动就激活（activationEvents: *），不管你有没有用到它", &id));
@@ -83,7 +86,10 @@ pub fn scan_extension(dir: &Path) -> (Value, Vec<Finding>) {
         }
         scanned += 1;
         let rel = p.strip_prefix(dir).unwrap_or(&p).to_string_lossy().to_string();
-        let mut fs = rules::scan_text(&read_limited(&p, 5_000_000), &format!("{id}/{rel}"));
+        let bytes = std::fs::read(&p).unwrap_or_default();
+        let loc = format!("{id}/{rel}");
+        let mut fs = rules::scan_text(&String::from_utf8_lossy(&bytes), &loc);
+        fs.extend(crate::intel::yara::scan(&bytes, &loc));
         // 扩展调用系统命令很常见（语言服务器、git 工具），单独出现不说明问题
         for f in fs.iter_mut().filter(|f| f.message == CHILD_PROCESS_MSG) {
             f.severity = Severity::Low;

@@ -104,6 +104,23 @@ impl Default for OpenAiCompatConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
+pub struct IntelConfig {
+    /// 每天自动更新威胁情报
+    pub auto_update: bool,
+    /// abuse.ch 的免费 Auth-Key，不填就不用 ThreatFox / URLhaus
+    pub abusech_key: String,
+    /// 检查 npm / PyPI 包时在线查 OSV.dev
+    pub online_lookup: bool,
+}
+
+impl Default for IntelConfig {
+    fn default() -> Self {
+        IntelConfig { auto_update: true, abusech_key: String::new(), online_lookup: true }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
     pub provider: Provider,
     pub claude: ClaudeConfig,
@@ -112,6 +129,7 @@ pub struct Config {
     pub watch_extensions: bool,
     /// 扩展被判为“拦截”时自动移入隔离区
     pub auto_quarantine: bool,
+    pub intel: IntelConfig,
 }
 
 impl Default for Config {
@@ -123,6 +141,7 @@ impl Default for Config {
             watch_downloads: true,
             watch_extensions: true,
             auto_quarantine: true,
+            intel: IntelConfig::default(),
         }
     }
 }

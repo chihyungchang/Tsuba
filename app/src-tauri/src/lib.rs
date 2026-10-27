@@ -168,6 +168,38 @@ fn detect_claude_cli(configured: String) -> Option<String> {
 }
 
 #[tauri::command]
+fn intel_status() -> tsuba_engine::intel::Manifest {
+    tsuba_engine::intel::Manifest::load()
+}
+
+/// 立即更新威胁情报。更新时把当前步骤推给界面显示进度。
+#[tauri::command]
+async fn intel_update(app: AppHandle, state: State<'_, AppState>) -> Result<tsuba_engine::intel::Manifest, String> {
+    let cfg = state.config.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        tsuba_engine::intel::update(&cfg, false, |step| {
+            let _ = app.emit("intel-progress", step.to_string());
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// 每天自动更新一次威胁情报（App 启动时先检查一次）。
+fn start_intel_updater(app: AppHandle, config: Arc<Mutex<Config>>) {
+    std::thread::spawn(move || loop {
+        let cfg = config.lock().unwrap().clone();
+        if cfg.intel.auto_update && tsuba_engine::intel::needs_update(std::time::Duration::from_secs(24 * 3600)) {
+            tsuba_engine::intel::update(&cfg, false, |step| {
+                let _ = app.emit("intel-progress", step.to_string());
+            });
+            let _ = app.emit("intel-updated", ());
+        }
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    });
+}
+
+#[tauri::command]
 async fn list_models(base_url: String, api_key: String) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || judge::list_models(&base_url, &api_key)).await.map_err(|e| e.to_string())?
 }
@@ -317,6 +349,7 @@ pub fn run() {
             build_tray(app)?;
             shell_hook::refresh_if_installed();
             restart_watchers(app.handle());
+            start_intel_updater(app.handle().clone(), app.state::<AppState>().config.clone());
             // 用户主动打开 App 时显示窗口；之后关窗只是隐藏，后台继续守护
             show_window(app.handle());
             Ok(())
@@ -340,6 +373,8 @@ pub fn run() {
             test_ai,
             list_models,
             detect_claude_cli,
+            intel_status,
+            intel_update,
             run_doctor,
             scan_installed_extensions,
             scan_path,

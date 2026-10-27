@@ -2,6 +2,8 @@
 
 use crate::detect::{Kind, Target};
 use crate::rules::{self, Finding, Severity};
+use crate::intel::{self, packages};
+use crate::store::Config;
 use crate::{extension, macos, net, read_limited};
 use regex::Regex;
 use serde_json::{Map, Value, json};
@@ -115,7 +117,9 @@ pub fn project_context(root: &Path, entry: Option<&str>) -> (Value, Vec<Finding>
     let truncated = files.len() >= MAX_FILES;
     for p in &files {
         let rel = p.strip_prefix(root).unwrap_or(p).to_string_lossy().to_string();
-        let fs = rules::scan_text(&read_limited(p, MAX_FILE_BYTES), &rel);
+        let bytes = std::fs::read(p).unwrap_or_default();
+        let mut fs = rules::scan_text(&String::from_utf8_lossy(&bytes), &rel);
+        fs.extend(intel::yara::scan(&bytes, &rel));
         if !fs.is_empty() {
             hit_files.insert(rel, json!(fs.len()));
             findings.extend(fs);
@@ -147,7 +151,93 @@ pub fn project_context(root: &Path, entry: Option<&str>) -> (Value, Vec<Finding>
     }
     deps.truncate(80);
     ctx.insert("dependencies".into(), json!(deps));
+
+    // lockfile 里的间接依赖：大部分投毒藏在这里，package.json 里看不到
+    let locked = lockfile_packages(root);
+    if !locked.is_empty() {
+        ctx.insert("locked_packages".into(), json!(locked.len()));
+        let items: Vec<(String, Option<String>)> = locked.into_iter().map(|(n, v)| (n, Some(v))).collect();
+        known_malicious("npm", &items, false, &mut findings);
+    }
     (Value::Object(ctx), findings)
+}
+
+/// 读 lockfile 里锁定的全部包（含间接依赖）：package-lock.json、yarn.lock、pnpm-lock.yaml。
+pub fn lockfile_packages(root: &Path) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let lock: Value = serde_json::from_str(&read_limited(&root.join("package-lock.json"), 50_000_000)).unwrap_or(Value::Null);
+    if let Some(pkgs) = lock["packages"].as_object() {
+        // v2 / v3：键是 node_modules/a/node_modules/@scope/b
+        for (k, v) in pkgs {
+            if let (Some(i), Some(ver)) = (k.rfind("node_modules/"), v["version"].as_str()) {
+                out.push((k[i + "node_modules/".len()..].to_string(), ver.to_string()));
+            }
+        }
+    } else if lock["dependencies"].is_object() {
+        // v1：嵌套的 dependencies
+        fn walk(deps: &Value, out: &mut Vec<(String, String)>) {
+            for (name, d) in deps.as_object().into_iter().flatten() {
+                if let Some(v) = d["version"].as_str() {
+                    out.push((name.clone(), v.to_string()));
+                }
+                walk(&d["dependencies"], out);
+            }
+        }
+        walk(&lock["dependencies"], &mut out);
+    }
+    // yarn.lock：`"name@^1.0.0", name@^1.2.0:` 下一行是 `  version "1.2.3"`
+    let yarn = read_limited(&root.join("yarn.lock"), 50_000_000);
+    let mut names: Vec<String> = Vec::new();
+    for line in yarn.lines() {
+        if !line.starts_with(' ') && line.ends_with(':') && !line.starts_with('#') {
+            names = line.trim_end_matches(':').split(", ").map(|s| {
+                let s = s.trim_matches('"');
+                let at = if let Some(rest) = s.strip_prefix('@') { rest.find('@').map(|i| i + 1) } else { s.find('@') };
+                at.map(|i| s[..i].to_string()).unwrap_or_else(|| s.to_string())
+            }).collect();
+        } else if let Some(v) = line.trim().strip_prefix("version ") {
+            let v = v.trim_matches(|c| c == '"' || c == ' ');
+            if let Some(n) = names.first() {
+                out.push((n.clone(), v.to_string()));
+            }
+        }
+    }
+    // pnpm-lock.yaml：packages 下的 `  /name@1.2.3:` 或 `  name@1.2.3:`
+    let pnpm = read_limited(&root.join("pnpm-lock.yaml"), 50_000_000);
+    for c in PNPM_ENTRY.captures_iter(&pnpm) {
+        out.push((c[1].to_string(), c[2].to_string()));
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+static PNPM_ENTRY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^  '?/?(@?[^@\s'/][^@\s']*)@([0-9][^:('\s]*)'?(?:\([^)]*\))*:\s*$"#).unwrap());
+
+/// `requests==2.31.0`、`flask>=2`、`numpy` → (包名, 确切版本)
+fn split_pip(spec: &str) -> (String, Option<String>) {
+    let name_end = spec.find(|c: char| "=<>!~[; ".contains(c)).unwrap_or(spec.len());
+    let version = spec.split_once("==").map(|(_, v)| v.trim().to_string());
+    (spec[..name_end].to_string(), version)
+}
+
+/// 包是否在恶意包名单里：先查本地的 OpenSSF 名单，online 时再在线查 OSV.dev（更新更快）。
+pub fn known_malicious(ecosystem: &str, items: &[(String, Option<String>)], online: bool, findings: &mut Vec<Finding>) {
+    let mut flagged = std::collections::HashSet::new();
+    for (name, ver) in items {
+        if let Some(hit) = packages::lookup(ecosystem, name, ver.as_deref()) {
+            let v = ver.as_deref().map(|v| format!("@{v}")).unwrap_or_default();
+            let summary = if hit.summary.is_empty() { String::new() } else { format!("：{}", hit.summary) };
+            findings.push(Finding::new(Severity::High, format!("{name}{v} 在开源恶意包名单里（{}，OpenSSF）{summary}", hit.id), name.as_str()));
+            flagged.insert(name.clone());
+        }
+    }
+    if online && !items.is_empty() {
+        let rest: Vec<(String, Option<String>)> = items.iter().filter(|(n, _)| !flagged.contains(n)).take(2000).cloned().collect();
+        for (name, ids) in packages::osv_query(ecosystem, &rest) {
+            findings.push(Finding::new(Severity::High, format!("{name} 被 OSV.dev 收录为恶意包（{}）", ids.join("、")), name.as_str()));
+        }
+    }
 }
 
 fn walk_src(root: &Path) -> Vec<PathBuf> {
@@ -181,8 +271,10 @@ fn walk_src(root: &Path) -> Vec<PathBuf> {
 static ASKS_PASSWORD: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)password|administrator privileges|display dialog").unwrap());
 static ENTRY_FROM_SCRIPT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bnode(?:mon)?\s+(?:--\S+\s+)*([^\s&|;]+\.(?:c|m)?js)\b").unwrap());
 
-fn check_packages(specs: &[String], findings: &mut Vec<Finding>) -> Vec<Map<String, Value>> {
+fn check_packages(specs: &[String], online: bool, findings: &mut Vec<Finding>) -> Vec<Map<String, Value>> {
     let specs = &specs[..specs.len().min(15)];
+    let items: Vec<(String, Option<String>)> = specs.iter().map(|s| net::split_spec(s)).collect();
+    known_malicious("npm", &items, online, findings);
     let infos: Vec<Map<String, Value>> = std::thread::scope(|s| {
         let hs: Vec<_> = specs.iter().map(|spec| s.spawn(move || net::npm_package_info(spec))).collect();
         hs.into_iter().map(|h| h.join().unwrap_or_default()).collect()
@@ -220,7 +312,8 @@ fn resolve(cwd: &Path, p: &str) -> PathBuf {
     if expanded.is_absolute() { expanded } else { cwd.join(expanded) }
 }
 
-pub fn collect(cmd: &str, cwd: &Path, targets: &[Target]) -> (Value, Vec<Finding>) {
+pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Value, Vec<Finding>) {
+    let online = cfg.intel.online_lookup;
     let mut findings = Vec::new();
     let mut items = Vec::new();
 
@@ -245,12 +338,19 @@ pub fn collect(cmd: &str, cwd: &Path, targets: &[Target]) -> (Value, Vec<Finding
                     if net::is_ip(&host) {
                         findings.push(Finding::new(Severity::High, format!("脚本直接从 IP 地址 {host} 下载"), url.as_str()));
                     }
+                    let ioc = intel::feeds::ioc("urls", url)
+                        .or_else(|| intel::feeds::ioc(if net::is_ip(&host) { "ips" } else { "domains" }, &host))
+                        .or_else(|| intel::feeds::ioc("domains", &net::registered_domain(&host)));
+                    if let Some(family) = ioc {
+                        findings.push(Finding::new(Severity::High, format!("下载地址在 abuse.ch 恶意地址名单里（{family}）"), url.as_str()));
+                    }
                     if let Some(age) = age.filter(|a| *a < 90) {
                         let sev = if age < 30 { Severity::High } else { Severity::Medium };
                         findings.push(Finding::new(sev, format!("下载域名 {} 注册仅 {age} 天", net::registered_domain(&host)), url.as_str()));
                     }
                     if let Some(text) = f.get("text").and_then(|v| v.as_str()).map(String::from) {
                         findings.extend(rules::scan_text(&text, url));
+                        findings.extend(intel::yara::scan(text.as_bytes(), url));
                         // 再往下追一层：脚本里引用的其他脚本
                         let nested_urls: Vec<String> = crate::detect::urls_in(&text).into_iter().filter(|u| u != url).take(3).collect();
                         let mut nested = Vec::new();
@@ -278,7 +378,7 @@ pub fn collect(cmd: &str, cwd: &Path, targets: &[Target]) -> (Value, Vec<Finding
             Kind::PkgInstall => {
                 let pkgs = t.strs("packages");
                 if !pkgs.is_empty() {
-                    item.insert("packages_info".into(), json!(check_packages(&pkgs, &mut findings)));
+                    item.insert("packages_info".into(), json!(check_packages(&pkgs, online, &mut findings)));
                 } else if let Some(root) = find_project_root(cwd) {
                     let (ctx, fs) = project_context(&root, None);
                     findings.extend(fs);
@@ -286,7 +386,17 @@ pub fn collect(cmd: &str, cwd: &Path, targets: &[Target]) -> (Value, Vec<Finding
                     // 这里只能看到 package.json 声明的名字，不知道锁定的版本，所以不套用发布冷却期
                     let deps: Vec<String> = ctx["dependencies"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
                     let mut dep_findings = Vec::new();
-                    let checks: Vec<Value> = check_packages(&deps, &mut dep_findings)
+                    if online {
+                        let locked: Vec<(String, Option<String>)> = lockfile_packages(&root).into_iter().map(|(n, v)| (n, Some(v))).collect();
+                        let mut online_findings = Vec::new();
+                        for (name, ids) in packages::osv_query("npm", &locked[..locked.len().min(2000)]) {
+                            online_findings.push(Finding::new(Severity::High, format!("lockfile 里的 {name} 被 OSV.dev 收录为恶意包（{}）", ids.join("、")), name.as_str()));
+                        }
+                        // 本地名单已经报过的不重复报
+                        online_findings.retain(|f| !findings.iter().any(|x| x.location == f.location && x.severity == Severity::High));
+                        findings.extend(online_findings);
+                    }
+                    let checks: Vec<Value> = check_packages(&deps, false, &mut dep_findings)
                         .into_iter()
                         .filter(|i| i.contains_key("error") || i.get("created_days_ago").and_then(|v| v.as_i64()).unwrap_or(9999) < 30 || i.get("install_scripts").and_then(|v| v.as_object()).is_some_and(|o| !o.is_empty()))
                         .map(Value::Object)
@@ -296,8 +406,13 @@ pub fn collect(cmd: &str, cwd: &Path, targets: &[Target]) -> (Value, Vec<Finding
                     item.insert("dependency_checks".into(), json!(checks));
                 }
             }
+            Kind::PipInstall => {
+                let items: Vec<(String, Option<String>)> = t.strs("packages").iter().map(|s| split_pip(s)).collect();
+                known_malicious("pypi", &items, online, &mut findings);
+                item.insert("packages".into(), json!(items.iter().map(|(n, _)| n).collect::<Vec<_>>()));
+            }
             Kind::PkgExec => {
-                item.insert("packages_info".into(), json!(check_packages(&t.strs("packages"), &mut findings)));
+                item.insert("packages_info".into(), json!(check_packages(&t.strs("packages"), online, &mut findings)));
             }
             Kind::ProjectRun => {
                 let scan_mode = t.str("manager") == "scan";
@@ -339,6 +454,9 @@ pub fn collect(cmd: &str, cwd: &Path, targets: &[Target]) -> (Value, Vec<Finding
                         let (info, fs) = extension::scan_vsix(&resolve(cwd, &ext));
                         findings.extend(fs);
                         scans.push(info);
+                    } else if intel::feeds::vscode_malicious(&ext) {
+                        findings.push(Finding::new(Severity::High, format!("VS Code 官方已经把 {ext} 列为恶意扩展并下架"), ext.as_str()));
+                        scans.push(json!({ "id": ext, "malicious": true }));
                     } else {
                         // 商店里的扩展要装完才能看到代码；装好后扩展目录监控会马上检查
                         scans.push(json!({ "id": ext, "note": "从扩展商店安装，安装完成后由扩展目录监控检查" }));

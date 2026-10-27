@@ -14,6 +14,7 @@ pub enum Kind {
     ObfuscatedExec,
     PkgInstall,
     PkgExec,
+    PipInstall,
     ProjectRun,
     EditorOpen,
     ExtensionInstall,
@@ -127,6 +128,8 @@ pub fn detect(cmd: &str) -> Vec<Target> {
             } else if prog == "bun" && sub == "x" {
                 targets.push(Target::new(Kind::PkgExec, json!({ "manager": "bunx", "packages": &rest[..rest.len().min(1)] })));
             }
+        } else if let Some(pkgs) = pip_install(&prog, args) {
+            targets.push(Target::new(Kind::PipInstall, json!({ "packages": pkgs })));
         } else if matches!(prog.as_str(), "npx" | "pnpx" | "bunx") {
             let p = positional(args);
             targets.push(Target::new(Kind::PkgExec, json!({ "manager": prog, "packages": &p[..p.len().min(1)] })));
@@ -165,6 +168,36 @@ pub fn detect(cmd: &str) -> Vec<Target> {
         }
     }
     targets
+}
+
+/// pip install x、pip3 install x、python -m pip install x、uv pip install x、uv add x
+fn pip_install(prog: &str, args: &[String]) -> Option<Vec<String>> {
+    let rest: &[String] = match prog {
+        "pip" | "pip3" => args,
+        p if p.starts_with("python") => args.strip_prefix(&["-m".to_string(), "pip".to_string()][..])?,
+        "uv" => match args.first().map(String::as_str) {
+            Some("pip") => &args[1..],
+            Some("add") => return Some(positional(&args[1..])),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    if rest.first().map(String::as_str) != Some("install") {
+        return None;
+    }
+    // -r requirements.txt 这种不是包名
+    let mut pkgs = Vec::new();
+    let mut skip = false;
+    for a in &rest[1..] {
+        if skip {
+            skip = false;
+        } else if matches!(a.as_str(), "-r" | "-c" | "-e" | "--requirement" | "--index-url" | "-i" | "--extra-index-url" | "-t" | "--target") {
+            skip = true;
+        } else if !a.starts_with('-') && !a.contains('/') {
+            pkgs.push(a.clone());
+        }
+    }
+    Some(pkgs)
 }
 
 /// 文本里出现的所有 http(s) 网址。

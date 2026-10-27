@@ -39,6 +39,23 @@ export interface Config {
   watch_downloads: boolean;
   watch_extensions: boolean;
   auto_quarantine: boolean;
+  intel: { auto_update: boolean; abusech_key: string; online_lookup: boolean };
+}
+
+export interface IntelSource {
+  id: string;
+  name: string;
+  license: string;
+  url: string;
+  version: string;
+  updated: string;
+  count: number;
+  error?: string | null;
+}
+
+export interface IntelManifest {
+  updated: string;
+  sources: IntelSource[];
 }
 
 export interface Overview {
