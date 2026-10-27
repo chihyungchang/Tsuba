@@ -90,7 +90,8 @@ fn get_overview(state: State<AppState>) -> Overview {
         extension_dirs: extension::extension_dirs().iter().map(|p| p.to_string_lossy().to_string()).collect(),
         provider: cfg.provider,
         provider_label: match cfg.provider {
-            store::Provider::Claude => format!("Claude · {}", cfg.claude.model),
+            store::Provider::ClaudeCli => format!("Claude Code 账号 · {}", cfg.claude.model),
+            store::Provider::Claude => format!("Claude API · {}", cfg.claude.model),
             store::Provider::OpenaiCompatible => format!("{} · {}", cfg.openai_compatible.preset, cfg.openai_compatible.model),
             store::Provider::Offline => "仅离线规则".into(),
         },
@@ -158,6 +159,12 @@ async fn test_ai(config: Config) -> Result<String, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// 本机 claude 命令的位置，找不到返回 None。
+#[tauri::command]
+fn detect_claude_cli(configured: String) -> Option<String> {
+    judge::find_claude_cli(&configured).map(|p| p.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -332,6 +339,7 @@ pub fn run() {
             save_config,
             test_ai,
             list_models,
+            detect_claude_cli,
             run_doctor,
             scan_installed_extensions,
             scan_path,

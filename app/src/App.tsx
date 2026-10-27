@@ -493,9 +493,13 @@ function SettingsPage({ reload }: { reload: () => void }) {
   const [testing, setTesting] = useState(false);
   const [models, setModels] = useState<string[]>([]);
   const [listing, setListing] = useState(false);
+  const [cliPath, setCliPath] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<Config>("get_config").then(setCfg);
+    invoke<Config>("get_config").then((c) => {
+      setCfg(c);
+      invoke<string | null>("detect_claude_cli", { configured: c.claude.cli_path }).then(setCliPath);
+    });
   }, []);
   if (!cfg) return null;
 
@@ -545,7 +549,8 @@ function SettingsPage({ reload }: { reload: () => void }) {
         <div className="radio-group">
           {(
             [
-              ["claude", "Claude", "效果最好。需要 Anthropic API Key"],
+              ["claude_cli", "Claude Code 账号", "用本机 Claude Code 登录的账号，不需要 API Key。适合个人使用"],
+              ["claude", "Claude API", "用 Anthropic API Key，按用量计费"],
               ["openai_compatible", "其他模型", "OpenAI、Gemini、DeepSeek、通义千问、本地模型，或任何兼容 OpenAI 接口的地址"],
               ["offline", "仅离线规则", "不联网、不调用任何模型"],
             ] as const
@@ -560,8 +565,26 @@ function SettingsPage({ reload }: { reload: () => void }) {
           ))}
         </div>
 
-        {cfg.provider === "claude" && (
+        {cfg.provider === "claude_cli" && (
           <div className="form">
+            <p className={cliPath ? "ok-text" : "error-text"}>
+              {cliPath ? `已找到 Claude Code：${cliPath}` : "没有找到 claude 命令。请先安装 Claude Code 并在终端里运行 claude 登录一次，或在下面填写它的位置。"}
+            </p>
+            <label>
+              claude 命令的位置（留空自动查找）
+              <input
+                value={cfg.claude.cli_path}
+                placeholder="~/.local/bin/claude"
+                onChange={(e) => set({ claude: { ...cfg.claude, cli_path: e.target.value.trim() } })}
+                onBlur={() => invoke<string | null>("detect_claude_cli", { configured: cfg.claude.cli_path }).then(setCliPath)}
+              />
+            </label>
+          </div>
+        )}
+
+        {(cfg.provider === "claude" || cfg.provider === "claude_cli") && (
+          <div className="form">
+            {cfg.provider === "claude" && (
             <label>
               API Key
               <input
@@ -571,6 +594,7 @@ function SettingsPage({ reload }: { reload: () => void }) {
                 onChange={(e) => set({ claude: { ...cfg.claude, api_key: e.target.value.trim() } })}
               />
             </label>
+            )}
             <label>
               模型
               <select value={cfg.claude.model} onChange={(e) => set({ claude: { ...cfg.claude, model: e.target.value } })}>

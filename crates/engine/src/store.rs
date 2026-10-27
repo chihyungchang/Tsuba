@@ -40,8 +40,10 @@ fn write_private(name: &str, bytes: &[u8]) -> std::io::Result<()> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
-    /// Anthropic Claude API
+    /// 调用本机的 Claude Code（claude -p），用它登录的账号，不需要 API Key。适合个人使用
     #[default]
+    ClaudeCli,
+    /// Anthropic Claude API
     Claude,
     /// 任何兼容 OpenAI Chat Completions 接口的服务：Ollama、LM Studio、llama.cpp、vLLM，以及各家云端模型
     OpenaiCompatible,
@@ -55,11 +57,13 @@ pub struct ClaudeConfig {
     pub api_key: String,
     pub model: String,
     pub effort: String,
+    /// claude 命令的位置，留空时自动查找
+    pub cli_path: String,
 }
 
 impl Default for ClaudeConfig {
     fn default() -> Self {
-        ClaudeConfig { api_key: String::new(), model: "claude-opus-5-5".into(), effort: "low".into() }
+        ClaudeConfig { api_key: String::new(), model: "claude-opus-5-5".into(), effort: "low".into(), cli_path: String::new() }
     }
 }
 
@@ -113,7 +117,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            provider: Provider::Claude,
+            provider: Provider::ClaudeCli,
             claude: ClaudeConfig::default(),
             openai_compatible: OpenAiCompatConfig::default(),
             watch_downloads: true,

@@ -8,6 +8,9 @@ use crate::rules::Verdict;
 use crate::store::{Config, Provider};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 pub const SYSTEM_PROMPT: &str = r#"你是 Tsuba，一个运行在开发者 Mac 上的安全审查员。用户即将执行一条命令、打开一个项目、安装一个编辑器扩展或安装包，你在它运行之前审查。
@@ -221,6 +224,7 @@ fn user_message(evidence: &Value, limit: usize) -> String {
 pub fn available(cfg: &Config) -> bool {
     match cfg.provider {
         Provider::Offline => false,
+        Provider::ClaudeCli => find_claude_cli(&cfg.claude.cli_path).is_some(),
         Provider::Claude => !cfg.claude.api_key.is_empty() || std::env::var_os("ANTHROPIC_AUTH_TOKEN").is_some(),
         Provider::OpenaiCompatible => !cfg.openai_compatible.base_url.is_empty() && !cfg.openai_compatible.model.is_empty(),
     }
@@ -238,7 +242,7 @@ pub enum Trust {
 
 pub fn trust(cfg: &Config) -> Trust {
     match cfg.provider {
-        Provider::Claude => Trust::Frontier,
+        Provider::Claude | Provider::ClaudeCli => Trust::Frontier,
         Provider::OpenaiCompatible if cfg.openai_compatible.trusted => Trust::Frontier,
         _ => Trust::Limited,
     }
@@ -247,6 +251,7 @@ pub fn trust(cfg: &Config) -> Trust {
 pub fn ask(cfg: &Config, evidence: &Value) -> Result<Judgement, String> {
     match cfg.provider {
         Provider::Claude => ask_claude(cfg, evidence),
+        Provider::ClaudeCli => ask_claude_cli(cfg, evidence),
         Provider::OpenaiCompatible => ask_openai_compatible(cfg, evidence),
         Provider::Offline => Err("未启用 AI 判断".into()),
     }
@@ -322,6 +327,115 @@ fn ask_claude(cfg: &Config, evidence: &Value) -> Result<Judgement, String> {
         .and_then(|b| b["text"].as_str())
         .ok_or("模型没有返回结论")?;
     parse_judgement(text, resp["model"].as_str().unwrap_or(model))
+}
+
+/// 找本机的 claude 命令。从 Finder 打开的 App 拿不到终端里的 PATH，所以先查常见的安装位置。
+pub fn find_claude_cli(configured: &str) -> Option<PathBuf> {
+    let home = crate::home_dir();
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if !configured.is_empty() {
+        candidates.push(PathBuf::from(configured));
+    }
+    candidates.extend([
+        home.join(".local/bin/claude"),
+        home.join(".claude/local/claude"),
+        PathBuf::from("/opt/homebrew/bin/claude"),
+        PathBuf::from("/usr/local/bin/claude"),
+        home.join(".npm-global/bin/claude"),
+    ]);
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|d| d.join("claude")));
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// 通过 `claude -p` 调用，用 Claude Code 登录的账号。
+///
+/// 证据来自不可信来源，可能藏着提示注入，所以这次会话必须什么都做不了：
+/// 关掉所有工具（--tools ""）、关掉 CLAUDE.md / hooks / MCP / 插件（--safe-mode、--strict-mcp-config），
+/// 在一个空的临时目录里运行，也不保存会话。
+fn ask_claude_cli(cfg: &Config, evidence: &Value) -> Result<Judgement, String> {
+    let bin = find_claude_cli(&cfg.claude.cli_path).ok_or("找不到 claude 命令，请先安装 Claude Code 并登录")?;
+    let tmp = tempfile::Builder::new().prefix("tsuba-claude-").tempdir().map_err(|e| e.to_string())?;
+    let schema = schema().to_string();
+    let mut args = vec![
+        "-p", "--safe-mode", "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--disable-slash-commands",
+        "--output-format", "json", "--model", &cfg.claude.model, "--system-prompt", SYSTEM_PROMPT, "--json-schema", &schema,
+    ];
+    if !cfg.claude.model.starts_with("claude-haiku") {
+        args.extend(["--effort", &cfg.claude.effort]);
+    }
+    let mut child = Command::new(&bin)
+        .args(&args)
+        .current_dir(tmp.path())
+        // 在 Claude Code 的终端里运行 Tsuba 时，避免被当成嵌套会话
+        .env_remove("CLAUDECODE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("无法启动 claude：{e}"))?;
+    let prompt = user_message(evidence, 120_000);
+    let mut stdin = child.stdin.take().ok_or("无法写入 claude")?;
+    let writer = std::thread::spawn(move || {
+        let _ = stdin.write_all(prompt.as_bytes());
+    });
+    let out = wait_output(child, Duration::from_secs(180))?;
+    let _ = writer.join();
+    let resp: Value = serde_json::from_slice(&out).map_err(|_| {
+        let text: String = String::from_utf8_lossy(&out).chars().take(200).collect();
+        format!("claude 返回格式异常：{text}")
+    })?;
+    if resp["is_error"] == true {
+        let msg = resp["result"].as_str().unwrap_or("未知错误");
+        return Err(format!("claude 调用失败：{msg}"));
+    }
+    // 实际用的模型：取 modelUsage 里输出最多的那个（Claude Code 内部还会用小模型做杂事）
+    let model = resp["modelUsage"]
+        .as_object()
+        .and_then(|m| m.iter().max_by_key(|(_, u)| u["outputTokens"].as_i64().unwrap_or(0)).map(|(k, _)| k.clone()))
+        .unwrap_or_else(|| cfg.claude.model.clone());
+    let model = format!("{model}（Claude Code）");
+    if resp["structured_output"].is_object() {
+        let mut j: Judgement = serde_json::from_value(resp["structured_output"].clone()).map_err(|_| "模型返回格式异常".to_string())?;
+        j.model = model;
+        return Ok(j);
+    }
+    parse_judgement(resp["result"].as_str().unwrap_or(""), &model)
+}
+
+/// 等子进程结束并拿到 stdout，超时就杀掉。
+fn wait_output(mut child: std::process::Child, timeout: Duration) -> Result<Vec<u8>, String> {
+    let mut so = child.stdout.take().ok_or("无法读取输出")?;
+    let reader = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        let _ = so.read_to_end(&mut b);
+        b
+    });
+    let mut se = child.stderr.take().ok_or("无法读取输出")?;
+    let err_reader = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        let _ = se.read_to_end(&mut b);
+        b
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("claude 超时没有返回".into());
+            }
+        }
+    }
+    let out = reader.join().unwrap_or_default();
+    if out.is_empty() {
+        let err = String::from_utf8_lossy(&err_reader.join().unwrap_or_default()).trim().chars().take(300).collect::<String>();
+        return Err(if err.is_empty() { "claude 没有输出".into() } else { format!("claude 调用失败：{err}") });
+    }
+    Ok(out)
 }
 
 fn bearer(req: ureq::Request, key: &str) -> ureq::Request {
