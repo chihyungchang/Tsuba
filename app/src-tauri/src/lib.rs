@@ -68,6 +68,7 @@ struct Overview {
     provider: store::Provider,
     provider_label: String,
     ai_available: bool,
+    sandbox_available: bool,
     recent: RecentCounts,
     quarantined: usize,
 }
@@ -99,6 +100,7 @@ fn get_overview(state: State<AppState>) -> Overview {
             store::Provider::Offline => "仅离线规则".into(),
         },
         ai_available: judge::available(&cfg),
+        sandbox_available: sandbox_available(),
         recent: RecentCounts {
             total: log.len(),
             warned: log.iter().filter(|e| e.report.verdict == Verdict::Warn).count(),
@@ -310,6 +312,34 @@ fn reveal_in_finder(path: String) {
     let _ = std::process::Command::new("open").args(["-R", &path]).spawn();
 }
 
+#[derive(Serialize)]
+struct SandboxResult {
+    behavior: tsuba_engine::sandbox::Behavior,
+    findings: Vec<Finding>,
+    verdict: Verdict,
+}
+
+/// 把一个脚本文件放进沙箱试运行，看它实际做了什么（不联真实外网）。
+#[tauri::command]
+async fn sandbox_script(path: String) -> Result<SandboxResult, String> {
+    if !tsuba_engine::sandbox::available() {
+        return Err("当前系统没有 sandbox-exec，无法使用沙箱".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let script = std::fs::read_to_string(&path).map_err(|e| format!("读不到 {path}：{e}"))?;
+        let b = tsuba_engine::sandbox::run_script(&script, "/bin/bash", std::time::Duration::from_secs(60)).map_err(|e| e.to_string())?;
+        let findings = tsuba_engine::sandbox::findings(&b);
+        let verdict = tsuba_engine::rules::offline_verdict(&findings);
+        Ok(SandboxResult { behavior: b, findings, verdict })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+pub fn sandbox_available() -> bool {
+    tsuba_engine::sandbox::available()
+}
+
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "打开 Tsuba", true, None::<&str>)?;
     let history = MenuItem::with_id(app, "history", "检查记录", true, None::<&str>)?;
@@ -394,6 +424,7 @@ pub fn run() {
             restore_quarantine,
             delete_quarantine,
             reveal_in_finder,
+            sandbox_script,
         ])
         .build(tauri::generate_context!())
         .expect("Tsuba 启动失败")

@@ -739,3 +739,23 @@ select:focus {
 .sources td:nth-child(2) {
   padding: 6px 12px;
 }
+
+.sandbox {
+  margin: 12px 0;
+  background: var(--code-bg);
+}
+
+.sandbox-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+
+.sandbox-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.sandbox-list li {
+  margin: 2px 0;
+}

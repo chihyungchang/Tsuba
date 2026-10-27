@@ -70,6 +70,7 @@ export interface Overview {
   provider: Provider;
   provider_label: string;
   ai_available: boolean;
+  sandbox_available: boolean;
   recent: { total: number; warned: number; blocked: number };
   quarantined: number;
 }
@@ -80,6 +81,27 @@ export interface QuarantineItem {
   stored: string;
   time: string;
   reason: string;
+}
+
+export interface NetEvent {
+  target: string;
+  request?: string;
+  leaked?: string[];
+}
+
+export interface Behavior {
+  exit_code: number | null;
+  timed_out: boolean;
+  seconds: number;
+  network: NetEvent[];
+  new_files: string[];
+  output: string;
+}
+
+export interface SandboxResult {
+  behavior: Behavior;
+  findings: Finding[];
+  verdict: Verdict;
 }
 
 export interface AiScanItem {

@@ -13,6 +13,7 @@ import {
   Overview,
   QuarantineItem,
   Report,
+  SandboxResult,
   SOURCE_LABEL,
   VERDICT_LABEL,
   Verdict,
@@ -249,11 +250,69 @@ function OverviewPage({ overview, reload, onScanned }: { overview: Overview | nu
 
 /* ---------- 检查记录 ---------- */
 
+function SandboxPanel({ r }: { r: SandboxResult }) {
+  const b = r.behavior;
+  return (
+    <div className="card sandbox">
+      <h4>沙箱运行结果</h4>
+      <p className="muted small">
+        运行 {b.seconds.toFixed(1)} 秒{b.timed_out ? "（超时被终止）" : ""}。没看到坏行为不代表一定安全。
+      </p>
+      {b.network.length > 0 && (
+        <>
+          <div className="sandbox-label">网络请求</div>
+          <ul className="sandbox-list">
+            {b.network.map((e, i) => (
+              <li key={i}>
+                <span className="mono small">{e.target}</span>
+                {e.leaked && e.leaked.length > 0 && <span className="error-text small"> ← 发出了诱饵数据 {e.leaked.join("、")}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {b.new_files.length > 0 && (
+        <>
+          <div className="sandbox-label">新建的文件</div>
+          <ul className="sandbox-list">
+            {b.new_files.map((f) => (
+              <li key={f} className="mono small">
+                {f}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <FindingList findings={r.findings} />
+    </div>
+  );
+}
+
 function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; quarantine: QuarantineItem[]; reload: () => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(focusId);
   const [filter, setFilter] = useState<"all" | "risky">("risky");
   const [error, setError] = useState("");
+  const [sandbox, setSandbox] = useState<SandboxResult | null>(null);
+  const [sandboxing, setSandboxing] = useState(false);
+
+  // 换一条记录时清掉上一条的沙箱结果
+  useEffect(() => {
+    setSandbox(null);
+  }, [selected]);
+
+  const runSandbox = async (path: string) => {
+    setSandboxing(true);
+    setSandbox(null);
+    setError("");
+    try {
+      setSandbox(await invoke<SandboxResult>("sandbox_script", { path }));
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setSandboxing(false);
+    }
+  };
 
   const load = useCallback(() => {
     invoke<LogEntry[]>("get_history", { limit: 500 }).then(setEntries);
@@ -348,7 +407,13 @@ function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; 
               {["download", "mount", "extension", "scan"].includes(current.source) && !qItem && (
                 <button onClick={() => invoke("reveal_in_finder", { path: current.title })}>在 Finder 中显示</button>
               )}
+              {current.source === "scan" && /\.(sh|command|bash|zsh|py)$/.test(current.title) && (
+                <button disabled={sandboxing} onClick={() => runSandbox(current.title)}>
+                  {sandboxing ? "沙箱运行中…" : "沙箱试运行"}
+                </button>
+              )}
             </div>
+            {sandbox && <SandboxPanel r={sandbox} />}
             <ReportView report={current.report} />
           </>
         ) : (
