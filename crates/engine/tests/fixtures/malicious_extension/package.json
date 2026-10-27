@@ -1,0 +1,12 @@
+{
+  "name": "prettier-vscode-plus",
+  "publisher": "esbenp-tools",
+  "version": "0.0.3",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./extension.js"
+}

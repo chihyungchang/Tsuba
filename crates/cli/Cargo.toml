@@ -1,0 +1,15 @@
+[package]
+name = "tsuba-cli"
+description = "Tsuba 终端检查程序，由 zsh 钩子调用"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tsuba"
+path = "src/main.rs"
+
+[dependencies]
+tsuba-engine.workspace = true
+serde_json.workspace = true
+libc = "0.2"
