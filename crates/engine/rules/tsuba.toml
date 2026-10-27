@@ -1,0 +1,21 @@
+# Tsuba 的名单类数据。和 tsuba.yar 一起作为规则包，可以单独更新，不用重新发版。
+
+version = "2026.10.27"
+
+# 常见的官方安装脚本来源。命中只降低风险（不查域名注册时间），不直接放行。
+well_known_hosts = [
+  "raw.githubusercontent.com", "github.com", "objects.githubusercontent.com",
+  "brew.sh", "sh.rustup.rs", "static.rust-lang.org", "get.docker.com", "deno.land", "bun.sh",
+  "astral.sh", "install.python-poetry.org", "get.pnpm.io", "nodejs.org", "fnm.vercel.app",
+  "claude.ai", "anthropic.com", "cli.github.com", "sdk.cloud.google.com", "awscli.amazonaws.com",
+  "ohmyz.sh", "starship.rs", "volta.sh", "tailscale.com", "vercel.com", "supabase.com",
+]
+
+# 体检：已公开的 Contagious Interview / BeaverTail / InvisibleFerret / OtterCookie 落地痕迹（相对用户目录）
+ioc_paths = [
+  ".node_modules", ".task", ".n2", ".n3", ".npl", ".pyp", ".sysinfo",
+  "Library/LaunchAgents/com.avatar.update.wake.plist", ".config/.node",
+]
+
+# 体检：开机自启项里出现这些内容时提醒
+launch_agent_markers = ["/.node_modules", "/.task", "node ", "python3 -c", "curl ", "base64 "]

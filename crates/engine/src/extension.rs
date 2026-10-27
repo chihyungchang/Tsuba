@@ -3,7 +3,7 @@
 //! 在扩展商店里装扩展不经过 shell，只能在文件写进扩展目录后马上检查。
 //! 发现高危时把扩展目录挪进隔离区，赶在编辑器下次加载它之前。
 
-use crate::rules::{self, CHILD_PROCESS_MSG, Finding, Severity};
+use crate::rules::{self, CHILD_PROCESS_RULE, Finding, Severity};
 use crate::{home_dir, macos, read_limited, store};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -91,7 +91,7 @@ pub fn scan_extension(dir: &Path) -> (Value, Vec<Finding>) {
         let mut fs = rules::scan_text(&String::from_utf8_lossy(&bytes), &loc);
         fs.extend(crate::intel::yara::scan(&bytes, &loc));
         // 扩展调用系统命令很常见（语言服务器、git 工具），单独出现不说明问题
-        for f in fs.iter_mut().filter(|f| f.message == CHILD_PROCESS_MSG) {
+        for f in fs.iter_mut().filter(|f| f.rule == CHILD_PROCESS_RULE) {
             f.severity = Severity::Low;
         }
         if !fs.is_empty() {

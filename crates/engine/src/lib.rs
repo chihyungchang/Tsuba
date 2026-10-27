@@ -3,6 +3,7 @@
 //! 流程：detect（识别命令里的危险动作）→ collect（收集证据 + 离线规则）→ judge（可选的 AI 判断）→ Report。
 //! App 和终端检查程序共用这一套。
 
+pub mod agents;
 pub mod collect;
 pub mod detect;
 pub mod doctor;

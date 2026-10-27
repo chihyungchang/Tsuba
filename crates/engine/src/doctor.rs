@@ -1,20 +1,13 @@
-//! 体检：检查本机是否已有已知的感染痕迹。
+//! 体检：检查本机是否已有已知的感染痕迹。痕迹清单在规则包 tsuba.toml 里。
 
 use crate::home_dir;
 use crate::rules::{Finding, Severity};
 
-/// 已公开的 Contagious Interview / BeaverTail / InvisibleFerret / OtterCookie 落地痕迹
-const IOC_PATHS: &[&str] = &[
-    ".node_modules", ".task", ".n2", ".n3", ".npl", ".pyp", ".sysinfo",
-    "Library/LaunchAgents/com.avatar.update.wake.plist", ".config/.node",
-];
-
-const SUSPICIOUS_IN_LAUNCH_AGENT: &[&str] = &["/.node_modules", "/.task", "node ", "python3 -c", "curl ", "base64 "];
-
 pub fn run() -> Vec<Finding> {
     let home = home_dir();
     let mut findings = Vec::new();
-    for p in IOC_PATHS {
+    let lists = crate::intel::tsuba::lists();
+    for p in &lists.ioc_paths {
         let full = home.join(p);
         if full.exists() {
             findings.push(Finding::new(Severity::High, "发现已知攻击组织常用的落地目录或文件", full.to_string_lossy()));
@@ -23,7 +16,7 @@ pub fn run() -> Vec<Finding> {
     if let Ok(rd) = std::fs::read_dir(home.join("Library/LaunchAgents")) {
         for p in rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "plist")) {
             let text = crate::read_limited(&p, 200_000);
-            if let Some(s) = SUSPICIOUS_IN_LAUNCH_AGENT.iter().find(|s| text.contains(**s)) {
+            if let Some(s) = lists.launch_agent_markers.iter().find(|s| text.contains(s.as_str())) {
                 findings.push(
                     Finding::new(Severity::Medium, "开机自启项里引用了可疑命令", p.to_string_lossy()).with_snippet(format!("包含 “{}”", s.trim())),
                 );

@@ -2,6 +2,7 @@
 
 mod shell_hook;
 mod watch;
+mod watch_ai;
 
 use serde::Serialize;
 use serde_json::json;
@@ -61,6 +62,7 @@ struct Overview {
     shell_hook: shell_hook::HookStatus,
     watch_downloads: bool,
     watch_extensions: bool,
+    watch_ai_tools: bool,
     downloads_dir: String,
     extension_dirs: Vec<String>,
     provider: store::Provider,
@@ -86,6 +88,7 @@ fn get_overview(state: State<AppState>) -> Overview {
         shell_hook: shell_hook::status(),
         watch_downloads: cfg.watch_downloads,
         watch_extensions: cfg.watch_extensions,
+        watch_ai_tools: cfg.watch_ai_tools,
         downloads_dir: watch::downloads_dir().to_string_lossy().to_string(),
         extension_dirs: extension::extension_dirs().iter().map(|p| p.to_string_lossy().to_string()).collect(),
         provider: cfg.provider,
@@ -165,6 +168,13 @@ async fn test_ai(config: Config) -> Result<String, String> {
 #[tauri::command]
 fn detect_claude_cli(configured: String) -> Option<String> {
     judge::find_claude_cli(&configured).map(|p| p.to_string_lossy().to_string())
+}
+
+/// 扫描本机所有 AI 工具的 MCP server、skill、插件 hooks（只用离线规则，几秒钟）。
+#[tauri::command]
+async fn scan_ai_tools(state: State<'_, AppState>) -> Result<Vec<tsuba_engine::agents::ScanItem>, String> {
+    let online = state.config.lock().unwrap().intel.online_lookup;
+    tauri::async_runtime::spawn_blocking(move || tsuba_engine::agents::scan_all(online)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -374,6 +384,7 @@ pub fn run() {
             list_models,
             detect_claude_cli,
             intel_status,
+            scan_ai_tools,
             intel_update,
             run_doctor,
             scan_installed_extensions,

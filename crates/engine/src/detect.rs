@@ -17,6 +17,7 @@ pub enum Kind {
     PipInstall,
     ProjectRun,
     EditorOpen,
+    McpAdd,
     ExtensionInstall,
     Installer,
     Quarantine,
@@ -66,6 +67,8 @@ const PKG_MANAGERS: &[&str] = &["npm", "pnpm", "yarn", "bun"];
 const INSTALL_SUBCMDS: &[&str] = &["install", "i", "ci", "add", "isntall", "in"];
 const RUN_SUBCMDS: &[&str] = &["start", "run", "dev", "test", "exec", "serve"];
 const EDITORS: &[&str] = &["code", "code-insiders", "cursor", "windsurf", "codium"];
+/// 在当前目录启动就会读取项目里的 MCP 配置、hooks、CLAUDE.md 的 AI 编程工具
+const AI_CLIS: &[&str] = &["claude", "codex", "gemini"];
 
 /// 按 ; && || | 切成多段，每段用 shell 规则分词。分词失败时退回空格切分。
 fn split_commands(cmd: &str) -> Vec<Vec<String>> {
@@ -135,6 +138,17 @@ pub fn detect(cmd: &str) -> Vec<Target> {
             targets.push(Target::new(Kind::PkgExec, json!({ "manager": prog, "packages": &p[..p.len().min(1)] })));
         } else if prog == "node" && args.first().is_some_and(|a| !a.starts_with('-')) {
             targets.push(Target::new(Kind::ProjectRun, json!({ "manager": "node", "script": args[0] })));
+        } else if AI_CLIS.contains(&prog.as_str()) && args.first().map(String::as_str) == Some("mcp") && args.get(1).map(String::as_str) == Some("add") {
+            // claude mcp add [选项] <名字> -- <命令...>，或 claude mcp add --transport http <名字> <网址>
+            let (before, after) = match args.iter().position(|a| a == "--") {
+                Some(i) => (&args[2..i], args[i + 1..].to_vec()),
+                None => (&args[2..], vec![]),
+            };
+            let pos = positional(before);
+            let url = pos.iter().find(|a| a.starts_with("http")).cloned().unwrap_or_default();
+            targets.push(Target::new(Kind::McpAdd, json!({ "tool": prog, "name": pos.first().cloned().unwrap_or_default(), "command": after, "url": url })));
+        } else if AI_CLIS.contains(&prog.as_str()) && args.is_empty() {
+            targets.push(Target::new(Kind::EditorOpen, json!({ "editor": prog, "path": "." })));
         } else if EDITORS.contains(&prog.as_str()) {
             if let Some(i) = args.iter().position(|a| a == "--install-extension") {
                 let ext: Vec<&String> = args.get(i + 1).into_iter().collect();

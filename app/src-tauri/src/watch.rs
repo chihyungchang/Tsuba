@@ -1,4 +1,5 @@
-//! 后台监控：下载目录里新出现的安装包、编辑器扩展目录里新装或更新的扩展。
+//! 后台监控：下载目录里新出现的安装包、打开的安装镜像、编辑器扩展目录里新装或更新的扩展。
+//! AI 编程工具的监控在 watch_ai.rs。
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::{Value, json};
@@ -47,7 +48,7 @@ pub fn downloads_dir() -> PathBuf {
     home_dir().join("Downloads")
 }
 
-fn paused() -> bool {
+pub(crate) fn paused() -> bool {
     store::home().join("paused").exists()
 }
 
@@ -65,7 +66,7 @@ fn file_name(p: &str) -> String {
 
 /// 记一条检查记录，有风险时发通知；拦截时把窗口调出来。
 /// `previous` 是同一条记录之前的结论（两段式检查的第二段），结论没有变得更严重时不重复提醒。
-fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Option<Verdict>) {
+pub(crate) fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Option<Verdict>) {
     let r = &entry.report;
     let name = file_name(&entry.title);
     let escalated = previous.is_none_or(|p| r.verdict > p);
@@ -94,7 +95,7 @@ fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Option<Verdict>)
 }
 
 /// 两段式检查：离线规则不到一秒就出结论，有风险马上提醒；AI 的判断随后补上，更新同一条记录。
-fn two_phase(app: &AppHandle, cfg: &Config, source: &str, title: &str, check: impl Fn(&Config) -> tsuba_engine::Report) -> Verdict {
+pub(crate) fn two_phase(app: &AppHandle, cfg: &Config, source: &str, title: &str, check: impl Fn(&Config) -> tsuba_engine::Report) -> Verdict {
     let offline_cfg = Config { provider: store::Provider::Offline, ..cfg.clone() };
     let first = LogEntry::new(source, title, "", check(&offline_cfg));
     let offline = first.report.verdict;
@@ -326,6 +327,9 @@ pub fn start(app: &AppHandle, cfg: Arc<Mutex<Config>>) -> Watchers {
                     watchers.push(w);
                 }
         }
+    }
+    if c.watch_ai_tools {
+        crate::watch_ai::start(app, cfg.clone(), &mut watchers);
     }
     Watchers { _watchers: watchers }
 }

@@ -13,6 +13,7 @@
 
 pub mod feeds;
 pub mod packages;
+pub mod tsuba;
 pub mod yara;
 
 use crate::store::{self, Config};
@@ -152,6 +153,8 @@ pub fn update(cfg: &Config, force: bool, mut progress: impl FnMut(&str)) -> Mani
         }
         m.upsert(s);
     };
+    let rules_url = cfg.intel.rules_url.clone();
+    step("tsuba", "Tsuba 规则", &move |_| tsuba::update(&rules_url), &mut m);
     step("ossf", "OpenSSF 恶意包名单", &packages::update_ossf, &mut m);
     step("vscode", "VS Code 恶意扩展名单", &feeds::update_vscode, &mut m);
     let key = cfg.intel.abusech_key.clone();

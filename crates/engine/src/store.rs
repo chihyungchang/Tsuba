@@ -111,11 +111,13 @@ pub struct IntelConfig {
     pub abusech_key: String,
     /// 检查 npm / PyPI 包时在线查 OSV.dev
     pub online_lookup: bool,
+    /// Tsuba 规则包的下载地址（目录，下面有 tsuba.yar 和 tsuba.toml）。留空只用内置规则
+    pub rules_url: String,
 }
 
 impl Default for IntelConfig {
     fn default() -> Self {
-        IntelConfig { auto_update: true, abusech_key: String::new(), online_lookup: true }
+        IntelConfig { auto_update: true, abusech_key: String::new(), online_lookup: true, rules_url: String::new() }
     }
 }
 
@@ -129,6 +131,8 @@ pub struct Config {
     pub watch_extensions: bool,
     /// 扩展被判为“拦截”时自动移入隔离区
     pub auto_quarantine: bool,
+    /// 监控 AI 编程工具新增的 MCP server、skill 和插件 hooks
+    pub watch_ai_tools: bool,
     pub intel: IntelConfig,
 }
 
@@ -141,6 +145,7 @@ impl Default for Config {
             watch_downloads: true,
             watch_extensions: true,
             auto_quarantine: true,
+            watch_ai_tools: true,
             intel: IntelConfig::default(),
         }
     }

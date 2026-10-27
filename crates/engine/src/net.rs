@@ -8,15 +8,6 @@ use std::time::Duration;
 
 const UA: &str = "Tsuba/0.1 (+security pre-execution check)";
 
-/// 常见的官方安装脚本来源。命中只降低风险，不直接放行。
-pub const WELL_KNOWN_HOSTS: &[&str] = &[
-    "raw.githubusercontent.com", "github.com", "objects.githubusercontent.com",
-    "brew.sh", "sh.rustup.rs", "static.rust-lang.org", "get.docker.com", "deno.land", "bun.sh",
-    "astral.sh", "install.python-poetry.org", "get.pnpm.io", "nodejs.org", "fnm.vercel.app",
-    "claude.ai", "anthropic.com", "cli.github.com", "sdk.cloud.google.com", "awscli.amazonaws.com",
-    "ohmyz.sh", "starship.rs", "volta.sh", "tailscale.com", "vercel.com", "supabase.com",
-];
-
 fn agent(timeout: f64) -> ureq::Agent {
     ureq::AgentBuilder::new().timeout(Duration::from_secs_f64(timeout)).redirects(5).build()
 }
@@ -80,8 +71,11 @@ pub fn registered_domain(host: &str) -> String {
     parts[n.saturating_sub(2)..].join(".")
 }
 
+/// 常见的官方安装脚本来源（名单在规则包 tsuba.toml 里）
 pub fn is_well_known(host: &str) -> bool {
-    WELL_KNOWN_HOSTS.contains(&host) || WELL_KNOWN_HOSTS.contains(&registered_domain(host).as_str())
+    let list = &crate::intel::tsuba::lists().well_known_hosts;
+    let reg = registered_domain(host);
+    list.iter().any(|h| h == host || *h == reg)
 }
 
 /// 通过 RDAP 查域名注册了多少天，查不到返回 None。

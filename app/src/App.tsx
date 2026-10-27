@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   ACTION_LABEL,
+  AiScanItem,
   Config,
   ExtensionScan,
   Finding,
@@ -141,7 +142,7 @@ function OverviewPage({ overview, reload, onScanned }: { overview: Overview | nu
     }
   };
 
-  const setWatch = async (key: "watch_downloads" | "watch_extensions", on: boolean) => {
+  const setWatch = async (key: "watch_downloads" | "watch_extensions" | "watch_ai_tools", on: boolean) => {
     const cfg = await invoke<Config>("get_config");
     await act("save_config", { config: { ...cfg, [key]: on } });
   };
@@ -199,6 +200,15 @@ function OverviewPage({ overview, reload, onScanned }: { overview: Overview | nu
             </p>
           </div>
           <Toggle on={overview.watch_extensions} onChange={(v) => setWatch("watch_extensions", v)} />
+        </div>
+        <div className="row">
+          <div>
+            <h3>AI 工具监控</h3>
+            <p className="muted">
+              Claude Code、Cursor、Codex 等新增的 MCP server、skill 和插件 hooks 会自动检查；clone 下来的项目里自带的 .mcp.json、hooks、CLAUDE.md 在用 AI 工具打开前检查。
+            </p>
+          </div>
+          <Toggle on={overview.watch_ai_tools} onChange={(v) => setWatch("watch_ai_tools", v)} />
         </div>
         <div className="row">
           <div>
@@ -354,6 +364,7 @@ function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; 
 function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; reload: () => void }) {
   const [doctor, setDoctor] = useState<{ findings: Finding[]; advice: string } | null>(null);
   const [exts, setExts] = useState<ExtensionScan[] | null>(null);
+  const [ai, setAi] = useState<AiScanItem[] | null>(null);
   const [busy, setBusy] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -361,6 +372,11 @@ function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; relo
   const runDoctor = async () => {
     setBusy("doctor");
     setDoctor(await invoke("run_doctor"));
+    setBusy("");
+  };
+  const runAi = async () => {
+    setBusy("ai");
+    setAi(await invoke("scan_ai_tools"));
     setBusy("");
   };
   const runExts = async () => {
@@ -380,6 +396,8 @@ function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; relo
   };
 
   const risky = exts?.filter((x) => x.verdict !== "allow") ?? [];
+  const aiRisky = ai?.filter((x) => x.verdict !== "allow") ?? [];
+  const aiCount = (k: AiScanItem["kind"]) => ai?.filter((x) => x.kind === k).length ?? 0;
 
   return (
     <div className="page">
@@ -440,6 +458,40 @@ function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; relo
                       <button onClick={() => act("quarantine_extension", { path: x.path, reason: "体检时手动隔离" })}>移入隔离区</button>
                       <button onClick={() => invoke("reveal_in_finder", { path: x.path })}>在 Finder 中显示</button>
                     </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <div className="row">
+          <div>
+            <h3>AI 工具</h3>
+            <p className="muted">检查 Claude Code、Cursor、Codex 等装的 MCP server、skill 和插件 hooks。</p>
+          </div>
+          <button disabled={busy === "ai"} onClick={runAi}>
+            {busy === "ai" ? "扫描中…" : "扫描 AI 工具"}
+          </button>
+        </div>
+        {ai && (
+          <div className="result">
+            <p className="muted small">
+              共 {aiCount("mcp")} 个 MCP server、{aiCount("skill")} 个 skill、{aiCount("hooks")} 个插件 hooks 配置，
+              {aiRisky.length === 0 ? "都没有发现问题。" : `${aiRisky.length} 个需要看一下：`}
+            </p>
+            {aiRisky.map((x) => (
+              <div key={x.kind + x.detail} className="ext">
+                <button className="ext-head" onClick={() => setOpen(open === x.detail ? null : x.detail)}>
+                  <VerdictBadge v={x.verdict} />
+                  <span className="small">{x.title}</span>
+                  <span className="muted small ellipsis mono">{x.detail}</span>
+                </button>
+                {open === x.detail && (
+                  <div className="ext-body">
+                    <FindingList findings={x.findings} />
                   </div>
                 )}
               </div>

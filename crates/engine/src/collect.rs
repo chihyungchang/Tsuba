@@ -75,6 +75,7 @@ pub fn editor_config_findings(root: &Path, ctx: &mut Map<String, Value>) -> Vec<
             findings.extend(rules::scan_text(&read_limited(&p, 300_000), rel));
         }
     }
+    findings.extend(crate::agents::project_findings(root, ctx));
     findings
 }
 
@@ -446,6 +447,20 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                     item.insert("project".into(), Value::Object(ctx));
                     item.insert("fingerprint".into(), json!(project_fingerprint(&dir)));
                 }
+            }
+            Kind::McpAdd => {
+                let cmd = t.strs("command");
+                let server = crate::agents::McpServer {
+                    client: t.str("tool").to_string(),
+                    scope: "命令行添加".into(),
+                    name: t.str("name").to_string(),
+                    command: cmd.first().cloned().unwrap_or_default(),
+                    args: cmd.iter().skip(1).cloned().collect(),
+                    url: t.str("url").to_string(),
+                    env_keys: vec![],
+                };
+                findings.extend(crate::agents::scan_mcp_server(&server, online));
+                item.insert("server".into(), json!(server));
             }
             Kind::ExtensionInstall => {
                 let mut scans = Vec::new();

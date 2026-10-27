@@ -5,6 +5,7 @@
 //! tsuba scan <路径> [--json]                          检查安装包、扩展、项目目录或脚本文件
 //! tsuba doctor                                        检查本机是否已有已知的感染痕迹
 //! tsuba intel update [--force] | status               更新 / 查看威胁情报（开源规则和名单）
+//! tsuba ai [--all] [--json]                           检查本机 AI 工具的 MCP server、skill 和插件 hooks
 
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -257,6 +258,37 @@ fn cmd_intel(args: &[String]) -> i32 {
     }
 }
 
+fn cmd_ai(args: &[String]) -> i32 {
+    let s = style();
+    let cfg = Config::load();
+    let items = tsuba_engine::agents::scan_all(cfg.intel.online_lookup);
+    if args.iter().any(|a| a == "--json") {
+        println!("{}", serde_json::to_string_pretty(&items).unwrap_or_default());
+    }
+    let count = |k: &str| items.iter().filter(|i| i.kind == k).count();
+    eprintln!("检查了 {} 个 MCP server、{} 个 skill、{} 个插件 hooks 配置", count("mcp"), count("skill"), count("hooks"));
+    let all = args.iter().any(|a| a == "--all");
+    let mut worst = Verdict::Allow;
+    for i in items.iter().filter(|i| all || i.verdict != Verdict::Allow) {
+        worst = worst.max(i.verdict);
+        let (c, label) = match i.verdict {
+            Verdict::Allow => (s.grn, "✓"),
+            Verdict::Warn => (s.yel, "⚠"),
+            Verdict::Block => (s.red, "✗"),
+        };
+        eprintln!("\n{c}{label}{} {}{}{}  {}{}{}", s.rst, s.bold, i.title, s.rst, s.dim, i.detail, s.rst);
+        print_findings(&s, &i.findings);
+    }
+    if worst == Verdict::Allow {
+        eprintln!("{}✓ 没有发现有风险的 AI 工具配置{}", s.grn, s.rst);
+    }
+    match worst {
+        Verdict::Allow => 0,
+        Verdict::Warn => 1,
+        Verdict::Block => 2,
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
@@ -264,6 +296,7 @@ fn main() {
         Some("scan") => cmd_scan(&args[1..]),
         Some("doctor") => cmd_doctor(),
         Some("intel") => cmd_intel(&args[1..]),
+        Some("ai") => cmd_ai(&args[1..]),
         Some("--version" | "version") => {
             println!("tsuba {}", env!("CARGO_PKG_VERSION"));
             0

@@ -24,7 +24,7 @@ export interface Report {
 export interface LogEntry {
   id: string;
   time: string;
-  source: "terminal" | "paste" | "download" | "mount" | "extension" | "scan";
+  source: "terminal" | "paste" | "download" | "mount" | "extension" | "ai_tool" | "scan";
   title: string;
   cwd: string;
   report: Report;
@@ -39,6 +39,7 @@ export interface Config {
   watch_downloads: boolean;
   watch_extensions: boolean;
   auto_quarantine: boolean;
+  watch_ai_tools: boolean;
   intel: { auto_update: boolean; abusech_key: string; online_lookup: boolean };
 }
 
@@ -63,6 +64,7 @@ export interface Overview {
   shell_hook: { installed: boolean; cli_found: boolean; cli_path: string };
   watch_downloads: boolean;
   watch_extensions: boolean;
+  watch_ai_tools: boolean;
   downloads_dir: string;
   extension_dirs: string[];
   provider: Provider;
@@ -80,6 +82,14 @@ export interface QuarantineItem {
   reason: string;
 }
 
+export interface AiScanItem {
+  kind: "mcp" | "skill" | "hooks";
+  title: string;
+  detail: string;
+  verdict: Verdict;
+  findings: Finding[];
+}
+
 export interface ExtensionScan {
   id: string;
   path: string;
@@ -94,6 +104,7 @@ export const SOURCE_LABEL: Record<LogEntry["source"], string> = {
   download: "下载",
   mount: "打开安装镜像",
   extension: "编辑器扩展",
+  ai_tool: "AI 工具",
   scan: "手动检查",
 };
 export const ACTION_LABEL: Record<string, string> = {
