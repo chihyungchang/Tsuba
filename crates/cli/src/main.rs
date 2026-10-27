@@ -160,14 +160,14 @@ fn cmd_check(args: &[String]) -> i32 {
     print_report(&report, "");
 
     let yes = flag("--yes");
-    // 远程脚本拿不准时，可以先放进沙箱试运行，看它实际做什么再决定
-    let sandboxable = !yes && report.verdict != Verdict::Allow && tsuba_engine::sandbox::available() && fetched_script(&evidence).is_some();
+    // 拿不准时，可以先放进沙箱试运行，看它实际做什么再决定
+    let sbx = if yes || report.verdict == Verdict::Allow { None } else { sandbox_target(&evidence) };
     let go = match report.verdict {
         Verdict::Allow => true,
         _ if yes => true,
-        Verdict::Warn if sandboxable => confirm_with_sandbox(&s, &evidence, false),
+        Verdict::Warn if sbx.is_some() => confirm_with_sandbox(&s, &sbx.unwrap(), false),
         Verdict::Warn => matches!(ask(&format!("{}仍然执行？[y/N] {}", s.yel, s.rst)).to_lowercase().as_str(), "y" | "yes"),
-        Verdict::Block if sandboxable => confirm_with_sandbox(&s, &evidence, true),
+        Verdict::Block if sbx.is_some() => confirm_with_sandbox(&s, &sbx.unwrap(), true),
         Verdict::Block => ask(&format!("{}输入 run 强制执行，直接回车取消：{}", s.red, s.rst)) == "run",
     };
 
@@ -339,14 +339,32 @@ fn cmd_ai(args: &[String]) -> i32 {
     }
 }
 
-/// 证据里已下载检查过的远程脚本内容（主脚本）。
-fn fetched_script(evidence: &Value) -> Option<String> {
-    evidence["targets"].as_array()?.iter().find_map(|t| {
-        if t["kind"] != "remote_script" || t["fetched"][0]["truncated"] == true {
-            return None;
+/// 沙箱能跑的目标：已下载检查过的远程脚本，或一个待运行的项目目录。
+enum SandboxTarget {
+    Script(String),
+    Project(PathBuf),
+}
+
+fn sandbox_target(evidence: &Value) -> Option<SandboxTarget> {
+    if !tsuba_engine::sandbox::available() {
+        return None;
+    }
+    for t in evidence["targets"].as_array()?.iter() {
+        match t["kind"].as_str() {
+            Some("remote_script") if t["fetched"][0]["truncated"] != true => {
+                if let Some(text) = t["fetched"][0]["text"].as_str() {
+                    return Some(SandboxTarget::Script(text.into()));
+                }
+            }
+            Some("project_run") => {
+                if let Some(root) = t["project"]["root"].as_str() {
+                    return Some(SandboxTarget::Project(PathBuf::from(root)));
+                }
+            }
+            _ => {}
         }
-        t["fetched"][0]["text"].as_str().map(String::from)
-    })
+    }
+    None
 }
 
 /// 在沙箱里运行脚本并打印行为，返回观察到的行为。失败返回 None。
@@ -359,6 +377,12 @@ fn run_sandbox(s: &Style, script: &str, title: &str) -> Option<tsuba_engine::san
             return None;
         }
     };
+    print_behavior(s, &b, title);
+    Some(b)
+}
+
+/// 打印一次沙箱运行的行为和证据。
+fn print_behavior(s: &Style, b: &tsuba_engine::sandbox::Behavior, title: &str) {
     eprintln!("\n{}运行 {:.1} 秒{}，退出码 {:?}{}", s.dim, b.seconds, if b.timed_out { "（超时被终止）" } else { "" }, b.exit_code, s.rst);
     if !b.network.is_empty() {
         eprintln!("  {}网络请求：{}", s.bold, s.rst);
@@ -373,16 +397,15 @@ fn run_sandbox(s: &Style, script: &str, title: &str) -> Option<tsuba_engine::san
             eprintln!("   • {f}");
         }
     }
-    let findings = tsuba_engine::sandbox::findings(&b);
+    let findings = tsuba_engine::sandbox::findings(b);
     print_report(
         &Report { verdict: tsuba_engine::rules::offline_verdict(&findings), summary: "以下是沙箱里观察到的行为（没看到坏行为不代表一定安全）".into(), reasons: vec![], advice: String::new(), source: "sandbox".into(), model: String::new(), findings },
         title,
     );
-    Some(b)
 }
 
 /// “提醒 / 拦截”时先问要不要沙箱试运行，再做最终决定。block 为 true 时最终要输入 run 才执行。
-fn confirm_with_sandbox(s: &Style, evidence: &Value, block: bool) -> bool {
+fn confirm_with_sandbox(s: &Style, target: &SandboxTarget, block: bool) -> bool {
     let prompt = if block {
         format!("{}[s]沙箱试运行 / 输入 run 强制执行 / 直接回车取消：{}", s.red, s.rst)
     } else {
@@ -390,8 +413,19 @@ fn confirm_with_sandbox(s: &Style, evidence: &Value, block: bool) -> bool {
     };
     let ans = ask(&prompt).to_lowercase();
     if ans == "s" {
-        if let Some(script) = fetched_script(evidence) {
-            run_sandbox(s, &script, "远程脚本");
+        let timeout = std::time::Duration::from_secs(60);
+        match target {
+            SandboxTarget::Script(script) => {
+                run_sandbox(s, script, "远程脚本");
+            }
+            SandboxTarget::Project(dir) => {
+                let argv = tsuba_engine::sandbox::project_start_argv(dir);
+                eprintln!("{}在沙箱里运行 {}（最多 60 秒，不联真实外网）…{}", s.dim, argv.join(" "), s.rst);
+                match tsuba_engine::sandbox::run_project(dir, &argv, timeout) {
+                    Ok(b) => print_behavior(s, &b, &dir.to_string_lossy()),
+                    Err(e) => eprintln!("沙箱运行失败：{e}"),
+                }
+            }
         }
         // 看完行为再做最终决定
         return if block {
@@ -413,16 +447,34 @@ fn cmd_sandbox(args: &[String]) -> i32 {
         eprintln!("当前系统没有 sandbox-exec，无法使用沙箱");
         return 2;
     }
-    let script = match std::fs::read_to_string(path) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("读不到 {path}：{e}");
-            return 2;
+    let timeout = std::time::Duration::from_secs(60);
+    let p = Path::new(path);
+    let b = if p.is_dir() {
+        // 项目目录：在沙箱里跑它的启动命令
+        let argv = tsuba_engine::sandbox::project_start_argv(p);
+        eprintln!("{}在沙箱里运行 {} {}（最多 60 秒，不联真实外网）…{}", s.dim, argv.join(" "), path, s.rst);
+        match tsuba_engine::sandbox::run_project(p, &argv, timeout) {
+            Ok(b) => {
+                print_behavior(&s, &b, path);
+                b
+            }
+            Err(e) => {
+                eprintln!("沙箱运行失败：{e}");
+                return 2;
+            }
         }
-    };
-    let b = match run_sandbox(&s, &script, path) {
-        Some(b) => b,
-        None => return 2,
+    } else {
+        let script = match std::fs::read_to_string(path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("读不到 {path}：{e}");
+                return 2;
+            }
+        };
+        match run_sandbox(&s, &script, path) {
+            Some(b) => b,
+            None => return 2,
+        }
     };
     let findings = tsuba_engine::sandbox::findings(&b);
     let verdict = tsuba_engine::rules::offline_verdict(&findings);

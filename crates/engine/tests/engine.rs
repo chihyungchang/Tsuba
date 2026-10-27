@@ -537,3 +537,17 @@ fn vetted_interpreter_clean_forms() {
     assert_eq!(v("curl https://a.io/1.sh | bash; curl https://a.io/2.sh | bash"), None, "多个下载源");
     assert_eq!(v("npm install"), None);
 }
+
+#[test]
+fn sandbox_runs_benign_project() {
+    if !sandbox_ready() {
+        return;
+    }
+    // 一个自包含、无依赖、无害的项目：启动只打印一行，不碰诱饵、不写持久化
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("index.js"), "console.log('ok');\n").unwrap();
+    let b = sandbox::run_project(dir.path(), &["node".into(), "index.js".into()], Duration::from_secs(20)).unwrap();
+    assert!(b.output.contains("ok"), "项目应正常启动: {}", b.output);
+    assert!(sandbox::findings(&b).is_empty(), "无害项目不应有证据");
+    assert_eq!(sandbox::project_start_argv(dir.path()), vec!["node", "index.js"]);
+}

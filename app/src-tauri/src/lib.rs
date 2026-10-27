@@ -319,15 +319,22 @@ struct SandboxResult {
     verdict: Verdict,
 }
 
-/// 把一个脚本文件放进沙箱试运行，看它实际做了什么（不联真实外网）。
+/// 把一个脚本文件或项目目录放进沙箱试运行，看它实际做了什么（不联真实外网）。
 #[tauri::command]
 async fn sandbox_script(path: String) -> Result<SandboxResult, String> {
     if !tsuba_engine::sandbox::available() {
         return Err("当前系统没有 sandbox-exec，无法使用沙箱".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let script = std::fs::read_to_string(&path).map_err(|e| format!("读不到 {path}：{e}"))?;
-        let b = tsuba_engine::sandbox::run_script(&script, "/bin/bash", std::time::Duration::from_secs(60)).map_err(|e| e.to_string())?;
+        let p = std::path::Path::new(&path);
+        let timeout = std::time::Duration::from_secs(60);
+        let b = if p.is_dir() {
+            let argv = tsuba_engine::sandbox::project_start_argv(p);
+            tsuba_engine::sandbox::run_project(p, &argv, timeout).map_err(|e| e.to_string())?
+        } else {
+            let script = std::fs::read_to_string(&path).map_err(|e| format!("读不到 {path}：{e}"))?;
+            tsuba_engine::sandbox::run_script(&script, "/bin/bash", timeout).map_err(|e| e.to_string())?
+        };
         let findings = tsuba_engine::sandbox::findings(&b);
         let verdict = tsuba_engine::rules::offline_verdict(&findings);
         Ok(SandboxResult { behavior: b, findings, verdict })
