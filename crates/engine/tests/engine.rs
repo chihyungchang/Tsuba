@@ -356,3 +356,17 @@ fn serve_judge(verdict: &'static str) -> u16 {
     });
     port
 }
+
+/// 2026 年 10 月真实遇到的假会议软件 Zeff：镜像里没有 .app，只有伪装成安装程序的脚本、
+/// 指向“终端”的快捷方式和藏在隐藏目录里的程序。最初版本的规则漏掉了它。
+#[test]
+fn fake_meeting_dmg_volume_blocked() {
+    let mut findings = Vec::new();
+    let info = tsuba_engine::macos::inspect_volume(&fix("fake_meeting_volume"), "Zeff.dmg", &mut findings);
+    let msgs = messages(&findings);
+    for want in ["终端", "Installer.file", "隐藏目录", "隔离标记", "没有正常的应用程序"] {
+        assert!(msgs.contains(want), "缺少 {want}: {msgs}");
+    }
+    assert_eq!(rules::offline_verdict(&findings), Verdict::Block);
+    assert!(info["scripts"]["Installer.file"].is_string());
+}

@@ -24,7 +24,7 @@ export interface Report {
 export interface LogEntry {
   id: string;
   time: string;
-  source: "terminal" | "paste" | "download" | "extension" | "scan";
+  source: "terminal" | "paste" | "download" | "mount" | "extension" | "scan";
   title: string;
   cwd: string;
   report: Report;
@@ -75,6 +75,7 @@ export const SOURCE_LABEL: Record<LogEntry["source"], string> = {
   terminal: "终端命令",
   paste: "粘贴的命令",
   download: "下载",
+  mount: "打开安装镜像",
   extension: "编辑器扩展",
   scan: "手动检查",
 };
@@ -82,6 +83,7 @@ export const ACTION_LABEL: Record<string, string> = {
   executed: "已执行",
   cancelled: "已取消",
   quarantined: "已隔离",
+  ejected: "已阻止打开",
   notified: "已提醒",
   allowed: "已放行",
   scanned: "",

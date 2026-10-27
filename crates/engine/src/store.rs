@@ -186,10 +186,16 @@ pub fn append_log(entry: &LogEntry) {
     }
 }
 
-/// 最近的记录，新的在前。
+/// 最近的记录，新的在前。同一个 id 写过多次时（先出离线结论、再补上 AI 结论）只保留最后一次。
 pub fn read_log(limit: usize) -> Vec<LogEntry> {
     let text = std::fs::read_to_string(home().join("history.jsonl")).unwrap_or_default();
-    text.lines().rev().filter_map(|l| serde_json::from_str(l).ok()).take(limit).collect()
+    let mut seen = std::collections::HashSet::new();
+    text.lines()
+        .rev()
+        .filter_map(|l| serde_json::from_str::<LogEntry>(l).ok())
+        .filter(|e| seen.insert(e.id.clone()))
+        .take(limit)
+        .collect()
 }
 
 pub fn clear_log() {

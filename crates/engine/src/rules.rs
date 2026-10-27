@@ -83,6 +83,10 @@ static CONTENT_RULES: LazyLock<Vec<(Severity, &'static str, Regex)>> = LazyLock:
          r(r"base64\s+(?:-\w*[dD]\w*|--decode)\b[^;&\n]*\|\s*(?:sudo\s+)?(?:ba|z)?sh\b")),
         (Medium, "代码里有疑似写给 AI 审查员的话（提示注入），正常代码不会这样写",
          r(r"(?i)ignore (?:all |any )?(?:previous|prior|above) instructions|(?:AI|LLM) (?:reviewer|auditor|scanner|security (?:reviewer|scanner))s?\b|AI 审查|请(?:直接)?放行|(?:mark|classify|treat|report) (?:this|it) as (?:safe|benign|clean)|this (?:code|file|package|script|extension) is (?:safe|benign|not malicious)")),
+        (Medium, "把程序复制到临时目录后在后台悄悄运行",
+         r(r#"(?:nohup|exec)\s+["']?(?:/private)?/(?:tmp|var/tmp)/"#)),
+        (Medium, "脚本自己声称不用苹果的签名和公证，这是骗你绕过系统保护的说辞",
+         r(r"(?i)without (?:using )?Apple.{0,3}s? (?:official )?(?:code[- ]signing|notari[sz]ation)")),
         (Low, "使用 sudo 提权", r(r"(?:^|\s)sudo\s")),
     ]
 });

@@ -181,9 +181,9 @@ function OverviewPage({ overview, reload, onScanned }: { overview: Overview | nu
         </div>
         <div className="row">
           <div>
-            <h3>下载目录监控</h3>
+            <h3>安装包监控</h3>
             <p className="muted">
-              <code>{overview.downloads_dir}</code> 里新出现的 .dmg、.pkg、.vsix 会自动检查。
+              <code>{overview.downloads_dir}</code> 里新出现的 .dmg、.pkg、.vsix 会自动检查；打开安装镜像时再查一次，判为高危会立刻把它弹出。
             </p>
           </div>
           <Toggle on={overview.watch_downloads} onChange={(v) => setWatch("watch_downloads", v)} />
@@ -334,7 +334,7 @@ function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; 
               {!qItem && current.source === "extension" && current.report.verdict !== "allow" && current.action !== "quarantined" && (
                 <button onClick={() => act("quarantine_extension", { path: current.title, reason: current.report.summary })}>移入隔离区</button>
               )}
-              {["download", "extension", "scan"].includes(current.source) && !qItem && (
+              {["download", "mount", "extension", "scan"].includes(current.source) && !qItem && (
                 <button onClick={() => invoke("reveal_in_finder", { path: current.title })}>在 Finder 中显示</button>
               )}
             </div>

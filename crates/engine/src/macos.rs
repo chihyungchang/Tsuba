@@ -5,7 +5,7 @@
 use crate::rules::{self, Finding, Severity};
 use serde_json::{Map, Value, json};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -150,22 +150,113 @@ pub fn inspect_dmg(path: &str, findings: &mut Vec<Finding>) -> Map<String, Value
         return info;
     }
     let dmg_name = Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let entries: Vec<_> = std::fs::read_dir(mnt.path()).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
-    info.insert("contents".into(), json!(entries.iter().take(30).filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).collect::<Vec<_>>()));
+    info.extend(inspect_volume(mnt.path(), &dmg_name, findings));
+    run(&["hdiutil", "detach", "-force", &mnt_s], 30);
+    info
+}
+
+/// 镜像挂载后的系统文件，不算可疑
+const VOLUME_SYSTEM_FILES: &[&str] = &[
+    ".DS_Store", ".fseventsd", ".background", ".VolumeIcon.icns", ".Trashes", ".TemporaryItems", ".Spotlight-V100", ".DocumentRevisions-V100", ".apdisk",
+];
+
+/// 文件开头是不是 Mach-O 可执行文件（含 universal binary）
+fn is_macho(p: &Path) -> bool {
+    let mut magic = [0u8; 4];
+    std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut magic)).is_ok()
+        && matches!(u32::from_be_bytes(magic), 0xFEEDFACE | 0xFEEDFACF | 0xCEFAEDFE | 0xCFFAEDFE | 0xCAFEBABE | 0xBEBAFECA)
+}
+
+fn is_script(p: &Path) -> bool {
+    crate::read_limited(p, 2).starts_with("#!")
+}
+
+/// 检查一个已挂载的安装镜像（自己只读挂载的，或用户刚打开的 /Volumes/xxx）。
+pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> Map<String, Value> {
+    let mut info = Map::new();
+    let entries: Vec<PathBuf> = std::fs::read_dir(root).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    let name_of = |p: &Path| p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    info.insert("contents".into(), json!(entries.iter().take(30).map(|p| name_of(p)).collect::<Vec<_>>()));
     let ext = |p: &Path| p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let apps: Vec<Value> = entries.iter().filter(|p| ext(p) == "app").take(3).map(|a| inspect_app(a, findings)).collect();
-    info.insert("apps".into(), json!(apps));
     let pkgs: Vec<Value> = entries.iter().filter(|p| ext(p) == "pkg").take(2).map(|p| Value::Object(inspect_pkg(&p.to_string_lossy(), findings))).collect();
+
+    // 指向“终端”的快捷方式：引导用户把镜像里的文件拖进终端运行，从终端运行的脚本不经过 Gatekeeper
+    for p in &entries {
+        if let Ok(target) = std::fs::read_link(p) {
+            let t = target.to_string_lossy();
+            if t.contains("Terminal.app") || t.contains("iTerm.app") {
+                findings.push(Finding::new(
+                    Severity::High,
+                    format!("安装镜像里放了一个指向“终端”的快捷方式（{}），这是引导你把文件拖进终端运行、绕过 Gatekeeper 的骗局", name_of(p)),
+                    label,
+                ));
+            }
+        }
+    }
+
+    // 根目录里可以直接运行的脚本，不管扩展名是什么（Zeff 用的是 Installer.file）
+    let mut scripts = Map::new();
+    for f in entries.iter().filter(|p| p.is_file() && !p.is_symlink() && (is_script(p) || matches!(ext(p).as_str(), "command" | "sh" | "tool"))) {
+        let fname = name_of(f);
+        let text = crate::read_limited(f, 200_000);
+        findings.push(Finding::new(Severity::Medium, format!("安装镜像里带了一个可以直接运行的脚本 {fname}"), label));
+        findings.extend(rules::scan_text(&text, &fname));
+        scripts.insert(fname, json!(text.chars().take(6000).collect::<String>()));
+    }
+
+    // 隐藏目录里的可执行程序：正常的安装镜像不会把程序藏起来
+    let mut hidden = Vec::new();
+    for p in entries.iter().filter(|p| name_of(p).starts_with('.') && !VOLUME_SYSTEM_FILES.contains(&name_of(p).as_str())) {
+        let files = if p.is_dir() { crate::walk_files(p, 200) } else { vec![p.clone()] };
+        for f in files.iter().filter(|f| is_macho(f) || is_script(f)) {
+            let rel = f.strip_prefix(root).unwrap_or(f).to_string_lossy().to_string();
+            let (code, out) = run(&["codesign", "-dv", &f.to_string_lossy()], 15);
+            let signed = code == 0 && !out.contains("Signature=adhoc");
+            findings.push(Finding::new(
+                Severity::High,
+                format!("安装镜像的隐藏目录里藏着一个可执行程序 {rel}{}", if signed { "" } else { "，而且没有开发者签名" }),
+                label,
+            ));
+            hidden.push(json!({ "path": rel, "macho": is_macho(f), "codesign": tail(&out, 300) }));
+        }
+    }
+
+    if apps.is_empty() && pkgs.is_empty() && (!scripts.is_empty() || !hidden.is_empty()) {
+        findings.push(Finding::new(Severity::Medium, "安装镜像里没有正常的应用程序或安装包，只有脚本和程序文件", label));
+    }
+    info.insert("apps".into(), json!(apps));
     if !pkgs.is_empty() {
         info.insert("pkgs".into(), json!(pkgs));
     }
-    for f in entries.iter().filter(|p| p.is_file() && matches!(ext(p).as_str(), "command" | "sh" | "tool")) {
-        let fname = f.file_name().unwrap().to_string_lossy().to_string();
-        findings.push(Finding::new(Severity::Medium, format!("安装镜像里带了可双击运行的脚本 {fname}"), &dmg_name));
-        findings.extend(rules::scan_text(&crate::read_limited(f, 200_000), &fname));
+    if !scripts.is_empty() {
+        info.insert("scripts".into(), Value::Object(scripts));
     }
-    run(&["hdiutil", "detach", "-force", &mnt_s], 30);
+    if !hidden.is_empty() {
+        info.insert("hidden_executables".into(), json!(hidden));
+    }
     info
+}
+
+/// 当前挂载的磁盘镜像：挂载点 → 镜像文件路径。
+pub fn mounted_images() -> Vec<(PathBuf, PathBuf)> {
+    let (code, out) = run(&["hdiutil", "info", "-plist"], 10);
+    if code != 0 {
+        return vec![];
+    }
+    let Ok(plist) = plist::Value::from_reader_xml(out.as_bytes()) else { return vec![] };
+    let mut result = Vec::new();
+    let images = plist.as_dictionary().and_then(|d| d.get("images")).and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    for img in images {
+        let Some(d) = img.as_dictionary() else { continue };
+        let Some(image) = d.get("image-path").and_then(|v| v.as_string()) else { continue };
+        for ent in d.get("system-entities").and_then(|v| v.as_array()).into_iter().flatten() {
+            if let Some(mp) = ent.as_dictionary().and_then(|e| e.get("mount-point")).and_then(|v| v.as_string()) {
+                result.push((PathBuf::from(mp), PathBuf::from(image)));
+            }
+        }
+    }
+    result
 }
 
 pub fn inspect_pkg(path: &str, findings: &mut Vec<Finding>) -> Map<String, Value> {
