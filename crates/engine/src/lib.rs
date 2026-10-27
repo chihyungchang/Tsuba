@@ -13,6 +13,7 @@ pub mod judge;
 pub mod macos;
 pub mod net;
 pub mod rules;
+pub mod sandbox;
 pub mod store;
 
 use detect::{Kind, Target};

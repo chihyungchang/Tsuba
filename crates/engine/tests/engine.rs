@@ -455,3 +455,68 @@ fn bundled_rule_pack_compiles() {
     assert!(n >= 15, "规则数 {n}");
     assert!(tsuba_engine::net::is_well_known("sh.rustup.rs"));
 }
+
+// ---- 沙箱 ----
+// 只用无害脚本验证沙箱机制：家目录被换成假的、网络被代理记录、正常安装脚本不误报。
+// 检测逻辑（窃取/持久化的判定）直接对 findings() 传入描述数据来测，不运行任何模拟攻击的程序。
+use std::time::Duration;
+use tsuba_engine::sandbox;
+
+fn sandbox_ready() -> bool {
+    cfg!(target_os = "macos") && sandbox::available()
+}
+
+#[test]
+fn sandbox_redirects_home_and_isolates() {
+    if !sandbox_ready() {
+        return;
+    }
+    // 程序看到的 $HOME 是沙箱里的假目录，不是真实家目录
+    let b = sandbox::run_script("echo HOME=$HOME; cat \"$HOME/.ssh/id_ed25519\"", "/bin/bash", Duration::from_secs(20)).unwrap();
+    assert!(b.output.contains("tsuba-sandbox"), "HOME 应指向沙箱临时目录: {}", b.output);
+    // 假家目录里的诱饵 ssh 文件可读（是沙箱自己放的占位文件，读它不接触任何真实数据）
+    assert!(b.output.contains("TSUBA-DECOY-SSH"), "诱饵文件应存在: {}", b.output);
+    // 真实家目录在规则里被锁死
+    let p = tsuba_engine::sandbox::_profile_for_test();
+    assert!(p.contains("(deny file* (subpath") && p.contains("(deny network*)"), "{p}");
+}
+
+#[test]
+fn sandbox_records_network() {
+    if !sandbox_ready() {
+        return;
+    }
+    // 正常的联网请求会被代理记录下来；请求不会真正发到外部
+    let b = sandbox::run_script("curl -s -m 5 http://example.com/install.sh >/dev/null 2>&1; echo done", "/bin/bash", Duration::from_secs(20)).unwrap();
+    assert!(b.network.iter().any(|e| e.target.contains("example.com")), "代理应记录到 example.com: {:?}", b.network);
+}
+
+#[test]
+fn sandbox_benign_installer_has_no_findings() {
+    if !sandbox_ready() {
+        return;
+    }
+    // 模仿正常安装脚本：联网、往自己的工作目录写文件、加执行权限。都不碰诱饵、不写开机自启。
+    let script = "mkdir -p ./tool && echo '#!/bin/sh' > ./tool/run && chmod +x ./tool/run && curl -s -m 5 http://downloads.example.org/pkg.tgz >/dev/null 2>&1; echo installed";
+    let b = sandbox::run_script(script, "/bin/bash", Duration::from_secs(20)).unwrap();
+    let f = sandbox::findings(&b);
+    assert!(f.is_empty(), "正常安装脚本不应有证据: {:?}", f.iter().map(|x| &x.message).collect::<Vec<_>>());
+}
+
+#[test]
+fn sandbox_findings_classify_behavior() {
+    use tsuba_engine::sandbox::{Behavior, NetEvent};
+    // 不运行任何程序，直接给出“观察到的行为”，验证判定逻辑
+    let b = Behavior {
+        network: vec![
+            NetEvent { target: "203.0.113.7:1224".into(), request: String::new(), leaked: vec!["TSUBA-DECOY-WALLET".into()] },
+        ],
+        new_files: vec!["Library/LaunchAgents/com.x.plist".into(), ".node_modules/axios/index.js".into()],
+        ..Default::default()
+    };
+    let msgs = messages(&sandbox::findings(&b));
+    assert!(msgs.contains("诱饵") && msgs.contains("铁证"), "应判定为窃取: {msgs}");
+    assert!(msgs.contains("开机自启"), "应判定为持久化: {msgs}");
+    assert!(msgs.contains("隐藏目录"), "应判定为落地痕迹: {msgs}");
+    assert!(msgs.contains("IP 地址"), "连裸 IP 应记录: {msgs}");
+}

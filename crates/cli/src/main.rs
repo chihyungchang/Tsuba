@@ -6,6 +6,7 @@
 //! tsuba doctor                                        检查本机是否已有已知的感染痕迹
 //! tsuba intel update [--force] | status               更新 / 查看威胁情报（开源规则和名单）
 //! tsuba ai [--all] [--json]                           检查本机 AI 工具的 MCP server、skill 和插件 hooks
+//! tsuba sandbox <脚本文件>                             把脚本放进沙箱试运行，看它实际做了什么（不联真实外网）
 
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -289,6 +290,58 @@ fn cmd_ai(args: &[String]) -> i32 {
     }
 }
 
+fn cmd_sandbox(args: &[String]) -> i32 {
+    let s = style();
+    let Some(path) = args.iter().find(|a| !a.starts_with("--")) else {
+        eprintln!("用法：tsuba sandbox <脚本文件>");
+        return 2;
+    };
+    if !tsuba_engine::sandbox::available() {
+        eprintln!("当前系统没有 sandbox-exec，无法使用沙箱");
+        return 2;
+    }
+    let script = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("读不到 {path}：{e}");
+            return 2;
+        }
+    };
+    eprintln!("{}在沙箱里运行 {path}（最多 60 秒，不会联真实外网）…{}", s.dim, s.rst);
+    let b = match tsuba_engine::sandbox::run_script(&script, "/bin/bash", std::time::Duration::from_secs(60)) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("沙箱运行失败：{e}");
+            return 2;
+        }
+    };
+    eprintln!("\n{}运行 {:.1} 秒{}，退出码 {:?}{}", s.dim, b.seconds, if b.timed_out { "（超时被终止）" } else { "" }, b.exit_code, s.rst);
+    if !b.network.is_empty() {
+        eprintln!("  {}网络请求：{}", s.bold, s.rst);
+        for ev in &b.network {
+            let leak = if ev.leaked.is_empty() { String::new() } else { format!("  {}← 发出了诱饵数据 {}{}", s.red, ev.leaked.join("、"), s.rst) };
+            eprintln!("   • {} {}{}{leak}", ev.target, s.dim, ev.request);
+        }
+    }
+    if !b.new_files.is_empty() {
+        eprintln!("  {}新建的文件：{}", s.bold, s.rst);
+        for f in &b.new_files {
+            eprintln!("   • {f}");
+        }
+    }
+    let findings = tsuba_engine::sandbox::findings(&b);
+    let verdict = tsuba_engine::rules::offline_verdict(&findings);
+    print_report(
+        &Report { verdict, summary: "以下是沙箱里观察到的行为（没看到坏行为不代表一定安全）".into(), reasons: vec![], advice: String::new(), source: "sandbox".into(), model: String::new(), findings },
+        path,
+    );
+    match verdict {
+        Verdict::Allow => 0,
+        Verdict::Warn => 1,
+        Verdict::Block => 2,
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
@@ -297,6 +350,7 @@ fn main() {
         Some("doctor") => cmd_doctor(),
         Some("intel") => cmd_intel(&args[1..]),
         Some("ai") => cmd_ai(&args[1..]),
+        Some("sandbox") => cmd_sandbox(&args[1..]),
         Some("--version" | "version") => {
             println!("tsuba {}", env!("CARGO_PKG_VERSION"));
             0
