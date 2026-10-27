@@ -12,6 +12,8 @@
 //! - 跑一分钟没看到坏行为，不代表安全（有的程序会拖延发作、或等用户输密码）。结论只说“这次看到了什么”。
 //! - 苹果已不推荐 sandbox-exec 接口，未来可能需要换成虚拟机方案。这里把它包在一个模块里，方便替换。
 //! - 第一阶段的代理只能看明文 HTTP；HTTPS 只能看到连了哪个域名，看不到内容（留待后续做证书拦截）。
+//! - 试装依赖（npm install）时代理只把到 npm 官方源的连接真正转发出去，让包能下载下来、安装脚本能跑起来；
+//!   安装脚本想连的其他地址照样只记录、不放行。从 git 地址装的依赖下载不到。
 
 use crate::rules::{Finding, Severity};
 use serde::Serialize;
@@ -45,6 +47,9 @@ pub struct NetEvent {
     /// 命中的诱饵标记（说明程序把诱饵数据发了出去）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub leaked: Vec<String>,
+    /// 试装依赖时到 npm 官方源的连接，真的转发了出去
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forwarded: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -97,13 +102,68 @@ fn write_decoys(home: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// 沙箱里的 PATH：在固定系统路径前面加上真实 PATH，让装在家目录的 node / npm 能被找到。
+/// 沙箱里的 PATH：真实 PATH + 常见版本管理器的默认位置 + 系统路径，让装在家目录的 node / npm 能被找到。
+///
+/// 从 Finder / 登录项启动的 App 拿到的 PATH 只有 /usr/bin:/bin:/usr/sbin:/sbin，
+/// fnm / nvm 这类在 ~/.zshrc 里才配置的路径都不在里面。固定位置还找不到 node 时，
+/// 再问一次用户的登录 shell 要 PATH（结果缓存，只问一次）。
 fn sandbox_path() -> String {
-    let base = "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin";
-    match std::env::var("PATH") {
-        Ok(p) if !p.is_empty() => format!("{p}:{base}"),
-        _ => base.to_string(),
+    static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| {
+        let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+        dirs.extend(manager_bin_dirs(&crate::home_dir()));
+        dirs.extend(["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].map(PathBuf::from));
+        if !dirs.iter().any(|d| d.join("node").is_file())
+            && let Some(p) = login_shell_path()
+        {
+            dirs.extend(std::env::split_paths(&p));
+        }
+        let mut seen = std::collections::HashSet::new();
+        dirs.retain(|d| !d.as_os_str().is_empty() && seen.insert(d.clone()));
+        std::env::join_paths(dirs).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+    })
+    .clone()
+}
+
+/// fnm / volta / bun / asdf 的默认 bin 目录（只取存在的）。nvm 的默认版本要解析别名，交给登录 shell。
+fn manager_bin_dirs(home: &Path) -> Vec<PathBuf> {
+    let mut fnm_roots: Vec<PathBuf> = std::env::var_os("FNM_DIR").map(PathBuf::from).into_iter().collect();
+    fnm_roots.extend([home.join(".local/share/fnm"), home.join("Library/Application Support/fnm"), home.join(".fnm")]);
+    fnm_roots
+        .into_iter()
+        .map(|r| r.join("aliases/default/bin"))
+        .chain([".volta/bin", ".bun/bin", ".asdf/shims", ".local/bin"].map(|d| home.join(d)))
+        .filter(|d| d.is_dir())
+        .collect()
+}
+
+/// 用用户的登录 + 交互 shell 打印 PATH（fnm env 之类通常写在 .zshrc 里，所以要 -i）。
+/// rc 文件可能往 stdout 打印别的东西，用标记把 PATH 截出来；超过 3 秒就放弃。
+fn login_shell_path() -> Option<String> {
+    const MARK: &str = "__TSUBA_PATH__";
+    let shell = std::env::var("SHELL").ok().filter(|s| s.starts_with('/')).unwrap_or_else(|| "/bin/zsh".into());
+    let mut child = Command::new(shell)
+        .args(["-ilc", &format!("printf '{MARK}%s{MARK}' \"$PATH\"")])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .ok()?;
+    let start = Instant::now();
+    while child.try_wait().ok()?.is_none() {
+        if start.elapsed() > Duration::from_secs(3) {
+            unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) };
+            let _ = child.wait();
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(20));
     }
+    let mut out = String::new();
+    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    let (_, rest) = out.split_once(MARK)?;
+    let (path, _) = rest.split_once(MARK)?;
+    (!path.is_empty()).then(|| path.to_string())
 }
 
 /// node / python / 包管理器常装在家目录下的这些子目录里。锁死家目录时要放行它们的只读，
@@ -123,6 +183,18 @@ fn profile(real_home: &Path, fake_home: &Path, work: &Path, proxy_port: u16) -> 
         .filter(|p| p.exists())
         .map(|p| format!("(allow file-read* process-exec (subpath \"{}\"))\n", esc(&p)))
         .collect();
+    // node 解析真实路径时会 lstat 每一级父目录（/Users/xx、~/.local ……），被拒就直接报 EPERM 退出，
+    // npm 这类装在家目录里的脚本根本跑不起来。只放行这几级目录本身的元数据：不能列目录、不能读内容。
+    let mut parents: Vec<PathBuf> = TOOL_SUBDIRS
+        .iter()
+        .map(|d| real_home.join(d))
+        .filter(|p| p.exists())
+        .flat_map(|p| p.ancestors().skip(1).take_while(|a| a.starts_with(real_home)).map(Path::to_path_buf).collect::<Vec<_>>())
+        .collect();
+    parents.sort();
+    parents.dedup();
+    let tool_allows: String = tool_allows
+        + &parents.iter().map(|p| format!("(allow file-read-metadata (literal \"{}\"))\n", esc(p))).collect::<String>();
     format!(
         r#"(version 1)
 (allow default)
@@ -145,11 +217,15 @@ fn profile(real_home: &Path, fake_home: &Path, work: &Path, proxy_port: u16) -> 
     )
 }
 
+/// 试装依赖时唯一真正放行的地址：npm 官方源（只走 HTTPS CONNECT）。
+const REGISTRY_HOSTS: &[&str] = &["registry.npmjs.org:443", "registry.yarnpkg.com:443"];
+
 /// 极简记录代理：扮演 HTTP 代理，把每个请求的目标和内容记下来，扫描诱饵标记，然后返回一个空的 200。
 /// 不把请求真正转发出去，所以沙箱里的程序连不上真实的攻击服务器。
+/// forward_registry 为 true 时，到 npm 官方源的 CONNECT 会真的接通，其他照旧只记录。
 type ProxyHandle = (u16, Arc<Mutex<Vec<NetEvent>>>, mpsc::Sender<()>);
 
-fn start_proxy() -> std::io::Result<ProxyHandle> {
+fn start_proxy(forward_registry: bool) -> std::io::Result<ProxyHandle> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
     let port = listener.local_addr()?.port();
@@ -164,7 +240,7 @@ fn start_proxy() -> std::io::Result<ProxyHandle> {
             match listener.accept() {
                 Ok((stream, _)) => {
                     let ev = ev.clone();
-                    std::thread::spawn(move || handle_proxy_conn(stream, ev));
+                    std::thread::spawn(move || handle_proxy_conn(stream, ev, forward_registry));
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     std::thread::sleep(Duration::from_millis(20));
@@ -176,7 +252,9 @@ fn start_proxy() -> std::io::Result<ProxyHandle> {
     Ok((port, events, stop_tx))
 }
 
-fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>) {
+fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>, forward_registry: bool) {
+    // macOS 上 accept 出来的连接会继承监听端口的非阻塞模式，读写会直接返回 WouldBlock
+    let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut buf = vec![0u8; 16384];
     let mut data = Vec::new();
@@ -200,6 +278,18 @@ fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>) {
     if let Some(rest) = first.strip_prefix("CONNECT ") {
         // CONNECT host:443 HTTP/1.1 —— HTTPS，只能看到目标
         target = rest.split_whitespace().next().unwrap_or("").to_string();
+        if forward_registry && REGISTRY_HOSTS.contains(&target.to_lowercase().as_str()) {
+            // 连上就记，不等隧道关闭：npm 用长连接，结束时隧道可能还没断
+            let upstream = connect_upstream(&target);
+            events.lock().unwrap().push(NetEvent { target, request, leaked: vec![], forwarded: upstream.is_some() });
+            match upstream {
+                Some(u) => tunnel(stream, u),
+                None => {
+                    let _ = stream.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n");
+                }
+            }
+            return;
+        }
         let _ = stream.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n");
     } else if let Some((method, rest)) = first.split_once(' ') {
         // GET http://host/path HTTP/1.1 —— 明文，能看到完整请求
@@ -210,8 +300,30 @@ fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>) {
     }
     let leaked: Vec<String> = DECOYS.iter().filter(|d| text.contains(d.marker)).map(|d| d.marker.to_string()).collect();
     if !target.is_empty() || !leaked.is_empty() {
-        events.lock().unwrap().push(NetEvent { target, request, leaked });
+        events.lock().unwrap().push(NetEvent { target, request, leaked, forwarded: false });
     }
+}
+
+fn connect_upstream(target: &str) -> Option<TcpStream> {
+    use std::net::ToSocketAddrs;
+    let addr = target.to_socket_addrs().ok()?.next()?;
+    TcpStream::connect_timeout(&addr, Duration::from_secs(10)).ok()
+}
+
+/// 把客户端和上游接通，双向转发，直到任一边关闭。只用于 npm 官方源。
+fn tunnel(mut client: TcpStream, mut upstream: TcpStream) {
+    let _ = client.set_read_timeout(None);
+    if client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").is_err() {
+        return;
+    }
+    let (Ok(mut c2), Ok(mut u2)) = (client.try_clone(), upstream.try_clone()) else { return };
+    let up = std::thread::spawn(move || {
+        let _ = std::io::copy(&mut c2, &mut upstream);
+        let _ = upstream.shutdown(std::net::Shutdown::Write);
+    });
+    let _ = std::io::copy(&mut u2, &mut client);
+    let _ = client.shutdown(std::net::Shutdown::Write);
+    let _ = up.join();
 }
 
 /// 运行后对比假家目录，列出新出现的文件。
@@ -242,7 +354,7 @@ struct Jail {
     stop_tx: mpsc::Sender<()>,
 }
 
-fn prepare_jail() -> std::io::Result<Jail> {
+fn prepare_jail(forward_registry: bool) -> std::io::Result<Jail> {
     let real_home = crate::home_dir();
     let dir = tempfile::Builder::new().prefix("tsuba-sandbox-").tempdir()?;
     let fake_home = dir.path().join("home");
@@ -250,7 +362,7 @@ fn prepare_jail() -> std::io::Result<Jail> {
     std::fs::create_dir_all(&fake_home)?;
     std::fs::create_dir_all(&work)?;
     write_decoys(&fake_home)?;
-    let (port, events, stop_tx) = start_proxy()?;
+    let (port, events, stop_tx) = start_proxy(forward_registry)?;
     let profile = dir.path().join("profile.sb");
     std::fs::write(&profile, self::profile(&real_home, &fake_home, &work, port))?;
     Ok(Jail { _dir: dir, fake_home, work, profile, proxy_url: format!("http://127.0.0.1:{port}"), events, stop_tx })
@@ -265,7 +377,7 @@ fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> s
         .current_dir(cwd)
         .env_clear()
         .env("HOME", &jail.fake_home)
-        // 继承真实 PATH，node / npm（常装在家目录，已在规则里放行只读）才能被找到
+        // 补全后的 PATH，node / npm（常装在家目录，已在规则里放行只读）才能被找到
         .env("PATH", sandbox_path())
         .env("TMPDIR", &jail.work)
         .env("USER", "user")
@@ -325,7 +437,7 @@ fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> s
 
 /// 在沙箱里运行一段脚本。`interpreter` 通常是 "/bin/bash"。不联网执行任何真实地址。
 pub fn run_script(script: &str, interpreter: &str, timeout: Duration) -> std::io::Result<Behavior> {
-    let jail = prepare_jail()?;
+    let jail = prepare_jail(false)?;
     let script_path = jail.work.join("script.sh");
     std::fs::write(&script_path, script)?;
     let argv = vec![interpreter.to_string(), script_path.to_string_lossy().into_owned()];
@@ -340,7 +452,22 @@ pub fn run_script(script: &str, interpreter: &str, timeout: Duration) -> std::io
 /// 注意：直连 C2 的原始套接字会被系统挡住（看不到内容，但也到不了攻击者）；
 /// 走 HTTP 代理的客户端才能看到外传内容。
 pub fn run_project(project_dir: &Path, argv: &[String], timeout: Duration) -> std::io::Result<Behavior> {
-    let jail = prepare_jail()?;
+    run_in_copy(project_dir, argv, timeout, false)
+}
+
+/// 在沙箱里试装一个项目的依赖（npm install），让依赖的 preinstall / postinstall 脚本真的跑一遍。
+/// 投毒的包多半在安装脚本里动手：读密钥、往隐藏目录写东西、把数据发出去。
+/// 只放行到 npm 官方源的下载，安装脚本连别的地址照样被记录、被挡住。
+pub fn run_install(project_dir: &Path, timeout: Duration) -> std::io::Result<Behavior> {
+    run_in_copy(project_dir, &install_argv(), timeout, true)
+}
+
+pub fn install_argv() -> Vec<String> {
+    ["npm", "install", "--no-audit", "--no-fund", "--foreground-scripts"].map(String::from).to_vec()
+}
+
+fn run_in_copy(project_dir: &Path, argv: &[String], timeout: Duration, forward_registry: bool) -> std::io::Result<Behavior> {
+    let jail = prepare_jail(forward_registry)?;
     let dest = jail.work.join("project");
     // ditto 保留结构、跟随 APFS clonefile；比 cp -R 快且省盘
     let status = Command::new("/usr/bin/ditto").arg(project_dir).arg(&dest).arg("--norsrc").status();

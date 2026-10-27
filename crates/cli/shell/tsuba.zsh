@@ -9,7 +9,11 @@ typeset -g TSUBA_BIN=${TSUBA_BIN:-"$HOME/.tsuba/bin/tsuba"}
 # 先用一个便宜的正则粗筛，只有可能危险的命令才启动检查程序
 typeset -g _TSUBA_RE='(curl|wget)[^|]*[|][[:space:]]*(sudo[[:space:]]+)?[A-Za-z/]*(sh|python3?|node|perl|ruby|osascript)([[:space:]]|$)|<[(][[:space:]]*(curl|wget)|[$][(][[:space:]]*(curl|wget)|base64[[:space:]]+-[[:alnum:]-]*[dD]|(^|[;&|[:space:]])(npm|pnpm|yarn|bun|npx|pnpx|bunx|node|hdiutil|installer|xattr|spctl|osascript|code|code-insiders|cursor|windsurf|codium)([[:space:]]|$)|open[[:space:]].*[.](dmg|pkg|mpkg|app)'
 
+# git clone 本身只下载不执行，所以放过去；克隆完、提示符回来时再检查新仓库
+typeset -g _TSUBA_CLONE_RE='(^|[;&|[:space:]])(git[[:space:]]+clone|gh[[:space:]]+repo[[:space:]]+clone)[[:space:]]'
+
 typeset -g _TSUBA_PASTED=
+typeset -g _TSUBA_CLONE=
 
 tskip() { TSUBA_DISABLE=1 "$@" }
 
@@ -67,12 +71,28 @@ _tsuba_accept_line() {
       BUFFER=$run
     fi
   fi
+  if [[ -z $TSUBA_DISABLE && $cmd != tskip\ * && $cmd =~ $_TSUBA_CLONE_RE ]]; then
+    _TSUBA_CLONE=$cmd
+  fi
   if (( ${+widgets[_tsuba_prev_accept_line]} )); then
     zle _tsuba_prev_accept_line
   else
     zle .accept-line
   fi
 }
+
+_tsuba_precmd() {
+  local st=$?
+  [[ -z $_TSUBA_CLONE ]] && return
+  local cmd=$_TSUBA_CLONE
+  _TSUBA_CLONE=
+  if (( st == 0 )) && [[ -z $TSUBA_DISABLE && -x $TSUBA_BIN ]]; then
+    "$TSUBA_BIN" after-clone -- "$cmd" </dev/null
+  fi
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _tsuba_precmd
 
 zle -N accept-line _tsuba_accept_line
 zle -N bracketed-paste _tsuba_bracketed_paste

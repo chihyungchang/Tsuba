@@ -173,6 +173,23 @@ fn is_script(p: &Path) -> bool {
     crate::read_limited(p, 2).starts_with("#!")
 }
 
+/// 目录像不像一个安装镜像的内容：挂在 /Volumes 下，或者根目录里有 .app / .pkg、指向“应用程序”或“终端”的快捷方式。
+/// 用户扫描 /Volumes/Zeff 或从镜像里拷出来的文件夹时，要按安装镜像检查，而不是当成代码项目。
+pub fn looks_like_volume(dir: &Path) -> bool {
+    if !dir.is_dir() || dir.join("package.json").is_file() {
+        return false;
+    }
+    if dir.parent() == Some(Path::new("/Volumes")) {
+        return true;
+    }
+    std::fs::read_dir(dir).map(|rd| rd.flatten().any(|e| {
+        let p = e.path();
+        let ext = p.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let link = std::fs::read_link(&p).map(|t| t.to_string_lossy().to_string()).unwrap_or_default();
+        ext == "app" || ext == "pkg" || link == "/Applications" || link.contains("Terminal.app") || link.contains("iTerm.app")
+    })).unwrap_or(false)
+}
+
 /// 检查一个已挂载的安装镜像（自己只读挂载的，或用户刚打开的 /Volumes/xxx）。
 pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> Map<String, Value> {
     let mut info = Map::new();

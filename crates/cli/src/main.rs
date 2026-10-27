@@ -2,11 +2,16 @@
 //!
 //! tsuba check [--yes] [--json] [--pasted] -- <命令>   执行前检查；退出码 0 = 可以执行，1 = 取消
 //! tsuba check --paste -- <文本>                       粘贴时的快速提醒，不联网，总是返回 0
-//! tsuba scan <路径> [--json]                          检查安装包、扩展、项目目录或脚本文件
+//! tsuba scan <路径> [--json]                          检查安装包、扩展、项目目录或脚本文件；普通文件夹逐个扫里面的安装包、脚本和项目
+//! tsuba eval <样本目录> [--json]                       在样本集上量检出率和误报率（目录下分 malicious/ 和 benign/）
+//! tsuba rules keygen <私钥文件> | sign --key <私钥文件> <规则目录> | verify <规则目录>
+//!                                                     发布规则包：生成签名钥匙、签名、发布前核对
+//! tsuba after-clone -- <命令>                         git clone 之后由 zsh 钩子调用，检查新仓库里打开就会执行的入口
 //! tsuba doctor                                        检查本机是否已有已知的感染痕迹
 //! tsuba intel update [--force] | status               更新 / 查看威胁情报（开源规则和名单）
 //! tsuba ai [--all] [--json]                           检查本机 AI 工具的 MCP server、skill 和插件 hooks
-//! tsuba sandbox <脚本文件>                             把脚本放进沙箱试运行，看它实际做了什么（不联真实外网）
+//! tsuba sandbox <脚本文件 | 项目目录> [--install]       把脚本或项目放进沙箱试运行，看它实际做了什么（不联真实外网）；
+//!                                                     --install 试装项目依赖，看安装脚本做了什么（只放行 npm 官方源）
 
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -14,7 +19,7 @@ use std::path::{Path, PathBuf};
 use tsuba_engine::detect::{self, Kind};
 use tsuba_engine::rules::{Finding, Severity, Verdict};
 use tsuba_engine::store::{self, Config, LogEntry};
-use tsuba_engine::{Report, collect, doctor};
+use tsuba_engine::{Report, collect, doctor, scan, trust};
 
 struct Style {
     red: &'static str,
@@ -143,7 +148,11 @@ fn cmd_check(args: &[String]) -> i32 {
     }
     let projects: Vec<Option<PathBuf>> = targets.iter().map(|t| project_of(t, &cwd)).collect();
     if projects.iter().all(|p| p.is_some()) {
-        let all_known = projects.iter().flatten().all(|root| approved[root.to_string_lossy().as_ref()].as_str() == Some(&collect::project_fingerprint(root)));
+        // 检查通过后自动记住的，或者用户在 App 里标记为安全的；代码一变就重新检查
+        let all_known = projects
+            .iter()
+            .flatten()
+            .all(|root| approved[root.to_string_lossy().as_ref()].as_str() == Some(&collect::project_fingerprint(root)) || trust::is_trusted_path(root));
         if all_known {
             return 0;
         }
@@ -236,6 +245,15 @@ fn write_private(path: &Path, bytes: &[u8]) -> Option<()> {
     Some(())
 }
 
+/// 普通文件夹（不是项目、扩展或 .app）按文件夹扫描，逐个检查里面的东西。
+fn is_plain_folder(p: &Path) -> bool {
+    p.is_dir()
+        && !p.join("package.json").is_file()
+        && !p.join(".vscode/tasks.json").is_file()
+        && !tsuba_engine::extension::looks_like_extension(p)
+        && p.extension().is_none_or(|e| e != "app")
+}
+
 fn cmd_scan(args: &[String]) -> i32 {
     let Some(raw) = args.iter().find(|a| !a.starts_with("--")) else {
         eprintln!("用法：tsuba scan <路径>");
@@ -247,6 +265,9 @@ fn cmd_scan(args: &[String]) -> i32 {
         return 2;
     }
     let cfg = Config::load();
+    if is_plain_folder(&path) {
+        return scan_plain_folder(&cfg, &path, args.iter().any(|a| a == "--json"));
+    }
     let (_, evidence, report) = tsuba_engine::evaluate_path(&cfg, &path);
     if args.iter().any(|a| a == "--json") {
         println!("{}", serde_json::to_string_pretty(&json!({ "evidence": evidence, "report": report })).unwrap_or_default());
@@ -260,6 +281,70 @@ fn cmd_scan(args: &[String]) -> i32 {
         Verdict::Warn => 1,
         Verdict::Block => 2,
     }
+}
+
+fn scan_plain_folder(cfg: &Config, path: &Path, as_json: bool) -> i32 {
+    let s = style();
+    let r = scan::scan_folder(cfg, path, |p| eprint!("\r\x1b[2K{}检查 {}{}", s.dim, p.chars().rev().take(70).collect::<Vec<_>>().into_iter().rev().collect::<String>(), s.rst));
+    eprint!("\r\x1b[2K");
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&r).unwrap_or_default());
+    }
+    eprintln!(
+        "{}检查了 {} 个，{} 个没变化沿用上次结果{}{}",
+        s.dim,
+        r.checked,
+        r.unchanged,
+        if r.truncated { "；东西太多，只扫了前一部分" } else { "" },
+        s.rst
+    );
+    if r.hits.is_empty() {
+        eprintln!("{}✓ 没有发现问题{}", s.grn, s.rst);
+        return 0;
+    }
+    for hit in &r.hits {
+        let (color, label) = if hit.verdict == Verdict::Block { (s.red, "✗") } else { (s.yel, "⚠") };
+        eprintln!("\n{color}{label} {}{}  {}{}{}", s.bold, hit.path, s.rst, s.dim, hit.summary);
+        eprint!("{}", s.rst);
+        print_findings(&s, &hit.findings);
+    }
+    eprintln!("\n{}需要 AI 进一步判断的，可以单独运行 tsuba scan <路径>。{}", s.dim, s.rst);
+    if r.hits.iter().any(|h| h.verdict == Verdict::Block) { 2 } else { 1 }
+}
+
+/// git clone 之后马上检查新仓库：VS Code 打开即执行的任务、自带的 AI 工具配置、隐藏代码。
+/// 先用离线规则，不打扰；发现问题才调用 AI 给出完整解释。克隆已经完成，这里只提醒、不拦截。
+fn cmd_after_clone(args: &[String]) -> i32 {
+    let cmd = match args.iter().position(|a| a == "--") {
+        Some(i) => args[i + 1..].join(" "),
+        None => args.join(" "),
+    };
+    if std::env::var_os("TSUBA_DISABLE").is_some() || store::home().join("paused").exists() {
+        return 0;
+    }
+    let s = style();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+    let cfg = Config::load();
+    for dir in detect::clone_dirs(&cmd) {
+        let root = cwd.join(&dir);
+        if !root.is_dir() || trust::is_trusted_path(&root) {
+            continue;
+        }
+        let (_, _, quick) = tsuba_engine::evaluate_path(&cfg.offline_only(), &root);
+        if quick.verdict == Verdict::Allow {
+            eprintln!("{}Tsuba ✓ 已检查 {dir}：没有发现打开就会执行的代码{}", s.dim, s.rst);
+            continue;
+        }
+        let (_, _, report) = tsuba_engine::evaluate_path(&cfg, &root);
+        print_report(&report, &root.to_string_lossy());
+        if report.verdict != Verdict::Allow {
+            eprintln!("{}在弄清楚之前，先不要用 VS Code、Cursor 或 AI 编程工具打开它；一定要看，用 VS Code 的受限模式（Restricted Mode）打开。{}", s.yel, s.rst);
+        }
+        let mut entry = LogEntry::new("terminal", &format!("{cmd}（克隆后检查 {dir}）"), &cwd.to_string_lossy(), report);
+        entry.action = "notified".into();
+        store::append_log(&entry);
+    }
+    0
 }
 
 fn cmd_doctor() -> i32 {
@@ -343,6 +428,8 @@ fn cmd_ai(args: &[String]) -> i32 {
 enum SandboxTarget {
     Script(String),
     Project(PathBuf),
+    /// 在项目里 npm install：试装依赖，看安装脚本做了什么
+    Install(PathBuf),
 }
 
 fn sandbox_target(evidence: &Value) -> Option<SandboxTarget> {
@@ -359,6 +446,11 @@ fn sandbox_target(evidence: &Value) -> Option<SandboxTarget> {
             Some("project_run") => {
                 if let Some(root) = t["project"]["root"].as_str() {
                     return Some(SandboxTarget::Project(PathBuf::from(root)));
+                }
+            }
+            Some("pkg_install") => {
+                if let Some(root) = t["project"]["root"].as_str() {
+                    return Some(SandboxTarget::Install(PathBuf::from(root)));
                 }
             }
             _ => {}
@@ -388,7 +480,16 @@ fn print_behavior(s: &Style, b: &tsuba_engine::sandbox::Behavior, title: &str) {
         eprintln!("  {}网络请求：{}", s.bold, s.rst);
         for ev in &b.network {
             let leak = if ev.leaked.is_empty() { String::new() } else { format!("  {}← 发出了诱饵数据 {}{}", s.red, ev.leaked.join("、"), s.rst) };
-            eprintln!("   • {} {}{}{leak}", ev.target, s.dim, ev.request);
+            let note = if ev.forwarded { "（npm 官方源，已放行）" } else { "" };
+            eprintln!("   • {} {}{}{note}{}{leak}", ev.target, s.dim, ev.request, s.rst);
+        }
+    }
+    // 没跑起来时（缺 node、依赖装不上）把输出末尾给用户看，不然“没看到坏行为”会被误读成安全
+    if b.exit_code.is_some_and(|c| c != 0) && !b.output.trim().is_empty() {
+        let lines: Vec<&str> = b.output.trim_end().lines().collect();
+        eprintln!("  {}程序没有正常结束，输出的最后几行：{}", s.bold, s.rst);
+        for l in &lines[lines.len().saturating_sub(6)..] {
+            eprintln!("   {}{l}{}", s.dim, s.rst);
         }
     }
     if !b.new_files.is_empty() {
@@ -426,6 +527,11 @@ fn confirm_with_sandbox(s: &Style, target: &SandboxTarget, block: bool) -> bool 
                     Err(e) => eprintln!("沙箱运行失败：{e}"),
                 }
             }
+            SandboxTarget::Install(dir) => {
+                if let Some(b) = run_install_sandbox(s, dir) {
+                    print_behavior(s, &b, &dir.to_string_lossy());
+                }
+            }
         }
         // 看完行为再做最终决定
         return if block {
@@ -435,6 +541,19 @@ fn confirm_with_sandbox(s: &Style, target: &SandboxTarget, block: bool) -> bool 
         };
     }
     if block { ans == "run" } else { matches!(ans.as_str(), "y" | "yes") }
+}
+
+const INSTALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+
+fn run_install_sandbox(s: &Style, dir: &Path) -> Option<tsuba_engine::sandbox::Behavior> {
+    eprintln!("{}在沙箱里试装依赖（{}，最多 90 秒，只放行 npm 官方源）…{}", s.dim, tsuba_engine::sandbox::install_argv().join(" "), s.rst);
+    match tsuba_engine::sandbox::run_install(dir, INSTALL_TIMEOUT) {
+        Ok(b) => Some(b),
+        Err(e) => {
+            eprintln!("沙箱运行失败：{e}");
+            None
+        }
+    }
 }
 
 fn cmd_sandbox(args: &[String]) -> i32 {
@@ -449,7 +568,15 @@ fn cmd_sandbox(args: &[String]) -> i32 {
     }
     let timeout = std::time::Duration::from_secs(60);
     let p = Path::new(path);
-    let b = if p.is_dir() {
+    let b = if p.is_dir() && args.iter().any(|a| a == "--install") {
+        match run_install_sandbox(&s, p) {
+            Some(b) => {
+                print_behavior(&s, &b, path);
+                b
+            }
+            None => return 2,
+        }
+    } else if p.is_dir() {
         // 项目目录：在沙箱里跑它的启动命令
         let argv = tsuba_engine::sandbox::project_start_argv(p);
         eprintln!("{}在沙箱里运行 {} {}（最多 60 秒，不联真实外网）…{}", s.dim, argv.join(" "), path, s.rst);
@@ -485,11 +612,129 @@ fn cmd_sandbox(args: &[String]) -> i32 {
     }
 }
 
+/// 样本集验收：按 PRD 第 4 节的验收线打分，没达标时退出码 1，方便放进 CI。
+fn cmd_eval(args: &[String]) -> i32 {
+    use tsuba_engine::evaluation::{self, MAX_BENIGN_BLOCK, MAX_BENIGN_WARN, MIN_DETECTION};
+    let Some(raw) = args.iter().find(|a| !a.starts_with("--")) else {
+        eprintln!("用法：tsuba eval <样本目录>（目录下放 malicious/ 和 benign/ 两个子目录，每个文件或子目录算一个样本）");
+        return 2;
+    };
+    let root = Path::new(raw);
+    if !root.join("malicious").is_dir() && !root.join("benign").is_dir() {
+        eprintln!("{} 下面没有 malicious/ 或 benign/ 子目录", root.display());
+        return 2;
+    }
+    let s = style();
+    let ev = evaluation::run(&Config::load(), root, |name| eprint!("\r\x1b[2K{}检查 {name}{}", s.dim, s.rst));
+    eprint!("\r\x1b[2K");
+    if args.iter().any(|a| a == "--json") {
+        println!("{}", serde_json::to_string_pretty(&ev).unwrap_or_default());
+    }
+    let pct = |x: f64| format!("{:.1}%", x * 100.0);
+    let mark = |ok: bool| if ok { format!("{}✓{}", s.grn, s.rst) } else { format!("{}✗{}", s.red, s.rst) };
+    eprintln!("{}样本集验收（只用离线规则）{}", s.bold, s.rst);
+    eprintln!(
+        "  {} 检出率        {} / {} = {}   （目标 ≥ {}）",
+        mark(ev.malicious > 0 && ev.detection_rate() >= MIN_DETECTION),
+        ev.detected,
+        ev.malicious,
+        pct(ev.detection_rate()),
+        pct(MIN_DETECTION)
+    );
+    eprintln!(
+        "  {} 正常样本被拦截 {} / {} = {}   （目标 < {}）",
+        mark(ev.benign > 0 && ev.benign_block_rate() < MAX_BENIGN_BLOCK),
+        ev.benign_blocked,
+        ev.benign,
+        pct(ev.benign_block_rate()),
+        pct(MAX_BENIGN_BLOCK)
+    );
+    eprintln!(
+        "  {} 正常样本被提醒 {} / {} = {}   （目标 < {}）",
+        mark(ev.benign > 0 && ev.benign_warn_rate() < MAX_BENIGN_WARN),
+        ev.benign_warned,
+        ev.benign,
+        pct(ev.benign_warn_rate()),
+        pct(MAX_BENIGN_WARN)
+    );
+    let show = |title: &str, items: Vec<&evaluation::SampleResult>| {
+        if items.is_empty() {
+            return;
+        }
+        eprintln!("\n{}{title}{}", s.bold, s.rst);
+        for x in items {
+            let why = x.top_finding.as_ref().map(|f| format!("{} [{}]", f.message, f.location)).unwrap_or_default();
+            eprintln!("  • {}  {}{why}{}", x.name, s.dim, s.rst);
+        }
+    };
+    show("漏报：", ev.missed().collect());
+    show("误报：", ev.false_positives().collect());
+    if ev.passes() { 0 } else { 1 }
+}
+
+/// 规则包签名（给发布规则包的人用）。私钥文件是 32 字节种子的十六进制，只放在发布机器上。
+fn cmd_rules(args: &[String]) -> i32 {
+    use tsuba_engine::intel::tsuba as pack;
+    let read_secret = |path: &str| -> Result<[u8; 32], String> {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("读不到私钥 {path}：{e}"))?;
+        tsuba_engine::net::unhex(&text).and_then(|b| b.try_into().ok()).ok_or_else(|| format!("{path} 不是有效的私钥"))
+    };
+    let read_pack = |dir: &str| -> Result<(String, String), String> {
+        let d = Path::new(dir);
+        let r = |n: &str| std::fs::read_to_string(d.join(n)).map_err(|e| format!("读不到 {}：{e}", d.join(n).display()));
+        Ok((r("tsuba.yar")?, r("tsuba.toml")?))
+    };
+    // 位置参数：去掉 --xxx 选项和 --key 后面的值
+    let key_value = args.iter().position(|a| a == "--key").map(|i| i + 1);
+    let pos: Vec<&String> = args.iter().enumerate().skip(1).filter(|(i, a)| !a.starts_with("--") && Some(*i) != key_value).map(|(_, a)| a).collect();
+    let result = match (args.first().map(String::as_str), pos.as_slice()) {
+        (Some("keygen"), [out]) => (|| {
+            if Path::new(out.as_str()).exists() {
+                return Err(format!("{out} 已经存在，没有覆盖"));
+            }
+            let mut seed = [0u8; 32];
+            std::fs::File::open("/dev/urandom").and_then(|mut f| std::io::Read::read_exact(&mut f, &mut seed)).map_err(|e| e.to_string())?;
+            write_private(Path::new(out.as_str()), tsuba_engine::net::hex(&seed).as_bytes()).ok_or("写不进私钥文件")?;
+            println!("{}", pack::public_key(&seed));
+            eprintln!("私钥已写入 {out}（只有你能读）。把上面的公钥加进 crates/engine/src/intel/tsuba.rs 的 TRUSTED_KEYS。");
+            Ok(())
+        })(),
+        (Some("sign"), [dir]) => (|| {
+            let key = args.iter().position(|a| a == "--key").and_then(|i| args.get(i + 1)).ok_or("缺少 --key <私钥文件>")?;
+            let secret = read_secret(key)?;
+            let (yar, t) = read_pack(dir)?;
+            pack::check_pack(&yar, &t)?;
+            std::fs::write(Path::new(dir.as_str()).join("tsuba.sig"), pack::sign(&yar, &t, &secret)).map_err(|e| e.to_string())?;
+            eprintln!("已签名：{dir}/tsuba.sig（公钥 {}）", pack::public_key(&secret));
+            Ok(())
+        })(),
+        (Some("verify"), [dir]) => (|| {
+            let (yar, t) = read_pack(dir)?;
+            let sig = std::fs::read_to_string(Path::new(dir.as_str()).join("tsuba.sig")).map_err(|e| format!("读不到 tsuba.sig：{e}"))?;
+            pack::check_pack(&yar, &t)?;
+            pack::verify(&yar, &t, &sig, pack::TRUSTED_KEYS)?;
+            eprintln!("✓ 签名有效，规则包能编译");
+            Ok(())
+        })(),
+        _ => Err("用法：tsuba rules keygen <私钥文件> | tsuba rules sign --key <私钥文件> <规则目录> | tsuba rules verify <规则目录>".to_string()),
+    };
+    match result {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("{e}");
+            2
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
         Some("check") => cmd_check(&args[1..]),
         Some("scan") => cmd_scan(&args[1..]),
+        Some("after-clone") => cmd_after_clone(&args[1..]),
+        Some("eval") => cmd_eval(&args[1..]),
+        Some("rules") => cmd_rules(&args[1..]),
         Some("doctor") => cmd_doctor(),
         Some("intel") => cmd_intel(&args[1..]),
         Some("ai") => cmd_ai(&args[1..]),

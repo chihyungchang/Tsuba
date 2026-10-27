@@ -246,3 +246,57 @@ pub fn vetted_interpreter(cmd: &str) -> Option<String> {
     }
     None
 }
+
+/// git clone 带值的选项：值不是仓库地址或目标目录
+const CLONE_VALUE_OPTS: &[&str] = &[
+    "-b", "--branch", "-o", "--origin", "--depth", "-c", "--config", "--reference", "--reference-if-able", "--separate-git-dir",
+    "-j", "--jobs", "--template", "-u", "--upload-pack", "--filter", "--shallow-since", "--shallow-exclude", "--server-option",
+];
+
+/// `git clone` / `gh repo clone` 之后，新仓库会落在哪个目录（相对当前目录）。不是克隆命令返回空。
+/// 克隆本身只下载、不执行；真正的风险在之后用编辑器或 AI 工具打开、运行它，所以克隆完马上查一遍。
+pub fn clone_dirs(cmd: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for toks in split_commands(cmd) {
+        let prog = toks[0].rsplit('/').next().unwrap_or("");
+        let rest: &[String] = match (prog, toks.get(1).map(String::as_str), toks.get(2).map(String::as_str)) {
+            ("git", Some("clone"), _) => &toks[2..],
+            ("gh", Some("repo"), Some("clone")) => &toks[3..],
+            _ => continue,
+        };
+        let mut pos = Vec::new();
+        let mut i = 0;
+        while i < rest.len() {
+            let a = &rest[i];
+            if a == "--" {
+                // gh repo clone <repo> [dir] -- <git 参数>
+                if prog == "gh" {
+                    break;
+                }
+                pos.extend(rest[i + 1..].iter().cloned());
+                break;
+            }
+            if CLONE_VALUE_OPTS.contains(&a.as_str()) {
+                i += 2;
+                continue;
+            }
+            if !a.starts_with('-') {
+                pos.push(a.clone());
+            }
+            i += 1;
+        }
+        let dir = match pos.as_slice() {
+            [_, dir, ..] => dir.clone(),
+            [repo] => {
+                // https://host/owner/name.git、git@host:owner/name.git、owner/name（gh）
+                let tail = repo.trim_end_matches('/').rsplit(['/', ':']).next().unwrap_or("");
+                tail.strip_suffix(".git").unwrap_or(tail).to_string()
+            }
+            [] => continue,
+        };
+        if !dir.is_empty() {
+            out.push(dir);
+        }
+    }
+    out
+}

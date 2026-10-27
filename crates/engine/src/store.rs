@@ -123,6 +123,22 @@ impl Default for IntelConfig {
     }
 }
 
+/// 计划扫描：定期用最新的规则把下载目录、代码目录重扫一遍。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScanConfig {
+    pub scheduled: bool,
+    /// 要扫的文件夹，支持 ~/ 开头
+    pub folders: Vec<String>,
+    pub interval_days: u32,
+}
+
+impl Default for ScanConfig {
+    fn default() -> Self {
+        ScanConfig { scheduled: true, folders: vec!["~/Downloads".into()], interval_days: 7 }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -136,6 +152,7 @@ pub struct Config {
     /// 监控 AI 编程工具新增的 MCP server、skill 和插件 hooks
     pub watch_ai_tools: bool,
     pub intel: IntelConfig,
+    pub scan: ScanConfig,
 }
 
 impl Default for Config {
@@ -149,6 +166,7 @@ impl Default for Config {
             auto_quarantine: true,
             watch_ai_tools: true,
             intel: IntelConfig::default(),
+            scan: ScanConfig::default(),
         }
     }
 }
@@ -162,6 +180,15 @@ impl Config {
         if std::env::var_os("TSUBA_OFFLINE").is_some() {
             c.provider = Provider::Offline;
         }
+        c
+    }
+
+    /// 只用本机规则和名单的配置：不联网、不调模型，不到一秒出结论。
+    /// 后台批量检查和“先给离线结论、再补 AI 判断”的第一段都用它。
+    pub fn offline_only(&self) -> Config {
+        let mut c = Config { provider: Provider::Offline, ..self.clone() };
+        c.intel.online_lookup = false;
+        c.intel.virustotal_key.clear();
         c
     }
 

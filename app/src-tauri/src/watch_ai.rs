@@ -64,6 +64,9 @@ impl Debounce {
 }
 
 fn check_server(app: &AppHandle, cfg: &Config, s: McpServer) {
+    if tsuba_engine::trust::is_trusted_mcp(&s) {
+        return;
+    }
     let title = format!("{} · {}（MCP server）", s.client, s.name);
     let detail = s.command_line();
     two_phase(app, cfg, "ai_tool", &title, |c| {
@@ -74,6 +77,9 @@ fn check_server(app: &AppHandle, cfg: &Config, s: McpServer) {
 }
 
 fn check_unit(app: &AppHandle, cfg: &Config, unit: &Path) {
+    if tsuba_engine::trust::is_trusted_path(unit) {
+        return;
+    }
     let (info, findings) = agents::scan_unit(unit);
     // skill 经常随着同步更新，没问题的不记录、不调用模型
     if rules::offline_verdict(&findings) == Verdict::Allow {

@@ -10,12 +10,15 @@ Tsuba（鍔，刀的护手）是一个 macOS 菜单栏应用。假面试项目�
 
 | 入口 | 例子 | 检查内容 |
 | --- | --- | --- |
-| 终端命令 | `curl … \| bash`、`npm install`、`npx`、`npm start`、`code .` | 下载远程脚本（不执行）并追查第二阶段；npm 包的创建时间、版本发布冷却期、安装脚本；项目源码里的隐藏代码、硬编码 C2、读取钱包和密码库；VS Code 打开文件夹就自动执行的任务 |
+| 终端命令 | `curl … \| bash`、`npm install`、`npx`、`npm start`、`code .`、`git clone` | 下载远程脚本（不执行）并追查第二阶段；npm 包的创建时间、版本发布冷却期、安装脚本；项目源码里的隐藏代码、硬编码 C2、读取钱包和密码库；VS Code 打开文件夹就自动执行的任务 |
 | 粘贴进终端 | 网页让你“复制这条命令到终端” | 粘贴的瞬间先提醒一次，不联网；base64 混淆后交给 shell 执行的命令直接标为高危 |
 | 下载目录 | 新出现的 `.dmg`、`.pkg`、`.vsix` | 只读挂载检查签名、公证、下载来源、主程序是否被替换成隐藏文件、安装脚本 |
 | 编辑器扩展 | VS Code、Cursor、Windsurf、VSCodium 新装或更新的扩展 | 官方恶意扩展名单、启动即激活、不可见 Unicode 字符藏代码、可疑网络和文件访问；高危时自动移入隔离区 |
 | AI 编程工具 | Claude Code、Cursor、Codex 等的 MCP server、skill、插件 hooks；项目里的 `.mcp.json`、hooks、`CLAUDE.md` | 启动的包是否在恶意名单、是否从临时或隐藏目录启动、拿到了哪些密钥；skill 是否要求 AI 对用户隐瞒、读取私钥、外传数据 |
 | 体检 | 菜单栏 → 体检 | 已知攻击留下的落地痕迹、可疑开机自启项、已装扩展快速扫描 |
+| 扫描文件夹 | “扫描”页，或 `tsuba scan <文件夹>` | 下载目录、外接硬盘、代码目录里的安装包、脚本、扩展和带自动执行入口的项目；扫过没变的不重扫，默认每 7 天用最新规则重扫一次下载目录 |
+
+确认是误报的东西可以“标记为安全”，按内容指纹记进白名单，内容一变就重新检查；可疑的文件、目录和扩展可以移入隔离区，随时恢复或删除。
 
 在扩展商店里装的扩展不经过终端，只能装完马上查；在 Finder 里双击打开的程序目前拦不住，需要苹果的 Endpoint Security 权限（见 PRD 第 12 节）。
 
@@ -34,7 +37,7 @@ Tsuba（鍔，刀的护手）是一个 macOS 菜单栏应用。假面试项目�
 | [VirusTotal](https://www.virustotal.com)（可选，用户自己的 Key） | 70 多家杀毒引擎对安装包、程序、远程脚本的结论；只发送哈希，不上传文件 | 免费 API 不允许商用 |
 | [abuse.ch](https://abuse.ch) ThreatFox / URLhaus（可选） | 恶意域名、IP、网址；需要免费 Auth-Key，免费版仅限非营利使用 | - |
 
-规则用 [YARA-X](https://github.com/VirusTotal/yara-x) 编译执行。Tsuba 自己的检测规则也不写在代码里，而是 [crates/engine/rules/tsuba.yar](crates/engine/rules/tsuba.yar) 和 [tsuba.toml](crates/engine/rules/tsuba.toml)，可以单独更新。
+规则用 [YARA-X](https://github.com/VirusTotal/yara-x) 编译执行。从规则包地址下载的规则包必须带有效签名（`tsuba.sig`，ed25519）才会使用，版本也不能比正在用的旧；发布时用 `tsuba rules sign --key <私钥文件> <规则目录>` 签名。Tsuba 自己的检测规则也不写在代码里，而是 [crates/engine/rules/tsuba.yar](crates/engine/rules/tsuba.yar) 和 [tsuba.toml](crates/engine/rules/tsuba.toml)，可以单独更新。
 
 开发守则见 [CLAUDE.md](CLAUDE.md)。
 
@@ -80,7 +83,10 @@ Tsuba/
 cd app && pnpm install && pnpm tauri dev   # 启动应用
 cargo test                                 # 跑引擎测试
 cargo run -p tsuba-cli -- scan <路径>       # 不开应用，直接检查一个文件或目录
+cargo run -p tsuba-cli -- eval <样本目录>   # 样本集验收：检出率和误报率，对照 PRD 第 4 节的目标
 ```
+
+样本目录下放 `malicious/` 和 `benign/` 两个子目录，每个文件或子目录算一个样本（项目、扩展、安装包、脚本都可以，也可以是符号链接）。只用离线规则，结果可复现；没达标时退出码为 1，可以放进 CI。按时间切分时把较早和较新的样本放进两个目录分别跑。
 
 开发时 App 会在自己旁边（`target/debug/tsuba`）找终端检查程序，在“概览 → 接入终端”里一键装好，新开的终端窗口生效。
 
@@ -96,7 +102,7 @@ tsuba sandbox install.sh
 
 沙箱直接跑在 macOS 自带的沙箱里：真实家目录被锁死，程序只看到一个带诱饵的假家目录；所有网络请求被本地代理记录、不真正发到外部；最多跑 60 秒。程序读了诱饵敏感数据并外传、写开机自启、连裸 IP，都会被记下来。注意：跑一会儿没看到坏行为不代表一定安全。
 
-也可以沙箱试运行一个项目目录（`tsuba sandbox ~/code/面试项目`），跑它的启动命令看行为——面试项目“打开即执行”的恶意代码会在这里暴露。DMG / App 的虚拟机沙箱还没做。
+也可以沙箱试运行一个项目目录（`tsuba sandbox ~/code/面试项目`），跑它的启动命令看行为——面试项目“打开即执行”的恶意代码会在这里暴露。加上 `--install` 是在沙箱里试装依赖（`npm install`），看依赖的安装脚本做了什么；这时只放行到 npm 官方源的下载，其他连接照样只记录。DMG / App 的虚拟机沙箱还没做。
 
 ## 终端里的小技巧
 

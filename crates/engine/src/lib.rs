@@ -7,14 +7,18 @@ pub mod agents;
 pub mod collect;
 pub mod detect;
 pub mod doctor;
+pub mod evaluation;
 pub mod extension;
 pub mod intel;
 pub mod judge;
 pub mod macos;
 pub mod net;
+pub mod quarantine;
 pub mod rules;
 pub mod sandbox;
+pub mod scan;
 pub mod store;
+pub mod trust;
 
 use detect::{Kind, Target};
 use rules::{Finding, Severity, Verdict};
@@ -172,9 +176,30 @@ pub fn quick_check(cmd: &str) -> Vec<Finding> {
     findings
 }
 
+/// 用户标记过安全、内容也没变的东西，直接放行。
+fn trusted_report() -> Report {
+    Report {
+        verdict: Verdict::Allow,
+        summary: "你之前把它标记为安全，内容没有变化".into(),
+        reasons: vec![],
+        advice: String::new(),
+        source: "trusted".into(),
+        model: String::new(),
+        findings: vec![],
+    }
+}
+
 /// 检查磁盘上的一个东西：安装包、扩展、项目目录或单个脚本。
 /// 返回（来源类别，证据，结论）。
 pub fn evaluate_path(cfg: &Config, path: &Path) -> (&'static str, Value, Report) {
+    if trust::is_trusted_path(path) {
+        return ("trusted", json!({ "command": format!("(扫描) {}", path.display()) }), trusted_report());
+    }
+    evaluate_path_untrusted(cfg, path)
+}
+
+/// 同 evaluate_path，但不看白名单（样本集验收用）。
+pub fn evaluate_path_untrusted(cfg: &Config, path: &Path) -> (&'static str, Value, Report) {
     let p = path.to_string_lossy().to_lowercase();
     let p = p.trim_end_matches('/');
     let title = format!("(扫描) {}", path.display());
@@ -191,6 +216,12 @@ pub fn evaluate_path(cfg: &Config, path: &Path) -> (&'static str, Value, Report)
     } else if path.is_dir() && extension::looks_like_extension(path) {
         let (ev, r) = evaluate_extension(cfg, path);
         ("extension", ev, r)
+    } else if macos::looks_like_volume(path) {
+        let label = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let mut findings = Vec::new();
+        let info = macos::inspect_volume(path, &label, &mut findings);
+        let ev = json!({ "command": title, "targets": [{ "kind": "installer_volume", "path": path.to_string_lossy(), "volume": info }], "findings": findings });
+        ("installer", ev.clone(), judge_evidence(cfg, &ev, findings))
     } else if path.is_dir() {
         let t = Target::new(Kind::ProjectRun, json!({ "manager": "scan", "script": "" }));
         let (ev, r) = evaluate_command(cfg, &title, path, &[t], false);
@@ -209,6 +240,9 @@ pub fn evaluate_path(cfg: &Config, path: &Path) -> (&'static str, Value, Report)
 
 /// 检查一个已安装的编辑器扩展目录。
 pub fn evaluate_extension(cfg: &Config, dir: &Path) -> (Value, Report) {
+    if trust::is_trusted_path(dir) {
+        return (json!({ "command": format!("(新安装的编辑器扩展) {}", dir.display()) }), trusted_report());
+    }
     let (info, findings) = extension::scan_extension(dir);
     let ev = json!({ "command": format!("(新安装的编辑器扩展) {}", dir.display()), "targets": [{ "kind": "extension", "extension": info }], "findings": findings });
     let r = judge_evidence(cfg, &ev, findings);

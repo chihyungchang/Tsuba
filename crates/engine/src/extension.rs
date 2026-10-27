@@ -1,11 +1,10 @@
-//! VS Code 及其衍生编辑器（Cursor、Windsurf、VSCodium）的扩展：扫描、隔离、恢复。
+//! VS Code 及其衍生编辑器（Cursor、Windsurf、VSCodium）的扩展：扫描。隔离和恢复见 quarantine.rs。
 //!
 //! 在扩展商店里装扩展不经过 shell，只能在文件写进扩展目录后马上检查。
 //! 发现高危时把扩展目录挪进隔离区，赶在编辑器下次加载它之前。
 
 use crate::rules::{self, CHILD_PROCESS_RULE, Finding, Severity};
-use crate::{home_dir, macos, read_limited, store};
-use serde::{Deserialize, Serialize};
+use crate::{home_dir, macos, read_limited};
 use serde_json::{Map, Value, json};
 use std::path::{Path, PathBuf};
 
@@ -130,66 +129,4 @@ pub fn scan_vsix(path: &Path) -> (Value, Vec<Finding>) {
 pub fn looks_like_extension(dir: &Path) -> bool {
     let pkg: Value = serde_json::from_str(&read_limited(&dir.join("package.json"), 500_000)).unwrap_or(Value::Null);
     !pkg["engines"]["vscode"].is_null()
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct QuarantineItem {
-    pub id: String,
-    pub original: String,
-    pub stored: String,
-    pub time: String,
-    pub reason: String,
-}
-
-fn quarantine_list() -> Vec<QuarantineItem> {
-    serde_json::from_value(store::load_json("quarantine.json")).unwrap_or_default()
-}
-
-pub fn quarantined() -> Vec<QuarantineItem> {
-    quarantine_list()
-}
-
-/// 把扩展目录挪进 ~/.tsuba/quarantine。
-pub fn quarantine(dir: &Path, reason: &str) -> std::io::Result<QuarantineItem> {
-    let qdir = store::home().join("quarantine");
-    std::fs::create_dir_all(&qdir)?;
-    let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "item".into());
-    let id = format!("{}-{name}", chrono::Utc::now().timestamp_millis());
-    let stored = qdir.join(&id);
-    std::fs::rename(dir, &stored)?;
-    let item = QuarantineItem {
-        id,
-        original: dir.to_string_lossy().to_string(),
-        stored: stored.to_string_lossy().to_string(),
-        time: store::now(),
-        reason: reason.to_string(),
-    };
-    let mut list = quarantine_list();
-    list.push(item.clone());
-    store::save_json("quarantine.json", &json!(list));
-    Ok(item)
-}
-
-/// 放回原处。原位置已经有同名目录时拒绝，避免覆盖。
-pub fn restore(id: &str) -> Result<(), String> {
-    let mut list = quarantine_list();
-    let i = list.iter().position(|q| q.id == id).ok_or("隔离区里没有这一项")?;
-    let item = &list[i];
-    if Path::new(&item.original).exists() {
-        return Err(format!("{} 已经存在，没有覆盖", item.original));
-    }
-    std::fs::rename(&item.stored, &item.original).map_err(|e| e.to_string())?;
-    list.remove(i);
-    store::save_json("quarantine.json", &json!(list));
-    Ok(())
-}
-
-/// 彻底删除隔离区里的一项。
-pub fn delete(id: &str) -> Result<(), String> {
-    let mut list = quarantine_list();
-    let i = list.iter().position(|q| q.id == id).ok_or("隔离区里没有这一项")?;
-    std::fs::remove_dir_all(&list[i].stored).map_err(|e| e.to_string())?;
-    list.remove(i);
-    store::save_json("quarantine.json", &json!(list));
-    Ok(())
 }

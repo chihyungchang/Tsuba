@@ -10,6 +10,7 @@
     message      给用户看的说明
     skip_quoted  被引号包住的命中不算（文档在引用攻击话术，不是在下命令）
     doc_keep     出现在说明文档里时不降级（文档里写安装步骤很正常，但这几类在文档里同样可疑）
+    skip_well_known  命中片段里的网址都是官方安装源（tsuba.toml 的 well_known_hosts）时不算
 
   改规则后在 crates/engine/tests 里跑一遍样本和误报测试，再用 `tsuba scan` 扫一遍真实的扩展和 skill。
 */
@@ -73,6 +74,7 @@ rule tsuba_multistage_download
   meta:
     severity = "medium"
     message = "脚本里又下载并执行了别的脚本（多阶段投递）"
+    skip_well_known = true
   strings:
     $pipe = /(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(ba|z)?sh\b/
     $save = /(curl|wget)\b[^\n]*-o\s*\S+\s*(&&|;)\s*(chmod|bash|sh|\.\/)/
@@ -86,7 +88,8 @@ rule tsuba_standalone_node
     severity = "medium"
     message = "下载独立的 Node.js 运行时（为了脱离系统环境运行恶意 JS）"
   strings:
-    $a = "nodejs.org/dist/"
+    // 假会议软件的安装脚本用 curl / wget 拉 Node.js；编辑器扩展在 JS 里下载自己要用的 Node 很常见，不算
+    $a = /(curl|wget)\b[^\n]{0,200}nodejs\.org\/dist\//
   condition:
     $a
 }
@@ -148,9 +151,13 @@ rule tsuba_base64_to_shell
     severity = "medium"
     message = "解码 base64 后直接交给 shell 执行"
   strings:
-    $a = /base64\s+(-\w*[dD]\w*|--decode)\b[^;&\n]*\|\s*(sudo\s+)?(ba|z)?sh\b/
+    // 只认“代码里写死了一段 base64，解码后交给 shell”：echo <密文> | base64 -d | bash、base64 -d <<< <密文> | sh、
+    // 解码一个文件再执行。把自己写进 stdin 的数据解码执行（cat | base64 -d | bash，远程容器扩展常这么做）不算
+    $echo = /(echo|printf)\s+(-\w+\s+)?["']?[A-Za-z0-9+\/=]{4,}["']?\s*\|\s*base64\s+(-\w*[dD]\w*|--decode)\b[^;&\n]*\|\s*(sudo\s+)?(ba|z)?sh\b/
+    $here = /base64\s+(-\w*[dD]\w*|--decode)\s+<<<\s*["']?[A-Za-z0-9+\/=]{4,}[^;&\n]*\|\s*(sudo\s+)?(ba|z)?sh\b/
+    $file = /base64\s+(-\w*[dD]\w*|--decode)\s+[\w.\/~$-]+\s*\|\s*(sudo\s+)?(ba|z)?sh\b/
   condition:
-    $a
+    any of them
 }
 
 rule tsuba_tmp_background_run

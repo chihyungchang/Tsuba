@@ -396,29 +396,34 @@ pub struct ScanItem {
     pub detail: String,
     pub verdict: Verdict,
     pub findings: Vec<Finding>,
+    /// 标记为安全时用：mcp:<key> 或 skill / hooks 的目录路径
+    pub trust_key: String,
 }
 
-/// 体检：扫描本机所有 AI 工具的 MCP server、skill 和插件 hooks。
+/// 体检：扫描本机所有 AI 工具的 MCP server、skill 和插件 hooks。用户标记过安全且没变的不再报。
 pub fn scan_all(online: bool) -> Vec<ScanItem> {
     let mut items = Vec::new();
     for s in user_mcp_servers() {
-        let findings = scan_mcp_server(&s, online);
+        let findings = if crate::trust::is_trusted_mcp(&s) { vec![] } else { scan_mcp_server(&s, online) };
         items.push(ScanItem {
             kind: "mcp",
             title: format!("{} · {}", s.client, s.name),
             detail: format!("{}  [{}]", s.command_line().chars().take(160).collect::<String>(), s.scope),
             verdict: rules::offline_verdict(&findings),
             findings,
+            trust_key: format!("mcp:{}", s.key()),
         });
     }
     for unit in all_units() {
         let (info, findings) = scan_unit(&unit);
+        let findings = if crate::trust::is_trusted_path(&unit) { vec![] } else { findings };
         items.push(ScanItem {
             kind: if info["kind"] == "hooks" { "hooks" } else { "skill" },
             title: info["name"].as_str().unwrap_or("hooks").to_string(),
             detail: info["path"].as_str().unwrap_or("").to_string(),
             verdict: rules::offline_verdict(&findings),
             findings,
+            trust_key: unit.to_string_lossy().to_string(),
         });
     }
     items.sort_by(|a, b| b.verdict.cmp(&a.verdict).then(a.kind.cmp(b.kind)).then(a.title.cmp(&b.title)));

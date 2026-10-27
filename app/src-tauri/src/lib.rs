@@ -13,7 +13,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{ActivationPolicy, AppHandle, Emitter, Manager, State, WindowEvent};
 use tsuba_engine::rules::{Finding, Verdict};
 use tsuba_engine::store::{self, Config, LogEntry};
-use tsuba_engine::{doctor, extension, judge};
+use tsuba_engine::{doctor, extension, judge, quarantine, scan, trust};
 
 struct AppState {
     config: Arc<Mutex<Config>>,
@@ -71,6 +71,7 @@ struct Overview {
     sandbox_available: bool,
     recent: RecentCounts,
     quarantined: usize,
+    trusted: usize,
 }
 
 #[derive(Serialize)]
@@ -106,7 +107,8 @@ fn get_overview(state: State<AppState>) -> Overview {
             warned: log.iter().filter(|e| e.report.verdict == Verdict::Warn).count(),
             blocked: log.iter().filter(|e| e.report.verdict == Verdict::Block).count(),
         },
-        quarantined: extension::quarantined().len(),
+        quarantined: quarantine::list().len(),
+        trusted: trust::list().len(),
     }
 }
 
@@ -282,29 +284,140 @@ async fn scan_path(app: AppHandle, state: State<'_, AppState>, path: String) -> 
 }
 
 #[tauri::command]
-fn quarantine_list() -> Vec<extension::QuarantineItem> {
-    extension::quarantined()
+fn quarantine_list() -> Vec<quarantine::QuarantineItem> {
+    quarantine::list()
 }
 
+/// 把任意文件、目录或扩展移入隔离区；有检查记录的，记录上标明已隔离。
 #[tauri::command]
-fn quarantine_extension(app: AppHandle, path: String, reason: String) -> Result<(), String> {
-    extension::quarantine(std::path::Path::new(&path), &reason).map_err(|e| e.to_string())?;
+fn quarantine_path(app: AppHandle, path: String, reason: String, entry_id: Option<String>) -> Result<(), String> {
+    let item = quarantine::quarantine(std::path::Path::new(&path), &reason).map_err(|e| e.to_string())?;
+    if let Some(id) = entry_id
+        && let Some(mut entry) = store::read_log(2000).into_iter().find(|e| e.id == id)
+    {
+        entry.action = "quarantined".into();
+        entry.quarantine_id = Some(item.id);
+        store::append_log(&entry);
+        let _ = app.emit("history-updated", ());
+    }
     let _ = app.emit("status-changed", ());
     Ok(())
 }
 
 #[tauri::command]
 fn restore_quarantine(app: AppHandle, id: String) -> Result<(), String> {
-    extension::restore(&id)?;
+    quarantine::restore(&id)?;
     let _ = app.emit("status-changed", ());
     Ok(())
 }
 
 #[tauri::command]
 fn delete_quarantine(app: AppHandle, id: String) -> Result<(), String> {
-    extension::delete(&id)?;
+    quarantine::delete(&id)?;
     let _ = app.emit("status-changed", ());
     Ok(())
+}
+
+#[tauri::command]
+fn trusted_list() -> Vec<trust::TrustItem> {
+    trust::list()
+}
+
+/// 标记为安全：路径或 mcp:<key>。按内容指纹记录，内容变了会重新检查。
+#[tauri::command]
+fn trust_item(app: AppHandle, key: String) -> Result<(), String> {
+    trust::trust(&key)?;
+    let _ = app.emit("status-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn untrust_item(app: AppHandle, key: String) {
+    trust::remove(&key);
+    let _ = app.emit("status-changed", ());
+}
+
+/// 用系统的选择文件夹对话框，取消时返回 None。
+#[tauri::command]
+async fn choose_folder() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let out = std::process::Command::new("osascript")
+            .args(["-e", "POSIX path of (choose folder with prompt \"选择要扫描的文件夹\")"])
+            .output()
+            .ok()?;
+        let p = String::from_utf8_lossy(&out.stdout).trim().trim_end_matches('/').to_string();
+        (out.status.success() && !p.is_empty()).then_some(p)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+/// 扫描一个文件夹：只挑安装包、脚本、扩展和项目，用离线规则；扫过且没变的沿用上次结果。
+#[tauri::command]
+async fn scan_folder(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<scan::FolderScan, String> {
+    let cfg = state.config.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = scan::expand(&path);
+        if !root.exists() {
+            return Err(format!("找不到：{path}"));
+        }
+        Ok(scan::scan_folder(&cfg, &root, |p| {
+            let _ = app.emit("scan-progress", p.to_string());
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize)]
+struct ScheduleStatus {
+    last: Option<String>,
+}
+
+#[tauri::command]
+fn scan_schedule_status() -> ScheduleStatus {
+    ScheduleStatus { last: scan::last_scheduled_run() }
+}
+
+/// 计划扫描：到期时用最新规则重扫配置里的文件夹，新发现的问题记进检查记录并通知。
+fn start_scan_scheduler(app: AppHandle, config: Arc<Mutex<Config>>) {
+    std::thread::spawn(move || loop {
+        // 刚开机时让出资源，过几分钟再开始
+        std::thread::sleep(std::time::Duration::from_secs(300));
+        let cfg = config.lock().unwrap().clone();
+        if cfg.scan.scheduled && !is_paused() && scan::schedule_due(cfg.scan.interval_days) {
+            let mut found = 0;
+            for folder in &cfg.scan.folders {
+                let root = scan::expand(folder);
+                if !root.exists() {
+                    continue;
+                }
+                let r = scan::scan_folder(&cfg, &root, |_| {});
+                for hit in r.hits.into_iter().filter(|h| h.fresh) {
+                    let report = tsuba_engine::Report {
+                        verdict: hit.verdict,
+                        summary: hit.summary,
+                        reasons: vec![],
+                        advice: String::new(),
+                        source: "offline".into(),
+                        model: String::new(),
+                        findings: hit.findings,
+                    };
+                    let mut entry = LogEntry::new("scan", &hit.path, "", report);
+                    entry.action = "scanned".into();
+                    store::append_log(&entry);
+                    found += 1;
+                }
+            }
+            scan::mark_scheduled_run();
+            if found > 0 {
+                watch::notify_user("Tsuba：定期扫描发现问题", &format!("有 {found} 个文件需要看一下，打开 Tsuba 的检查记录查看。"));
+                let _ = app.emit("history-updated", ());
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_secs(3300));
+    });
 }
 
 #[tauri::command]
@@ -320,15 +433,18 @@ struct SandboxResult {
 }
 
 /// 把一个脚本文件或项目目录放进沙箱试运行，看它实际做了什么（不联真实外网）。
+/// install 为 true 时试装项目依赖，看安装脚本做了什么（只放行 npm 官方源）。
 #[tauri::command]
-async fn sandbox_script(path: String) -> Result<SandboxResult, String> {
+async fn sandbox_script(path: String, install: Option<bool>) -> Result<SandboxResult, String> {
     if !tsuba_engine::sandbox::available() {
         return Err("当前系统没有 sandbox-exec，无法使用沙箱".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
         let p = std::path::Path::new(&path);
         let timeout = std::time::Duration::from_secs(60);
-        let b = if p.is_dir() {
+        let b = if p.is_dir() && install == Some(true) {
+            tsuba_engine::sandbox::run_install(p, std::time::Duration::from_secs(90)).map_err(|e| e.to_string())?
+        } else if p.is_dir() {
             let argv = tsuba_engine::sandbox::project_start_argv(p);
             tsuba_engine::sandbox::run_project(p, &argv, timeout).map_err(|e| e.to_string())?
         } else {
@@ -397,6 +513,7 @@ pub fn run() {
             shell_hook::refresh_if_installed();
             restart_watchers(app.handle());
             start_intel_updater(app.handle().clone(), app.state::<AppState>().config.clone());
+            start_scan_scheduler(app.handle().clone(), app.state::<AppState>().config.clone());
             // 用户主动打开 App 时显示窗口；之后关窗只是隐藏，后台继续守护
             show_window(app.handle());
             Ok(())
@@ -427,9 +544,15 @@ pub fn run() {
             scan_installed_extensions,
             scan_path,
             quarantine_list,
-            quarantine_extension,
+            quarantine_path,
             restore_quarantine,
             delete_quarantine,
+            trusted_list,
+            trust_item,
+            untrust_item,
+            choose_folder,
+            scan_folder,
+            scan_schedule_status,
             reveal_in_finder,
             sandbox_script,
         ])

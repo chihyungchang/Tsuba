@@ -53,7 +53,7 @@ pub(crate) fn paused() -> bool {
 }
 
 /// 用 macOS 系统通知提醒。
-fn notify_user(title: &str, body: &str) {
+pub(crate) fn notify_user(title: &str, body: &str) {
     let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "'");
     let body: String = body.chars().take(240).collect();
     let script = format!("display notification \"{}\" with title \"{}\"", esc(&body), esc(title));
@@ -97,9 +97,7 @@ pub(crate) fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Optio
 /// 两段式检查：离线规则不到一秒就出结论，有风险马上提醒；AI 的判断随后补上，更新同一条记录。
 pub(crate) fn two_phase(app: &AppHandle, cfg: &Config, source: &str, title: &str, check: impl Fn(&Config) -> tsuba_engine::Report) -> Verdict {
     // 第一段只用本机的规则和名单，不联网，不到一秒出结论
-    let mut offline_cfg = Config { provider: store::Provider::Offline, ..cfg.clone() };
-    offline_cfg.intel.online_lookup = false;
-    offline_cfg.intel.virustotal_key.clear();
+    let offline_cfg = cfg.offline_only();
     let first = LogEntry::new(source, title, "", check(&offline_cfg));
     let offline = first.report.verdict;
     let id = first.id.clone();
@@ -250,7 +248,7 @@ fn on_extension(app: AppHandle, cfg: Arc<Mutex<Config>>, seen: Seen, root: PathB
         let (_, report) = tsuba_engine::evaluate_extension(&cfg, &p);
         let mut entry = LogEntry::new("extension", &p.to_string_lossy(), "", report);
         if entry.report.verdict == Verdict::Block && cfg.auto_quarantine
-            && let Ok(item) = extension::quarantine(&p, &entry.report.summary) {
+            && let Ok(item) = tsuba_engine::quarantine::quarantine(&p, &entry.report.summary) {
                 entry.action = "quarantined".into();
                 entry.quarantine_id = Some(item.id);
             }

@@ -16,7 +16,7 @@ export interface Report {
   summary: string;
   reasons: string[];
   advice: string;
-  source: "ai" | "offline";
+  source: "ai" | "offline" | "trusted";
   model: string;
   findings: Finding[];
 }
@@ -41,6 +41,7 @@ export interface Config {
   auto_quarantine: boolean;
   watch_ai_tools: boolean;
   intel: { auto_update: boolean; abusech_key: string; online_lookup: boolean; rules_url: string; virustotal_key: string };
+  scan: { scheduled: boolean; folders: string[]; interval_days: number };
 }
 
 export interface IntelSource {
@@ -73,6 +74,7 @@ export interface Overview {
   sandbox_available: boolean;
   recent: { total: number; warned: number; blocked: number };
   quarantined: number;
+  trusted: number;
 }
 
 export interface QuarantineItem {
@@ -83,10 +85,35 @@ export interface QuarantineItem {
   reason: string;
 }
 
+export interface TrustItem {
+  key: string;
+  fingerprint: string;
+  label: string;
+  time: string;
+}
+
+export interface ScanHit {
+  path: string;
+  kind: "installer" | "extension" | "project" | "file" | "trusted";
+  verdict: Verdict;
+  summary: string;
+  findings: Finding[];
+  fresh: boolean;
+}
+
+export interface FolderScan {
+  root: string;
+  checked: number;
+  unchanged: number;
+  hits: ScanHit[];
+  truncated: boolean;
+}
+
 export interface NetEvent {
   target: string;
   request?: string;
   leaked?: string[];
+  forwarded?: boolean;
 }
 
 export interface Behavior {
@@ -110,6 +137,7 @@ export interface AiScanItem {
   detail: string;
   verdict: Verdict;
   findings: Finding[];
+  trust_key: string;
 }
 
 export interface ExtensionScan {

@@ -8,23 +8,27 @@ import {
   Config,
   ExtensionScan,
   Finding,
+  FolderScan,
   IntelManifest,
   LogEntry,
   Overview,
   QuarantineItem,
   Report,
   SandboxResult,
+  ScanHit,
   SOURCE_LABEL,
+  TrustItem,
   VERDICT_LABEL,
   Verdict,
 } from "./types";
 import "./App.css";
 
-type Page = "overview" | "history" | "doctor" | "settings";
+type Page = "overview" | "history" | "scan" | "doctor" | "settings";
 
 const PAGES: { id: Page; label: string }[] = [
   { id: "overview", label: "概览" },
   { id: "history", label: "检查记录" },
+  { id: "scan", label: "扫描" },
   { id: "doctor", label: "体检" },
   { id: "settings", label: "设置" },
 ];
@@ -77,7 +81,7 @@ function ReportView({ report }: { report: Report }) {
     <div className="report">
       <div className="report-head">
         <VerdictBadge v={report.verdict} />
-        <span className="muted small">{report.source === "ai" ? `AI 判断 · ${report.model}` : "离线规则"}</span>
+        <span className="muted small">{report.source === "ai" ? `AI 判断 · ${report.model}` : report.source === "trusted" ? "你标记过安全" : "离线规则"}</span>
       </div>
       {report.summary && <p className="summary">{report.summary}</p>}
       {report.reasons.length > 0 && (
@@ -237,7 +241,7 @@ function OverviewPage({ overview, reload, onScanned }: { overview: Overview | nu
         </div>
         <div className="stat">
           <span>{overview.quarantined}</span>
-          <label>隔离中的扩展</label>
+          <label>隔离区</label>
         </div>
       </div>
 
@@ -265,6 +269,7 @@ function SandboxPanel({ r }: { r: SandboxResult }) {
             {b.network.map((e, i) => (
               <li key={i}>
                 <span className="mono small">{e.target}</span>
+                {e.forwarded && <span className="muted small">（npm 官方源，已放行）</span>}
                 {e.leaked && e.leaked.length > 0 && <span className="error-text small"> ← 发出了诱饵数据 {e.leaked.join("、")}</span>}
               </li>
             ))}
@@ -288,6 +293,9 @@ function SandboxPanel({ r }: { r: SandboxResult }) {
   );
 }
 
+/** 记录标题就是磁盘路径的来源：可以隔离、标记安全、在 Finder 里显示 */
+const PATH_SOURCES: LogEntry["source"][] = ["download", "extension", "scan"];
+
 function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; quarantine: QuarantineItem[]; reload: () => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(focusId);
@@ -301,12 +309,12 @@ function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; 
     setSandbox(null);
   }, [selected]);
 
-  const runSandbox = async (path: string) => {
+  const runSandbox = async (path: string, install = false) => {
     setSandboxing(true);
     setSandbox(null);
     setError("");
     try {
-      setSandbox(await invoke<SandboxResult>("sandbox_script", { path }));
+      setSandbox(await invoke<SandboxResult>("sandbox_script", { path, install }));
     } catch (e) {
       setError(errText(e));
     } finally {
@@ -394,15 +402,20 @@ function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; 
             <div className="actions">
               {qItem && (
                 <>
-                  <span className="muted small">这个扩展已移入隔离区。</span>
+                  <span className="muted small">已移入隔离区。</span>
                   <button onClick={() => act("restore_quarantine", { id: qItem.id })}>恢复</button>
                   <button className="danger" onClick={() => act("delete_quarantine", { id: qItem.id })}>
                     彻底删除
                   </button>
                 </>
               )}
-              {!qItem && current.source === "extension" && current.report.verdict !== "allow" && current.action !== "quarantined" && (
-                <button onClick={() => act("quarantine_extension", { path: current.title, reason: current.report.summary })}>移入隔离区</button>
+              {!qItem && PATH_SOURCES.includes(current.source) && current.report.verdict !== "allow" && current.action !== "quarantined" && (
+                <>
+                  <button onClick={() => act("quarantine_path", { path: current.title, reason: current.report.summary, entryId: current.id })}>
+                    移入隔离区
+                  </button>
+                  <button onClick={() => act("trust_item", { key: current.title })}>我确认它安全</button>
+                </>
               )}
               {["download", "mount", "extension", "scan"].includes(current.source) && !qItem && (
                 <button onClick={() => invoke("reveal_in_finder", { path: current.title })}>在 Finder 中显示</button>
@@ -411,6 +424,16 @@ function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; 
                 <button disabled={sandboxing} onClick={() => runSandbox(current.title)}>
                   {sandboxing ? "沙箱运行中…" : "沙箱试运行"}
                 </button>
+              )}
+              {current.source === "scan" && !/\.[A-Za-z0-9]+\/?$/.test(current.title) && (
+                <>
+                  <button disabled={sandboxing} onClick={() => runSandbox(current.title)}>
+                    {sandboxing ? "沙箱运行中…" : "沙箱试运行项目"}
+                  </button>
+                  <button disabled={sandboxing} onClick={() => runSandbox(current.title, true)} title="在沙箱里 npm install，看依赖的安装脚本做了什么">
+                    沙箱试装依赖
+                  </button>
+                </>
               )}
             </div>
             {sandbox && <SandboxPanel r={sandbox} />}
@@ -424,9 +447,232 @@ function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; 
   );
 }
 
+/* ---------- 扫描、隔离区、白名单 ---------- */
+
+const KIND_LABEL: Record<ScanHit["kind"], string> = { installer: "安装包", extension: "扩展", project: "项目", file: "脚本", trusted: "已信任" };
+
+function ScanPage({ quarantine, reload, onScanned }: { quarantine: QuarantineItem[]; reload: () => void; onScanned: (e: LogEntry) => void }) {
+  const [cfg, setCfg] = useState<Config | null>(null);
+  const [result, setResult] = useState<FolderScan | null>(null);
+  const [busy, setBusy] = useState("");
+  const [progress, setProgress] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  const [trusted, setTrusted] = useState<TrustItem[]>([]);
+  const [last, setLast] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    invoke<Config>("get_config").then(setCfg);
+    invoke<TrustItem[]>("trusted_list").then(setTrusted);
+    invoke<{ last: string | null }>("scan_schedule_status").then((s) => setLast(s.last));
+  }, []);
+
+  useEffect(() => {
+    load();
+    const uns = [listen("status-changed", load), listen<string>("scan-progress", (e) => setProgress(e.payload))];
+    return () => {
+      uns.forEach((u) => u.then((f) => f()));
+    };
+  }, [load]);
+
+  const run = async (fn: () => Promise<void>, label = "") => {
+    setError("");
+    setBusy(label);
+    try {
+      await fn();
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy("");
+      setProgress("");
+    }
+  };
+
+  const scanFolder = (path: string) =>
+    run(async () => {
+      setResult(null);
+      setResult(await invoke<FolderScan>("scan_folder", { path }));
+    }, "scan");
+
+  const pickAndScan = () =>
+    run(async () => {
+      const path = await invoke<string | null>("choose_folder");
+      if (!path) return;
+      setBusy("scan");
+      setResult(null);
+      setResult(await invoke<FolderScan>("scan_folder", { path }));
+    }, "pick");
+
+  const saveScan = (scan: Config["scan"]) =>
+    run(async () => {
+      if (!cfg) return;
+      const next = { ...cfg, scan };
+      await invoke("save_config", { config: next });
+      setCfg(next);
+    });
+
+  const addFolder = () =>
+    run(async () => {
+      const path = await invoke<string | null>("choose_folder");
+      if (path && cfg && !cfg.scan.folders.includes(path)) await saveScan({ ...cfg.scan, folders: [...cfg.scan.folders, path] });
+    });
+
+  // 处理完一项就从结果里拿掉
+  const settle = (path: string, fn: () => Promise<unknown>) =>
+    run(async () => {
+      await fn();
+      setResult((r) => (r ? { ...r, hits: r.hits.filter((h) => h.path !== path) } : r));
+      reload();
+      load();
+    });
+
+  const deepCheck = (path: string) =>
+    run(async () => {
+      onScanned(await invoke<LogEntry>("scan_path", { path }));
+    }, "deep");
+
+  const act = (cmd: string, args: Record<string, unknown>) =>
+    run(async () => {
+      await invoke(cmd, args);
+      reload();
+      load();
+    });
+
+  const home = (p: string) => p.replace(/^\/Users\/[^/]+/, "~");
+
+  return (
+    <div className="page">
+      {error && <div className="error">{error}</div>}
+      <section className="card">
+        <div className="row">
+          <div>
+            <h3>扫描文件夹</h3>
+            <p className="muted">
+              检查下载目录、外接硬盘或代码目录里的安装包、脚本、扩展和项目（找出打开就会执行的入口），跳过照片视频和依赖目录。只用本机规则，扫过且没变的不重复扫。
+            </p>
+          </div>
+          <button className="primary" disabled={busy !== ""} onClick={pickAndScan}>
+            {busy === "scan" || busy === "pick" ? "扫描中…" : "选择文件夹…"}
+          </button>
+        </div>
+        {cfg &&
+          cfg.scan.folders.map((f) => (
+            <div key={f} className="row">
+              <span className="mono small">{home(f)}</span>
+              <div className="actions">
+                <button disabled={busy !== ""} onClick={() => scanFolder(f)}>
+                  立即扫描
+                </button>
+                <button className="link" onClick={() => saveScan({ ...cfg.scan, folders: cfg.scan.folders.filter((x) => x !== f) })}>
+                  移除
+                </button>
+              </div>
+            </div>
+          ))}
+        {busy === "scan" && progress && <p className="muted small ellipsis mono">{home(progress)}</p>}
+        {result && (
+          <div className="result">
+            <p className="muted small">
+              {home(result.root)}：检查了 {result.checked} 个，{result.unchanged} 个没变化沿用上次结果
+              {result.truncated && "；东西太多，只扫了前一部分"}。
+              {result.hits.length === 0 ? " 没有发现问题。" : ` ${result.hits.length} 个需要看一下：`}
+            </p>
+            {result.hits.map((h) => (
+              <div key={h.path} className="ext">
+                <button className="ext-head" onClick={() => setOpen(open === h.path ? null : h.path)}>
+                  <VerdictBadge v={h.verdict} />
+                  <span className="muted small">{KIND_LABEL[h.kind]}</span>
+                  <span className="mono small ellipsis">{home(h.path)}</span>
+                </button>
+                {open === h.path && (
+                  <div className="ext-body">
+                    <p className="small">{h.summary}</p>
+                    <FindingList findings={h.findings} />
+                    <div className="actions">
+                      <button disabled={busy !== ""} onClick={() => deepCheck(h.path)}>
+                        {busy === "deep" ? "检查中…" : "AI 深度检查"}
+                      </button>
+                      <button onClick={() => settle(h.path, () => invoke("quarantine_path", { path: h.path, reason: h.summary }))}>移入隔离区</button>
+                      <button onClick={() => settle(h.path, () => invoke("trust_item", { key: h.path }))}>我确认它安全</button>
+                      <button onClick={() => invoke("reveal_in_finder", { path: h.path })}>在 Finder 中显示</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {cfg && (
+        <section className="card">
+          <div className="row">
+            <div>
+              <h3>定期扫描</h3>
+              <p className="muted">
+                每 {cfg.scan.interval_days} 天用最新的规则把上面的文件夹重扫一遍，找出规则更新后才认出来的老文件。新发现的问题记进检查记录并通知你。
+                {last && ` 上次：${last.replace("T", " ").slice(0, 16)}`}
+              </p>
+            </div>
+            <Toggle on={cfg.scan.scheduled} onChange={(v) => saveScan({ ...cfg.scan, scheduled: v })} />
+          </div>
+          <div className="row">
+            <span className="muted small">也可以加上你的代码目录，例如 ~/code。</span>
+            <button onClick={addFolder}>添加文件夹…</button>
+          </div>
+        </section>
+      )}
+
+      <section className="card">
+        <h3>隔离区</h3>
+        {quarantine.length === 0 ? (
+          <p className="muted">隔离区是空的。</p>
+        ) : (
+          quarantine.map((q) => (
+            <div key={q.id} className="row">
+              <div>
+                <div className="mono small">{home(q.original)}</div>
+                <div className="muted small">
+                  {q.time.replace("T", " ")} · {q.reason}
+                </div>
+              </div>
+              <div className="actions">
+                <button onClick={() => act("restore_quarantine", { id: q.id })}>恢复</button>
+                <button className="danger" onClick={() => act("delete_quarantine", { id: q.id })}>
+                  删除
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section className="card">
+        <h3>白名单</h3>
+        <p className="muted">你确认安全的文件、项目、扩展和 MCP server 不再提醒。按内容指纹记录，内容一变就会重新检查。</p>
+        {trusted.length === 0 ? (
+          <p className="muted small">还没有标记过。</p>
+        ) : (
+          trusted.map((t) => (
+            <div key={t.key} className="row">
+              <div>
+                <div className="mono small">{home(t.label)}</div>
+                <div className="muted small">{t.time.replace("T", " ")}</div>
+              </div>
+              <button className="link" onClick={() => act("untrust_item", { key: t.key })}>
+                移除
+              </button>
+            </div>
+          ))
+        )}
+      </section>
+    </div>
+  );
+}
+
 /* ---------- 体检 ---------- */
 
-function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; reload: () => void }) {
+function DoctorPage({ reload }: { reload: () => void }) {
   const [doctor, setDoctor] = useState<{ findings: Finding[]; advice: string } | null>(null);
   const [exts, setExts] = useState<ExtensionScan[] | null>(null);
   const [ai, setAi] = useState<AiScanItem[] | null>(null);
@@ -454,7 +700,8 @@ function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; relo
     try {
       await invoke(cmd, args);
       reload();
-      if (cmd === "quarantine_extension") setExts((xs) => xs?.filter((x) => x.path !== args.path) ?? null);
+      if (cmd === "quarantine_path" || (cmd === "trust_item" && exts)) setExts((xs) => xs?.filter((x) => x.path !== args.path && x.path !== args.key) ?? null);
+      if (cmd === "trust_item") setAi((xs) => xs?.filter((x) => x.trust_key !== args.key) ?? null);
     } catch (e) {
       setError(errText(e));
     }
@@ -520,7 +767,8 @@ function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; relo
                   <div className="ext-body">
                     <FindingList findings={x.findings} />
                     <div className="actions">
-                      <button onClick={() => act("quarantine_extension", { path: x.path, reason: "体检时手动隔离" })}>移入隔离区</button>
+                      <button onClick={() => act("quarantine_path", { path: x.path, reason: "体检时手动隔离" })}>移入隔离区</button>
+                      <button onClick={() => act("trust_item", { key: x.path })}>我确认它安全</button>
                       <button onClick={() => invoke("reveal_in_finder", { path: x.path })}>在 Finder 中显示</button>
                     </div>
                   </div>
@@ -557,6 +805,9 @@ function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; relo
                 {open === x.detail && (
                   <div className="ext-body">
                     <FindingList findings={x.findings} />
+                    <div className="actions">
+                      <button onClick={() => act("trust_item", { key: x.trust_key })}>我确认它安全</button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -565,29 +816,6 @@ function DoctorPage({ quarantine, reload }: { quarantine: QuarantineItem[]; relo
         )}
       </section>
 
-      <section className="card">
-        <h3>隔离区</h3>
-        {quarantine.length === 0 ? (
-          <p className="muted">隔离区是空的。</p>
-        ) : (
-          quarantine.map((q) => (
-            <div key={q.id} className="row">
-              <div>
-                <div className="mono small">{q.original.split("/").pop()}</div>
-                <div className="muted small">
-                  {q.time.replace("T", " ")} · {q.reason}
-                </div>
-              </div>
-              <div className="actions">
-                <button onClick={() => act("restore_quarantine", { id: q.id })}>恢复</button>
-                <button className="danger" onClick={() => act("delete_quarantine", { id: q.id })}>
-                  删除
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </section>
     </div>
   );
 }
@@ -997,7 +1225,8 @@ export default function App() {
       <div className="content">
         {page === "overview" && <OverviewPage overview={overview} reload={reload} onScanned={onScanned} />}
         {page === "history" && <HistoryPage focusId={focusId} quarantine={quarantine} reload={reload} />}
-        {page === "doctor" && <DoctorPage quarantine={quarantine} reload={reload} />}
+        {page === "scan" && <ScanPage quarantine={quarantine} reload={reload} onScanned={onScanned} />}
+        {page === "doctor" && <DoctorPage reload={reload} />}
         {page === "settings" && <SettingsPage reload={reload} />}
       </div>
     </div>
