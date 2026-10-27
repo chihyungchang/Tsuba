@@ -36,7 +36,7 @@ Tsuba（鍔，刀的护手）是一个 macOS 菜单栏应用。假面试项目�
 
 规则用 [YARA-X](https://github.com/VirusTotal/yara-x) 编译执行。Tsuba 自己的检测规则也不写在代码里，而是 [crates/engine/rules/tsuba.yar](crates/engine/rules/tsuba.yar) 和 [tsuba.toml](crates/engine/rules/tsuba.toml)，可以单独更新。
 
-开发守则见 [.claude/CLAUDE.md](.claude/CLAUDE.md)。
+开发守则见 [CLAUDE.md](CLAUDE.md)。
 
 ## AI 判断
 
