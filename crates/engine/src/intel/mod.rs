@@ -14,6 +14,7 @@
 pub mod feeds;
 pub mod packages;
 pub mod tsuba;
+pub mod virustotal;
 pub mod yara;
 
 use crate::store::{self, Config};

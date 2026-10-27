@@ -139,9 +139,9 @@ fn launched_package(command: &str, args: &[String]) -> Option<(&'static str, Str
         ("npm", args)
     } else if LAUNCHERS_PYPI.contains(&prog) {
         ("pypi", if prog == "pipx" && args.first().is_some_and(|a| a == "run") { &args[1..] } else { args })
-    } else if matches!(prog, "pnpm" | "yarn" | "bun") && args.first().is_some_and(|a| a == "dlx" || a == "x") {
-        ("npm", &args[1..])
-    } else if prog == "npm" && args.first().is_some_and(|a| a == "exec") {
+    } else if (matches!(prog, "pnpm" | "yarn" | "bun") && args.first().is_some_and(|a| a == "dlx" || a == "x"))
+        || (prog == "npm" && args.first().is_some_and(|a| a == "exec"))
+    {
         ("npm", &args[1..])
     } else {
         return None;

@@ -13,7 +13,8 @@ Tsuba（鍔，刀的护手）是一个 macOS 菜单栏应用。假面试项目�
 | 终端命令 | `curl … \| bash`、`npm install`、`npx`、`npm start`、`code .` | 下载远程脚本（不执行）并追查第二阶段；npm 包的创建时间、版本发布冷却期、安装脚本；项目源码里的隐藏代码、硬编码 C2、读取钱包和密码库；VS Code 打开文件夹就自动执行的任务 |
 | 粘贴进终端 | 网页让你“复制这条命令到终端” | 粘贴的瞬间先提醒一次，不联网；base64 混淆后交给 shell 执行的命令直接标为高危 |
 | 下载目录 | 新出现的 `.dmg`、`.pkg`、`.vsix` | 只读挂载检查签名、公证、下载来源、主程序是否被替换成隐藏文件、安装脚本 |
-| 编辑器扩展 | VS Code、Cursor、Windsurf、VSCodium 新装或更新的扩展 | 启动即激活、不可见 Unicode 字符藏代码、可疑网络和文件访问；高危时自动移入隔离区 |
+| 编辑器扩展 | VS Code、Cursor、Windsurf、VSCodium 新装或更新的扩展 | 官方恶意扩展名单、启动即激活、不可见 Unicode 字符藏代码、可疑网络和文件访问；高危时自动移入隔离区 |
+| AI 编程工具 | Claude Code、Cursor、Codex 等的 MCP server、skill、插件 hooks；项目里的 `.mcp.json`、hooks、`CLAUDE.md` | 启动的包是否在恶意名单、是否从临时或隐藏目录启动、拿到了哪些密钥；skill 是否要求 AI 对用户隐瞒、读取私钥、外传数据 |
 | 体检 | 菜单栏 → 体检 | 已知攻击留下的落地痕迹、可疑开机自启项、已装扩展快速扫描 |
 
 在扩展商店里装的扩展不经过终端，只能装完马上查；在 Finder 里双击打开的程序目前拦不住，需要苹果的 Endpoint Security 权限（见 PRD 第 12 节）。
@@ -30,9 +31,12 @@ Tsuba（鍔，刀的护手）是一个 macOS 菜单栏应用。假面试项目�
 | [Elastic](https://github.com/elastic/protections-artifacts)、[ReversingLabs](https://github.com/reversinglabs/reversinglabs-yara-rules) YARA 规则 | 已知恶意软件家族特征 | Elastic License 2.0 / MIT |
 | [GuardDog](https://github.com/DataDog/guarddog) YARA 规则 | 恶意包常见的可疑写法（只作为证据，不单独触发提醒） | Apache-2.0 |
 | 本机 XProtect 规则 | 苹果自己的恶意软件特征，只在本机使用 | Apple |
+| [VirusTotal](https://www.virustotal.com)（可选，用户自己的 Key） | 70 多家杀毒引擎对安装包、程序、远程脚本的结论；只发送哈希，不上传文件 | 免费 API 不允许商用 |
 | [abuse.ch](https://abuse.ch) ThreatFox / URLhaus（可选） | 恶意域名、IP、网址；需要免费 Auth-Key，免费版仅限非营利使用 | - |
 
-规则用 [YARA-X](https://github.com/VirusTotal/yara-x) 编译执行。
+规则用 [YARA-X](https://github.com/VirusTotal/yara-x) 编译执行。Tsuba 自己的检测规则也不写在代码里，而是 [crates/engine/rules/tsuba.yar](crates/engine/rules/tsuba.yar) 和 [tsuba.toml](crates/engine/rules/tsuba.toml)，可以单独更新。
+
+开发守则见 [.claude/CLAUDE.md](.claude/CLAUDE.md)。
 
 ## AI 判断
 
@@ -58,7 +62,8 @@ Tsuba/
 ├── PRD.md                  产品需求文档
 ├── Cargo.toml              Rust workspace
 ├── crates/
-│   ├── engine/             检测引擎（tsuba-engine）：识别、取证、离线规则、AI 判断
+│   ├── engine/             检测引擎（tsuba-engine）：识别、取证、离线规则、威胁情报、AI 判断
+│   │   ├── rules/          Tsuba 规则包（tsuba.yar 检测模式、tsuba.toml 名单）
 │   │   └── tests/          引擎测试和惰性攻击样本（tests/fixtures）
 │   └── cli/                终端检查程序（tsuba），由 zsh 钩子调用
 │       └── shell/          zsh 钩子

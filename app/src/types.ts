@@ -40,7 +40,7 @@ export interface Config {
   watch_extensions: boolean;
   auto_quarantine: boolean;
   watch_ai_tools: boolean;
-  intel: { auto_update: boolean; abusech_key: string; online_lookup: boolean };
+  intel: { auto_update: boolean; abusech_key: string; online_lookup: boolean; rules_url: string; virustotal_key: string };
 }
 
 export interface IntelSource {

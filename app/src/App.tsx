@@ -599,6 +599,11 @@ function IntelCard({ cfg, onChange }: { cfg: Config; onChange: (c: Config) => vo
           检查 npm / PyPI 包时在线查询 OSV.dev（比本地名单更新得更快，只发送包名和版本）
         </label>
         <label>
+          VirusTotal API Key（可选，免费注册：virustotal.com）
+          <input type="password" value={cfg.intel.virustotal_key} onChange={(e) => setIntel({ virustotal_key: e.target.value.trim() })} />
+          <span className="muted small">只提交文件的 SHA-256 指纹查询 70 多家杀毒引擎的结论，不上传文件。免费额度每天 500 次。</span>
+        </label>
+        <label>
           abuse.ch Auth-Key（可选，免费注册：auth.abuse.ch；免费版仅限非营利使用）
           <input type="password" value={cfg.intel.abusech_key} onChange={(e) => setIntel({ abusech_key: e.target.value.trim() })} />
         </label>

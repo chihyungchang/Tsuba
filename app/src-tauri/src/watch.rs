@@ -96,12 +96,15 @@ pub(crate) fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Optio
 
 /// 两段式检查：离线规则不到一秒就出结论，有风险马上提醒；AI 的判断随后补上，更新同一条记录。
 pub(crate) fn two_phase(app: &AppHandle, cfg: &Config, source: &str, title: &str, check: impl Fn(&Config) -> tsuba_engine::Report) -> Verdict {
-    let offline_cfg = Config { provider: store::Provider::Offline, ..cfg.clone() };
+    // 第一段只用本机的规则和名单，不联网，不到一秒出结论
+    let mut offline_cfg = Config { provider: store::Provider::Offline, ..cfg.clone() };
+    offline_cfg.intel.online_lookup = false;
+    offline_cfg.intel.virustotal_key.clear();
     let first = LogEntry::new(source, title, "", check(&offline_cfg));
     let offline = first.report.verdict;
     let id = first.id.clone();
     report_entry(app, first, None);
-    if !tsuba_engine::judge::available(cfg) {
+    if !tsuba_engine::judge::available(cfg) && cfg.intel.virustotal_key.is_empty() {
         return offline;
     }
     let mut second = LogEntry::new(source, title, "", check(cfg));

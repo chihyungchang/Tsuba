@@ -113,11 +113,13 @@ pub struct IntelConfig {
     pub online_lookup: bool,
     /// Tsuba 规则包的下载地址（目录，下面有 tsuba.yar 和 tsuba.toml）。留空只用内置规则
     pub rules_url: String,
+    /// VirusTotal API Key（用户自己的）。只查文件哈希，不上传文件
+    pub virustotal_key: String,
 }
 
 impl Default for IntelConfig {
     fn default() -> Self {
-        IntelConfig { auto_update: true, abusech_key: String::new(), online_lookup: true, rules_url: String::new() }
+        IntelConfig { auto_update: true, abusech_key: String::new(), online_lookup: true, rules_url: String::new(), virustotal_key: String::new() }
     }
 }
 

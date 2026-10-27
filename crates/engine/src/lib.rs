@@ -27,6 +27,18 @@ pub fn home_dir() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// 文件的 SHA-256（太大的不算，免得卡住检查）
+pub fn sha256_file(path: &Path) -> Option<String> {
+    use sha2::Digest;
+    if path.metadata().ok()?.len() > 300 * 1024 * 1024 {
+        return None;
+    }
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut h = sha2::Sha256::new();
+    std::io::copy(&mut f, &mut h).ok()?;
+    Some(net::hex(&h.finalize()))
+}
+
 /// 读文件开头最多 limit 字节，按 UTF-8 宽松解码。读不了返回空串。
 pub fn read_limited(path: &Path, limit: usize) -> String {
     let mut buf = Vec::new();
@@ -129,6 +141,7 @@ pub fn judge_evidence(cfg: &Config, evidence: &Value, findings: Vec<Finding>) ->
 /// 检查一条即将执行的命令。pasted 表示命令是粘贴进终端的。
 pub fn evaluate_command(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target], pasted: bool) -> (Value, Report) {
     let (mut evidence, mut findings) = collect::collect(cfg, cmd, cwd, targets);
+    intel::virustotal::enrich(&cfg.intel.virustotal_key, &mut evidence, &mut findings);
     if pasted {
         evidence["pasted"] = json!(true);
         if targets.iter().any(|t| matches!(t.kind, Kind::RemoteScript | Kind::ObfuscatedExec | Kind::Osascript)) {
@@ -170,8 +183,9 @@ pub fn evaluate_path(cfg: &Config, path: &Path) -> (&'static str, Value, Report)
         let (ev, r) = evaluate_command(cfg, &title, parent, &[t], false);
         ("installer", ev, r)
     } else if p.ends_with(".vsix") {
-        let (info, findings) = extension::scan_vsix(path);
-        let ev = json!({ "command": title, "targets": [{ "kind": "extension", "extension": info }], "findings": findings });
+        let (info, mut findings) = extension::scan_vsix(path);
+        let mut ev = json!({ "command": title, "targets": [{ "kind": "extension", "extension": info, "sha256": sha256_file(path) }], "findings": findings });
+        intel::virustotal::enrich(&cfg.intel.virustotal_key, &mut ev, &mut findings);
         ("extension", ev.clone(), judge_evidence(cfg, &ev, findings))
     } else if path.is_dir() && extension::looks_like_extension(path) {
         let (ev, r) = evaluate_extension(cfg, path);
@@ -186,7 +200,8 @@ pub fn evaluate_path(cfg: &Config, path: &Path) -> (&'static str, Value, Report)
         let mut findings = rules::scan_text(&text, &name);
         findings.extend(intel::yara::scan_file(path, &name));
         let content: String = text.chars().take(40_000).collect();
-        let ev = json!({ "command": title, "targets": [{ "kind": "file", "path": path.to_string_lossy(), "content": content }], "findings": findings });
+        let mut ev = json!({ "command": title, "targets": [{ "kind": "file", "path": path.to_string_lossy(), "content": content, "sha256": sha256_file(path) }], "findings": findings });
+        intel::virustotal::enrich(&cfg.intel.virustotal_key, &mut ev, &mut findings);
         ("file", ev.clone(), judge_evidence(cfg, &ev, findings))
     }
 }

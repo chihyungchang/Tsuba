@@ -95,6 +95,7 @@ pub fn inspect_app(app: &Path, findings: &mut Vec<Finding>) -> Value {
             let exe = d.get("CFBundleExecutable").and_then(|v| v.as_string()).unwrap_or("");
             info.insert("bundle_id".into(), json!(d.get("CFBundleIdentifier").and_then(|v| v.as_string())));
             info.insert("executable".into(), json!(exe));
+            info.insert("sha256".into(), json!(crate::sha256_file(&app.join("Contents/MacOS").join(exe))));
             if exe.starts_with('.') {
                 findings.push(Finding::new(Severity::High, format!("主程序被替换成隐藏文件 {exe}（Jamf 披露的 Contagious Interview 手法）"), &name));
             }
@@ -221,7 +222,7 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
                 format!("安装镜像的隐藏目录里藏着一个可执行程序 {rel}{}", if signed { "" } else { "，而且没有开发者签名" }),
                 label,
             ));
-            hidden.push(json!({ "path": rel, "macho": is_macho(f), "codesign": tail(&out, 300) }));
+            hidden.push(json!({ "path": rel, "macho": is_macho(f), "codesign": tail(&out, 300), "sha256": crate::sha256_file(f) }));
         }
     }
 
@@ -302,6 +303,9 @@ pub fn inspect_path(path: &str) -> (Value, Vec<Finding>) {
     }
     let from = where_from(path);
     info.insert("where_from".into(), json!(from));
+    if Path::new(path).is_file() {
+        info.insert("sha256".into(), json!(crate::sha256_file(Path::new(path))));
+    }
     info.insert("quarantined".into(), json!(has_quarantine(path)));
     let low = path.to_lowercase();
     let low = low.trim_end_matches('/');
