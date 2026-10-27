@@ -49,11 +49,22 @@ _tsuba_accept_line() {
     zle -I
     local -a flags
     [[ -n $pasted ]] && flags=(--pasted)
-    if ! "$TSUBA_BIN" check $flags -- "$cmd" </dev/tty; then
+    # 报告走 stderr/终端，交互提示走 /dev/tty；stdout 捕获下来，用于“直接运行已检查过的脚本”
+    local out
+    out=$("$TSUBA_BIN" check $flags -- "$cmd" </dev/tty)
+    if (( $? != 0 )); then
       print -s -- "$cmd"   # 保留在历史里，方便核实后再执行
       BUFFER=""
       zle reset-prompt
       return 0
+    fi
+    # TOCTOU 防护：远程脚本确认执行时，跑 Tsuba 固定下来、已检查过的那一份，
+    # 不让 shell 重新 curl（服务器可能第二次下发恶意内容）。历史里仍保留用户原本输入的命令。
+    if [[ $out == *TSUBA_EXEC:* ]]; then
+      local run=${out##*TSUBA_EXEC:}
+      run=${run%%$'\n'*}
+      print -s -- "$cmd"
+      BUFFER=$run
     fi
   fi
   if (( ${+widgets[_tsuba_prev_accept_line]} )); then

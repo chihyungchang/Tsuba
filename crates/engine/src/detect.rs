@@ -218,3 +218,31 @@ fn pip_install(prog: &str, args: &[String]) -> Option<Vec<String>> {
 pub fn urls_in(text: &str) -> Vec<String> {
     URL.find_iter(text).map(|m| m.as_str().to_string()).collect()
 }
+
+const VETTED_INTERP: &str = r"(?:ba|z|da|k)?sh|python3?|node|perl|ruby";
+
+static CLEAN_PIPE: LazyLock<Regex> =
+    LazyLock::new(|| rx(&format!(r"^\s*(?:curl|wget|fetch)\b[^|;&]*\|\s*({VETTED_INTERP})\s*$")));
+static CLEAN_SUBST: LazyLock<Regex> =
+    LazyLock::new(|| rx(&format!(r#"^\s*({VETTED_INTERP})\s+-c\s+["']?\$\(\s*(?:curl|wget|fetch)\b[^|;&]*\)["']?\s*$"#)));
+static CLEAN_PROCSUBST: LazyLock<Regex> =
+    LazyLock::new(|| rx(&format!(r"^\s*({VETTED_INTERP})\s+<\(\s*(?:curl|wget|fetch)\b[^|;&]*\)\s*$")));
+
+/// 当命令是“下载器 | 解释器”“解释器 -c "$(下载器)"”或“解释器 <(下载器)”这种干净形式、
+/// 解释器后面没有多余参数、也没有 sudo 时，返回该用哪个解释器直接运行已经下载检查过的那份脚本。
+///
+/// 这样用户确认执行时，跑的就是 Tsuba 看过的内容，服务器没法第二次下发不一样的东西（TOCTOU）。
+/// 复杂形式（带 sudo、带参数、多个下载源）返回 None，调用方改用“重新下载并比对哈希”兜底。
+pub fn vetted_interpreter(cmd: &str) -> Option<String> {
+    // 只允许恰好一个下载 URL，避免多阶段里选错。下面的正则是整条命令锚定的，
+    // 命令里还串了别的（; && 多个管道）都不会匹配。
+    if urls_in(cmd).len() != 1 {
+        return None;
+    }
+    for rx in [&*CLEAN_PIPE, &*CLEAN_SUBST, &*CLEAN_PROCSUBST] {
+        if let Some(c) = rx.captures(cmd) {
+            return Some(c[1].to_string());
+        }
+    }
+    None
+}

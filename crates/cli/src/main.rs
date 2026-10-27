@@ -184,7 +184,52 @@ fn cmd_check(args: &[String]) -> i32 {
         }
         store::save_json("approved.json", &approved);
     }
+    // TOCTOU 防护：远程脚本确认执行时，跑 Tsuba 已经下载检查过的那一份，
+    // 不让 shell 重新 curl（否则服务器可以第二次下发不一样的恶意内容）
+    if !pasted && !yes && let Some(exec) = pinned_exec(cmd, &evidence) {
+        // 这一行被 zsh 钩子读走，改成直接运行已固定的脚本
+        println!("TSUBA_EXEC:{exec}");
+    }
     0
+}
+
+/// 远程脚本确认执行时，把已检查过的脚本固定到本地文件，返回“解释器 '文件路径'”。
+/// 只在能确定解释器的干净形式下这么做；复杂形式返回 None，shell 照常执行（风险见文档）。
+fn pinned_exec(cmd: &str, evidence: &Value) -> Option<String> {
+    let interp = detect::vetted_interpreter(cmd)?;
+    let text = evidence["targets"].as_array()?.iter().find_map(|t| {
+        (t["kind"] == "remote_script").then(|| t["fetched"][0]["text"].as_str()).flatten()
+    })?;
+    // fetched[0].text 在证据里被截断到 40000 字；截断过就不固定（宁可让 shell 重跑，也不执行残缺脚本）
+    if evidence["targets"][0]["fetched"][0]["truncated"] == true {
+        return None;
+    }
+    let dir = store::home().join("pending");
+    std::fs::create_dir_all(&dir).ok()?;
+    // 清掉旧的固定文件
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for p in rd.flatten().map(|e| e.path()) {
+            let old = p.metadata().and_then(|m| m.modified()).map(|t| t.elapsed().map(|d| d.as_secs() > 3600).unwrap_or(true)).unwrap_or(true);
+            if old {
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+    let path = dir.join(format!("{}.sh", std::process::id()));
+    write_private(&path, text.as_bytes())?;
+    Some(format!("{interp} {}", shell_quote(&path.to_string_lossy())))
+}
+
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+fn write_private(path: &Path, bytes: &[u8]) -> Option<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path).ok()?;
+    f.write_all(bytes).ok()?;
+    Some(())
 }
 
 fn cmd_scan(args: &[String]) -> i32 {

@@ -520,3 +520,20 @@ fn sandbox_findings_classify_behavior() {
     assert!(msgs.contains("隐藏目录"), "应判定为落地痕迹: {msgs}");
     assert!(msgs.contains("IP 地址"), "连裸 IP 应记录: {msgs}");
 }
+
+#[test]
+fn vetted_interpreter_clean_forms() {
+    use tsuba_engine::detect::vetted_interpreter as v;
+    // 干净形式：能确定解释器
+    assert_eq!(v("curl -fsSL https://x.io/a.sh | bash").as_deref(), Some("bash"));
+    assert_eq!(v("curl -s https://x.io/a | sh").as_deref(), Some("sh"));
+    assert_eq!(v(r#"bash -c "$(curl -fsSL https://x.io/a.sh)""#).as_deref(), Some("bash"));
+    assert_eq!(v("bash <(curl -s https://x.io/a.sh)").as_deref(), Some("bash"));
+    assert_eq!(v("curl https://x.io/a.py | python3").as_deref(), Some("python3"));
+    // 复杂形式：不固定，交给“重新下载比对”兜底
+    assert_eq!(v("curl -s https://x.io/a | sudo bash"), None, "带 sudo 的权限不一样，不固定");
+    assert_eq!(v("curl -s https://x.io/a | bash -s -- --prefix=/opt"), None, "带参数");
+    assert_eq!(v("curl -s https://x.io/a | bash && rm -rf /tmp/x"), None, "串了别的命令");
+    assert_eq!(v("curl https://a.io/1.sh | bash; curl https://a.io/2.sh | bash"), None, "多个下载源");
+    assert_eq!(v("npm install"), None);
+}
