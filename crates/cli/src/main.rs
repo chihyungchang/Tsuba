@@ -498,6 +498,15 @@ fn print_behavior(s: &Style, b: &tsuba_engine::sandbox::Behavior, title: &str) {
             eprintln!("   • {f}");
         }
     }
+    if !b.denied.is_empty() {
+        eprintln!("  {}被沙箱挡下的操作：{}", s.bold, s.rst);
+        for d in b.denied.iter().take(12) {
+            eprintln!("   • {} {}{}{} {}", d.process, s.dim, d.operation, s.rst, d.target);
+        }
+        if b.denied.len() > 12 {
+            eprintln!("   {}…还有 {} 条{}", s.dim, b.denied.len() - 12, s.rst);
+        }
+    }
     let findings = tsuba_engine::sandbox::findings(b);
     print_report(
         &Report { verdict: tsuba_engine::rules::offline_verdict(&findings), summary: "以下是沙箱里观察到的行为（没看到坏行为不代表一定安全）".into(), reasons: vec![], advice: String::new(), source: "sandbox".into(), model: String::new(), findings },

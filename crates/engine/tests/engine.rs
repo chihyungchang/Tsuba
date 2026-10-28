@@ -478,7 +478,48 @@ fn sandbox_redirects_home_and_isolates() {
     assert!(b.output.contains("TSUBA-DECOY-SSH"), "诱饵文件应存在: {}", b.output);
     // 真实家目录在规则里被锁死
     let p = tsuba_engine::sandbox::_profile_for_test();
-    assert!(p.contains("(deny file* (subpath") && p.contains("(deny network*)"), "{p}");
+    assert!(p.contains("(deny file* (subpath") && p.contains("(deny network* "), "{p}");
+}
+
+/// 最小权限：沙箱外哪里都写不了、外接硬盘看不到、让系统替它干活的工具运行不了、
+/// 沙箱外的进程碰不到。全是无害动作：写一个测试自己建的临时目录、列目录、查自己的父进程。
+#[test]
+fn sandbox_enforces_least_privilege() {
+    if !sandbox_ready() {
+        return;
+    }
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("planted");
+    let script = format!(
+        "touch '{t}' && echo WROTE-OUTSIDE; ls /Volumes/ >/dev/null 2>&1 && echo LISTED-VOLUMES; \
+         /usr/bin/pbpaste >/dev/null 2>&1 && echo READ-CLIPBOARD; /usr/bin/osascript -e 'return 1' >/dev/null 2>&1 && echo RAN-OSASCRIPT; \
+         kill -0 {parent} 2>/dev/null && echo SIGNALED-HOST; dscacheutil -q host -a name example.com | grep -q ip_address && echo RESOLVED-DNS; \
+         echo ok > ./inside && echo WROTE-INSIDE",
+        t = target.display(),
+        parent = std::process::id()
+    );
+    let b = sandbox::run_script(&script, "/bin/bash", Duration::from_secs(20)).unwrap();
+    for leak in ["WROTE-OUTSIDE", "LISTED-VOLUMES", "READ-CLIPBOARD", "RAN-OSASCRIPT", "SIGNALED-HOST", "RESOLVED-DNS"] {
+        assert!(!b.output.contains(leak), "沙箱没挡住 {leak}：{}", b.output);
+    }
+    assert!(!target.exists(), "沙箱外不应出现文件");
+    assert!(b.output.contains("WROTE-INSIDE"), "工作目录要能写：{}", b.output);
+}
+
+/// 被沙箱拦下的越权写入会从系统日志里收集回来，成为证据。
+#[test]
+fn sandbox_collects_denied_operations() {
+    if !sandbox_ready() {
+        return;
+    }
+    let outside = tempfile::tempdir().unwrap();
+    let target = std::fs::canonicalize(outside.path()).unwrap().join("planted");
+    let b = sandbox::run_script(&format!("touch '{}'; echo done", target.display()), "/bin/bash", Duration::from_secs(20)).unwrap();
+    assert!(
+        b.denied.iter().any(|d| d.operation.starts_with("file-write") && d.target == target.to_string_lossy()),
+        "应从系统日志收集到被拦下的写入：{:?}",
+        b.denied
+    );
 }
 
 #[test]
@@ -519,6 +560,37 @@ fn sandbox_findings_classify_behavior() {
     assert!(msgs.contains("开机自启"), "应判定为持久化: {msgs}");
     assert!(msgs.contains("隐藏目录"), "应判定为落地痕迹: {msgs}");
     assert!(msgs.contains("IP 地址"), "连裸 IP 应记录: {msgs}");
+
+    // 被拦下的越权操作：恶意信号定高危，正常安装也会做的事只当证据
+    use tsuba_engine::sandbox::Denied;
+    let denied = |process: &str, operation: &str, target: &str| Denied { process: process.into(), operation: operation.into(), target: target.into() };
+    let b = Behavior {
+        denied: vec![
+            denied("node", "file-write-create", "/Users/a/Library/LaunchAgents/com.x.plist"),
+            denied("node", "file-read-data", "/Users/a/.ssh/id_ed25519"),
+            denied("bash", "process-exec*", "/usr/bin/security"),
+            denied("node", "network-outbound", "remote:*:1224"),
+        ],
+        ..Default::default()
+    };
+    let f = sandbox::findings(&b);
+    let high = f.iter().filter(|x| x.severity == rules::Severity::High).count();
+    assert_eq!(high, 3, "写开机自启、读真实私钥、读钥匙串都是高危：{:?}", f.iter().map(|x| &x.message).collect::<Vec<_>>());
+    assert!(messages(&f).contains("端口 1224"));
+
+    let benign = Behavior {
+        denied: vec![
+            denied("bash", "file-write-create", "/usr/local/bin/tool"),
+            denied("bash", "process-exec*", "/usr/bin/open"),
+            denied("node", "network-outbound", "remote:*:443"),
+            denied("ssh", "file-read-data", "/Users/a/.ssh/known_hosts"),
+            denied("node", "file-read-data", "/Users/a/.gitconfig"),
+        ],
+        ..Default::default()
+    };
+    let f = sandbox::findings(&benign);
+    assert!(f.iter().all(|x| x.severity == rules::Severity::Low), "正常安装的动作只能是低风险证据：{:?}", f.iter().map(|x| &x.message).collect::<Vec<_>>());
+    assert_eq!(rules::offline_verdict(&f), Verdict::Allow, "只有低风险证据时不应提醒");
 }
 
 #[test]
