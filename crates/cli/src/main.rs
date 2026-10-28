@@ -12,6 +12,9 @@
 //! tsuba ai [--all] [--json]                           检查本机 AI 工具的 MCP server、skill 和插件 hooks
 //! tsuba sandbox <脚本文件 | 项目目录> [--install]       把脚本或项目放进沙箱试运行，看它实际做了什么（不联真实外网）；
 //!                                                     --install 试装项目依赖，看安装脚本做了什么（只放行 npm 官方源）
+//! tsuba mcp                                           只读 MCP 工具，让 Claude Code 等查询检查记录（claude mcp add tsuba -- tsuba mcp）
+
+mod mcp;
 
 use serde_json::{Value, json};
 use std::io::{BufRead, BufReader, Write};
@@ -739,6 +742,31 @@ fn cmd_rules(args: &[String]) -> i32 {
     }
 }
 
+/// MCP 的 stdio 传输：一行一条 JSON-RPC 消息。标准输出只能写协议消息，其他提示都走标准错误。
+fn cmd_mcp() -> i32 {
+    let history = |n: usize| tsuba_engine::store::read_log(n);
+    let quarantine = tsuba_engine::quarantine::list;
+    let src = mcp::Sources { history: &history, quarantine: &quarantine };
+    let stdout = std::io::stdout();
+    for line in std::io::stdin().lock().lines() {
+        let Ok(line) = line else { break };
+        if line.trim().is_empty() {
+            continue;
+        }
+        let reply = match serde_json::from_str::<Value>(&line) {
+            Ok(req) => mcp::handle(&req, &src),
+            Err(_) => Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "不是合法的 JSON" } })),
+        };
+        if let Some(reply) = reply {
+            let mut out = stdout.lock();
+            if writeln!(out, "{reply}").and_then(|_| out.flush()).is_err() {
+                break;
+            }
+        }
+    }
+    0
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match args.first().map(String::as_str) {
@@ -751,12 +779,13 @@ fn main() {
         Some("intel") => cmd_intel(&args[1..]),
         Some("ai") => cmd_ai(&args[1..]),
         Some("sandbox") => cmd_sandbox(&args[1..]),
+        Some("mcp") => cmd_mcp(),
         Some("--version" | "version") => {
             println!("tsuba {}", env!("CARGO_PKG_VERSION"));
             0
         }
         _ => {
-            eprintln!("用法：tsuba check -- <命令> | tsuba scan <路径> | tsuba doctor");
+            eprintln!("用法：tsuba check -- <命令> | tsuba scan <路径> | tsuba doctor | tsuba mcp（给 Claude Code 等用的只读 MCP 工具）");
             2
         }
     };
