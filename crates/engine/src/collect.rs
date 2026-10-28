@@ -1,4 +1,4 @@
-//! 针对每个识别出的危险动作，收集判断所需的上下文和离线规则命中。
+//! For each risky action detected, gathers the context needed to judge it plus the offline rule matches.
 
 use crate::detect::{Kind, Target};
 use crate::rules::{self, Finding, Severity};
@@ -17,8 +17,15 @@ const SRC_EXT: &[&str] = &["js", "cjs", "mjs", "ts", "jsx", "tsx", "sh", "py", "
 const MAX_FILES: usize = 800;
 const MAX_FILE_BYTES: usize = 2_000_000;
 
-
 const RELEASE_COOLDOWN: &str = "release_cooldown";
+
+/// Whether npm_package_info found no such package on npm.
+// TODO(net.rs): net.rs only reports this as error text; compare a structural field once it has one, so the check
+// survives that text being translated.
+pub fn is_missing_on_npm(info: &Map<String, Value>) -> bool {
+    info.get("error").and_then(|v| v.as_str()) == Some("npm 上不存在这个包")
+}
+
 fn git(root: &Path, args: &[&str]) -> String {
     Command::new("git")
         .arg("-C")
@@ -55,8 +62,8 @@ pub fn project_fingerprint(root: &Path) -> String {
 
 static FOLDER_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""runOn"\s*:\s*"folderOpen""#).unwrap());
 
-/// 编辑器配置里的自动执行入口：VS Code 打开文件夹时就会运行的任务。
-/// 假面试项目会让人“用 VS Code 打开看看”，不需要敲任何命令就能执行。
+/// Auto-run entry points in editor configs: tasks VS Code runs as soon as the folder is opened.
+/// Fake interview projects ask you to "just open it in VS Code", which runs code without typing any command.
 pub fn editor_config_findings(root: &Path, ctx: &mut Map<String, Value>) -> Vec<Finding> {
     let mut findings = Vec::new();
     let tasks = root.join(".vscode/tasks.json");
@@ -64,7 +71,7 @@ pub fn editor_config_findings(root: &Path, ctx: &mut Map<String, Value>) -> Vec<
         let text = read_limited(&tasks, 300_000);
         if FOLDER_OPEN.is_match(&text) {
             findings.push(
-                Finding::new(Severity::Medium, "VS Code 打开这个文件夹时会自动执行任务（runOn: folderOpen），不需要你敲任何命令", ".vscode/tasks.json")
+                Finding::new(Severity::Medium, tr!("VS Code runs a task automatically when this folder is opened (runOn: folderOpen), without you typing any command"), ".vscode/tasks.json")
                     .with_snippet(rules::snippet(&text, 0, text.len().min(300), 0)),
             );
         }
@@ -98,7 +105,7 @@ pub fn project_context(root: &Path, entry: Option<&str>) -> (Value, Vec<Finding>
     }
     if !lifecycle.is_empty() {
         let s = serde_json::to_string(&lifecycle).unwrap_or_default();
-        findings.push(Finding::new(Severity::Low, "项目带有安装/启动前自动执行的脚本", "package.json").with_snippet(s.chars().take(300).collect::<String>()));
+        findings.push(Finding::new(Severity::Low, tr!("The project has scripts that run automatically on install or before start"), "package.json").with_snippet(s.chars().take(300).collect::<String>()));
         for (k, v) in &lifecycle {
             findings.extend(rules::scan_text(v.as_str().unwrap_or(""), &format!("package.json scripts.{k}")));
         }
@@ -133,7 +140,7 @@ pub fn project_context(root: &Path, entry: Option<&str>) -> (Value, Vec<Finding>
     }
     ctx.insert("files_scanned".into(), json!(files.len()));
 
-    // 入口文件内容给模型看（比如 npm start 实际运行的 server.js）
+    // Show the model the entry file (for example the server.js that npm start actually runs)
     if let Some(entry) = entry {
         let ep = if Path::new(entry).is_absolute() { PathBuf::from(entry) } else { root.join(entry) };
         if ep.is_file() {
@@ -155,7 +162,7 @@ pub fn project_context(root: &Path, entry: Option<&str>) -> (Value, Vec<Finding>
     deps.truncate(80);
     ctx.insert("dependencies".into(), json!(deps));
 
-    // lockfile 里的间接依赖：大部分投毒藏在这里，package.json 里看不到
+    // Indirect dependencies in the lockfile: most poisoning hides here, out of sight in package.json
     let locked = lockfile_packages(root);
     if !locked.is_empty() {
         ctx.insert("locked_packages".into(), json!(locked.len()));
@@ -165,19 +172,19 @@ pub fn project_context(root: &Path, entry: Option<&str>) -> (Value, Vec<Finding>
     (Value::Object(ctx), findings)
 }
 
-/// 读 lockfile 里锁定的全部包（含间接依赖）：package-lock.json、yarn.lock、pnpm-lock.yaml。
+/// Reads every package locked in the lockfile (indirect dependencies included): package-lock.json, yarn.lock, pnpm-lock.yaml.
 pub fn lockfile_packages(root: &Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let lock: Value = serde_json::from_str(&read_limited(&root.join("package-lock.json"), 50_000_000)).unwrap_or(Value::Null);
     if let Some(pkgs) = lock["packages"].as_object() {
-        // v2 / v3：键是 node_modules/a/node_modules/@scope/b
+        // v2 / v3: keys look like node_modules/a/node_modules/@scope/b
         for (k, v) in pkgs {
             if let (Some(i), Some(ver)) = (k.rfind("node_modules/"), v["version"].as_str()) {
                 out.push((k[i + "node_modules/".len()..].to_string(), ver.to_string()));
             }
         }
     } else if lock["dependencies"].is_object() {
-        // v1：嵌套的 dependencies
+        // v1: nested dependencies
         fn walk(deps: &Value, out: &mut Vec<(String, String)>) {
             for (name, d) in deps.as_object().into_iter().flatten() {
                 if let Some(v) = d["version"].as_str() {
@@ -188,7 +195,7 @@ pub fn lockfile_packages(root: &Path) -> Vec<(String, String)> {
         }
         walk(&lock["dependencies"], &mut out);
     }
-    // yarn.lock：`"name@^1.0.0", name@^1.2.0:` 下一行是 `  version "1.2.3"`
+    // yarn.lock: `"name@^1.0.0", name@^1.2.0:` followed by a line `  version "1.2.3"`
     let yarn = read_limited(&root.join("yarn.lock"), 50_000_000);
     let mut names: Vec<String> = Vec::new();
     for line in yarn.lines() {
@@ -205,7 +212,7 @@ pub fn lockfile_packages(root: &Path) -> Vec<(String, String)> {
             }
         }
     }
-    // pnpm-lock.yaml：packages 下的 `  /name@1.2.3:` 或 `  name@1.2.3:`
+    // pnpm-lock.yaml: `  /name@1.2.3:` or `  name@1.2.3:` under packages
     let pnpm = read_limited(&root.join("pnpm-lock.yaml"), 50_000_000);
     for c in PNPM_ENTRY.captures_iter(&pnpm) {
         out.push((c[1].to_string(), c[2].to_string()));
@@ -217,28 +224,32 @@ pub fn lockfile_packages(root: &Path) -> Vec<(String, String)> {
 
 static PNPM_ENTRY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^  '?/?(@?[^@\s'/][^@\s']*)@([0-9][^:('\s]*)'?(?:\([^)]*\))*:\s*$"#).unwrap());
 
-/// `requests==2.31.0`、`flask>=2`、`numpy` → (包名, 确切版本)
+/// `requests==2.31.0`, `flask>=2`, `numpy` → (name, exact version)
 fn split_pip(spec: &str) -> (String, Option<String>) {
     let name_end = spec.find(|c: char| "=<>!~[; ".contains(c)).unwrap_or(spec.len());
     let version = spec.split_once("==").map(|(_, v)| v.trim().to_string());
     (spec[..name_end].to_string(), version)
 }
 
-/// 包是否在恶意包名单里：先查本地的 OpenSSF 名单，online 时再在线查 OSV.dev（更新更快）。
+/// Whether packages are on a malicious package list: the local OpenSSF list first, then OSV.dev online (updated faster) when `online`.
 pub fn known_malicious(ecosystem: &str, items: &[(String, Option<String>)], online: bool, findings: &mut Vec<Finding>) {
     let mut flagged = std::collections::HashSet::new();
     for (name, ver) in items {
         if let Some(hit) = packages::lookup(ecosystem, name, ver.as_deref()) {
             let v = ver.as_deref().map(|v| format!("@{v}")).unwrap_or_default();
-            let summary = if hit.summary.is_empty() { String::new() } else { format!("：{}", hit.summary) };
-            findings.push(Finding::new(Severity::High, format!("{name}{v} 在开源恶意包名单里（{}）{summary}", hit.id), name.as_str()).with_source(intel::OSSF));
+            let message = if hit.summary.is_empty() {
+                tr!("{package} is on the open-source malicious package list ({id})", package = format!("{name}{v}"), id = hit.id)
+            } else {
+                tr!("{package} is on the open-source malicious package list ({id}): {summary}", package = format!("{name}{v}"), id = hit.id, summary = hit.summary)
+            };
+            findings.push(Finding::new(Severity::High, message, name.as_str()).with_source(intel::OSSF));
             flagged.insert(name.clone());
         }
     }
     if online && !items.is_empty() {
         let rest: Vec<(String, Option<String>)> = items.iter().filter(|(n, _)| !flagged.contains(n)).take(2000).cloned().collect();
         for (name, ids) in packages::osv_query(ecosystem, &rest) {
-            findings.push(Finding::new(Severity::High, format!("{name} 被 OSV.dev 收录为恶意包（{}）", ids.join("、")), name.as_str()).with_source(intel::OSV));
+            findings.push(Finding::new(Severity::High, tr!("OSV.dev lists {name} as a malicious package ({ids})", name = name, ids = ids.join(", ")), name.as_str()).with_source(intel::OSV));
         }
     }
 }
@@ -284,22 +295,22 @@ fn check_packages(specs: &[String], online: bool, findings: &mut Vec<Finding>) -
     });
     for info in &infos {
         let name = info.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        if info.get("error").and_then(|v| v.as_str()) == Some("npm 上不存在这个包") {
-            findings.push(Finding::new(Severity::High, format!("{name} 在 npm 上不存在（可能是拼写错误或依赖混淆）"), name));
+        if is_missing_on_npm(info) {
+            findings.push(Finding::new(Severity::High, tr!("{name} doesn't exist on npm (possibly a typo or dependency confusion)", name = name), name));
             continue;
         }
         let num = |k: &str| info.get(k).and_then(|v| v.as_i64());
         if let Some(age) = num("created_days_ago").filter(|a| *a < 30) {
-            findings.push(Finding::new(Severity::Medium, format!("{name} 是 {age} 天前才创建的新包"), name));
+            findings.push(Finding::new(Severity::Medium, tr!("{name} is a new package, created only {age} days ago", name = name, age = age), name));
         } else if let Some(age) = num("version_published_days_ago").filter(|a| *a < 7) {
-            // 发布冷却期：被盗号的热门包通常几小时到几天内就会被发现并撤下
+            // Release cooldown: hijacked popular packages are usually caught and pulled within hours to days
             let ver = info.get("version").and_then(|v| v.as_str()).unwrap_or("");
-            findings.push(Finding::new(Severity::Medium, format!("{name}@{ver} 发布才 {age} 天，还在 7 天冷却期内（被盗号投毒的版本通常在这段时间内被发现）"), name).with_rule(RELEASE_COOLDOWN));
+            findings.push(Finding::new(Severity::Medium, tr!("{package} was published only {age} days ago and is still inside the 7-day cooldown (poisoned versions from hijacked accounts are usually caught in this window)", package = format!("{name}@{ver}"), age = age), name).with_rule(RELEASE_COOLDOWN));
         }
         if let Some(scripts) = info.get("install_scripts").and_then(|v| v.as_object()) {
             for (k, v) in scripts {
                 let v = v.as_str().unwrap_or("");
-                findings.push(Finding::new(Severity::Low, format!("{name} 安装时会自动执行 {k} 脚本"), name).with_snippet(v.chars().take(200).collect::<String>()));
+                findings.push(Finding::new(Severity::Low, tr!("{name} runs its {script} script automatically on install", name = name, script = k), name).with_snippet(v.chars().take(200).collect::<String>()));
                 findings.extend(rules::scan_text(v, &format!("{name} scripts.{k}")));
             }
         }
@@ -339,22 +350,22 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                     f.insert("well_known_host".into(), json!(known));
                     f.insert("domain_age_days".into(), json!(age));
                     if net::is_ip(&host) {
-                        findings.push(Finding::new(Severity::High, format!("脚本直接从 IP 地址 {host} 下载"), url.as_str()));
+                        findings.push(Finding::new(Severity::High, tr!("The script downloads straight from the IP address {host}", host = host), url.as_str()));
                     }
                     let ioc = intel::feeds::ioc("urls", url)
                         .or_else(|| intel::feeds::ioc(if net::is_ip(&host) { "ips" } else { "domains" }, &host))
                         .or_else(|| intel::feeds::ioc("domains", &net::registered_domain(&host)));
                     if let Some(family) = ioc {
-                        findings.push(Finding::new(Severity::High, format!("下载地址在 abuse.ch 恶意地址名单里（{family}）"), url.as_str()).with_source(intel::ABUSECH));
+                        findings.push(Finding::new(Severity::High, tr!("The download address is on the abuse.ch malicious address list ({family})", family = family), url.as_str()).with_source(intel::ABUSECH));
                     }
                     if let Some(age) = age.filter(|a| *a < 90) {
                         let sev = if age < 30 { Severity::High } else { Severity::Medium };
-                        findings.push(Finding::new(sev, format!("下载域名 {} 注册仅 {age} 天", net::registered_domain(&host)), url.as_str()));
+                        findings.push(Finding::new(sev, tr!("The download domain {domain} was registered only {age} days ago", domain = net::registered_domain(&host), age = age), url.as_str()));
                     }
                     if let Some(text) = f.get("text").and_then(|v| v.as_str()).map(String::from) {
                         findings.extend(rules::scan_text(&text, url));
                         findings.extend(intel::yara::scan(text.as_bytes(), url));
-                        // 再往下追一层：脚本里引用的其他脚本
+                        // Follow one level further: other scripts the script refers to
                         let nested_urls: Vec<String> = crate::detect::urls_in(&text).into_iter().filter(|u| u != url).take(3).collect();
                         let mut nested = Vec::new();
                         for nu in nested_urls {
@@ -371,12 +382,12 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                     fetched.push(Value::Object(f));
                 }
                 if fetched.is_empty() {
-                    findings.push(Finding::new(Severity::Medium, "命令会执行远程脚本，但无法确定脚本地址", cmd));
+                    findings.push(Finding::new(Severity::Medium, tr!("The command runs a remote script, but its address can't be determined"), cmd));
                 }
                 item.insert("fetched".into(), json!(fetched));
             }
             Kind::ObfuscatedExec => {
-                findings.push(Finding::new(Severity::High, "命令把一段 base64 解码后直接交给 shell 执行，你看不到它真正要做什么（ClickFix 类攻击的典型写法）", cmd));
+                findings.push(Finding::new(Severity::High, tr!("The command decodes a base64 blob and hands it straight to the shell, so you can't see what it really does (the classic ClickFix pattern)"), cmd));
             }
             Kind::PkgInstall => {
                 let pkgs = t.strs("packages");
@@ -385,17 +396,17 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                 } else if let Some(root) = find_project_root(cwd) {
                     let (ctx, fs) = project_context(&root, None);
                     findings.extend(fs);
-                    // 依赖里的“新包、不存在的包”是供应链投毒的高发点。
-                    // 这里只能看到 package.json 声明的名字，不知道锁定的版本，所以不套用发布冷却期
+                    // New and nonexistent packages among the dependencies are hot spots for supply-chain poisoning.
+                    // Only the names declared in package.json are known here, not the locked versions, so the release cooldown doesn't apply
                     let deps: Vec<String> = ctx["dependencies"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
                     let mut dep_findings = Vec::new();
                     if online {
                         let locked: Vec<(String, Option<String>)> = lockfile_packages(&root).into_iter().map(|(n, v)| (n, Some(v))).collect();
                         let mut online_findings = Vec::new();
                         for (name, ids) in packages::osv_query("npm", &locked[..locked.len().min(2000)]) {
-                            online_findings.push(Finding::new(Severity::High, format!("lockfile 里的 {name} 被 OSV.dev 收录为恶意包（{}）", ids.join("、")), name.as_str()).with_source(intel::OSV));
+                            online_findings.push(Finding::new(Severity::High, tr!("OSV.dev lists {name} from the lockfile as a malicious package ({ids})", name = name, ids = ids.join(", ")), name.as_str()).with_source(intel::OSV));
                         }
-                        // 本地名单已经报过的不重复报
+                        // Don't repeat what the local list already reported
                         online_findings.retain(|f| !findings.iter().any(|x| x.location == f.location && x.severity == Severity::High));
                         findings.extend(online_findings);
                     }
@@ -454,7 +465,7 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                 let cmd = t.strs("command");
                 let server = crate::agents::McpServer {
                     client: t.str("tool").to_string(),
-                    scope: "命令行添加".into(),
+                    scope: "added from the command line".into(),
                     name: t.str("name").to_string(),
                     command: cmd.first().cloned().unwrap_or_default(),
                     args: cmd.iter().skip(1).cloned().collect(),
@@ -472,11 +483,11 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                         findings.extend(fs);
                         scans.push(info);
                     } else if intel::feeds::vscode_malicious(&ext) {
-                        findings.push(Finding::new(Severity::High, format!("VS Code 官方已经把 {ext} 列为恶意扩展并下架"), ext.as_str()).with_source(intel::VSCODE));
+                        findings.push(Finding::new(Severity::High, tr!("Microsoft has listed {id} as a malicious VS Code extension and removed it from the Marketplace", id = ext), ext.as_str()).with_source(intel::VSCODE));
                         scans.push(json!({ "id": ext, "malicious": true }));
                     } else {
-                        // 商店里的扩展要装完才能看到代码；装好后扩展目录监控会马上检查
-                        scans.push(json!({ "id": ext, "note": "从扩展商店安装，安装完成后由扩展目录监控检查" }));
+                        // A Marketplace extension's code is only visible once installed; the extension folder watcher checks it right after
+                        scans.push(json!({ "id": ext, "note": "installed from the Marketplace; the extension folder watcher checks it once installed" }));
                     }
                 }
                 item.insert("extensions_info".into(), json!(scans));
@@ -491,14 +502,14 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                 item.insert("inspections".into(), json!(inspections));
             }
             Kind::Quarantine => {
-                findings.push(Finding::new(Severity::High, "手动删除隔离标记会让 macOS 跳过 Gatekeeper 检查；正规软件几乎不会要求你这么做", cmd));
+                findings.push(Finding::new(Severity::High, tr!("Removing the quarantine flag by hand makes macOS skip its Gatekeeper check; legitimate software almost never asks you to do this"), cmd));
             }
             Kind::Gatekeeper => {
-                findings.push(Finding::new(Severity::High, "关闭或绕过 Gatekeeper 会让系统放行任何未签名程序", cmd));
+                findings.push(Finding::new(Severity::High, tr!("Turning off or bypassing Gatekeeper lets any unsigned program run"), cmd));
             }
             Kind::Osascript => {
                 if ASKS_PASSWORD.is_match(cmd) {
-                    findings.push(Finding::new(Severity::Medium, "AppleScript 弹窗索要密码或管理员权限，常被用来骗取系统密码", cmd));
+                    findings.push(Finding::new(Severity::Medium, tr!("An AppleScript dialog asks for a password or administrator privileges, a common trick to steal the system password"), cmd));
                 }
             }
         }

@@ -1,18 +1,19 @@
-//! 样本集验收（PRD 第 4 节）：在一批已知结果的样本上量检出率和误报率。
+//! Sample set evaluation (PRD section 4): measures detection and false positive rates on samples with known outcomes.
 //!
-//! 样本目录的结构：
-//!   <目录>/malicious/   恶意样本，每个文件或子目录算一个（项目、扩展、安装包、脚本）
-//!   <目录>/benign/      正常样本：热门包、热门扩展、真实用户的日常项目
+//! Sample directory layout:
+//!   <dir>/malicious/   malicious samples; each file or subdirectory is one (project, extension, installer, script)
+//!   <dir>/benign/      benign samples: popular packages, popular extensions, real users' everyday projects
 //!
-//! 只用离线规则和本机名单：结果可复现，不受网络和模型波动影响，也不把样本发出去。
-//! 按时间切分（较早样本调规则、较新样本验收）靠把两批样本放进不同的目录分别跑。
+//! Only offline rules and local lists are used: results are reproducible, unaffected by network or model variance, and no
+//! sample is sent anywhere. A time split (tune rules on older samples, evaluate on newer ones) is done by putting the two
+//! batches in different directories and running each.
 
 use crate::rules::{Finding, Verdict};
 use crate::store::Config;
 use serde::Serialize;
 use std::path::Path;
 
-/// PRD 第 4 节的验收线
+/// Acceptance thresholds from PRD section 4
 pub const MIN_DETECTION: f64 = 0.80;
 pub const MAX_BENIGN_BLOCK: f64 = 0.01;
 pub const MAX_BENIGN_WARN: f64 = 0.05;
@@ -22,7 +23,7 @@ pub struct SampleResult {
     pub name: String,
     pub malicious: bool,
     pub verdict: Verdict,
-    /// 最严重的那条证据，方便看漏报和误报的原因
+    /// The most severe finding, to see why a sample was missed or flagged
     pub top_finding: Option<Finding>,
 }
 
@@ -41,7 +42,7 @@ fn ratio(n: usize, d: usize) -> f64 {
 }
 
 impl Evaluation {
-    /// 判为“提醒”或“拦截”的恶意样本比例
+    /// Share of malicious samples judged Warn or Block
     pub fn detection_rate(&self) -> f64 {
         ratio(self.detected, self.malicious)
     }
@@ -51,7 +52,7 @@ impl Evaluation {
     pub fn benign_warn_rate(&self) -> f64 {
         ratio(self.benign_warned, self.benign)
     }
-    /// 达到验收线。没有样本的那一半不算达标，免得空目录“全部通过”。
+    /// Meets the thresholds. A half with no samples doesn't pass, so an empty directory can't "pass everything".
     pub fn passes(&self) -> bool {
         self.malicious > 0
             && self.benign > 0
@@ -75,7 +76,7 @@ fn samples_in(dir: &Path) -> Vec<std::path::PathBuf> {
     out
 }
 
-/// 跑一遍样本集。progress 收到正在检查的样本名。
+/// Runs the sample set. `progress` receives the name of the sample being checked.
 pub fn run(cfg: &Config, root: &Path, mut progress: impl FnMut(&str)) -> Evaluation {
     let cfg = cfg.offline_only();
     let mut ev = Evaluation::default();
@@ -83,7 +84,7 @@ pub fn run(cfg: &Config, root: &Path, mut progress: impl FnMut(&str)) -> Evaluat
         for p in samples_in(&root.join(sub)) {
             let name = format!("{sub}/{}", p.file_name().unwrap_or_default().to_string_lossy());
             progress(&name);
-            // 白名单不参与验收：直接走规则
+            // The allowlist plays no part in evaluation: go straight to the rules
             let (_, _, report) = crate::evaluate_path_untrusted(&cfg, &p);
             let verdict = report.verdict;
             if malicious {

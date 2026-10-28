@@ -1,4 +1,4 @@
-//! 本机存储：配置、检查记录、已放行的项目指纹。全部放在 ~/.tsuba，不上传。
+//! Local storage: config, check history and fingerprints of allowed projects. Everything lives in ~/.tsuba and is never uploaded.
 
 use crate::Report;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ pub fn load_json(name: &str) -> Value {
     std::fs::read_to_string(home().join(name)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null)
 }
 
-/// 先写临时文件再改名，避免 App 和终端同时写时读到半个文件。
+/// Writes a temporary file and renames it, so a reader never sees half a file when the App and the terminal write at once.
 pub fn save_json(name: &str, data: &Value) {
     let _ = write_private(name, serde_json::to_string_pretty(data).unwrap_or_default().as_bytes());
 }
@@ -36,18 +36,18 @@ fn write_private(name: &str, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::rename(tmp, dir.join(name))
 }
 
-/// 用哪个模型做 AI 判断。
+/// Which model does the AI review.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Provider {
-    /// 调用本机的 Claude Code（claude -p），用它登录的账号，不需要 API Key。适合个人使用
+    /// Calls the local Claude Code (claude -p) with the account it is signed in to; no API key needed. Suited to personal use
     #[default]
     ClaudeCli,
     /// Anthropic Claude API
     Claude,
-    /// 任何兼容 OpenAI Chat Completions 接口的服务：Ollama、LM Studio、llama.cpp、vLLM，以及各家云端模型
+    /// Any service compatible with the OpenAI Chat Completions API: Ollama, LM Studio, llama.cpp, vLLM, and cloud models
     OpenaiCompatible,
-    /// 只用离线规则
+    /// Offline rules only
     Offline,
 }
 
@@ -57,7 +57,7 @@ pub struct ClaudeConfig {
     pub api_key: String,
     pub model: String,
     pub effort: String,
-    /// claude 命令的位置，留空时自动查找
+    /// Location of the claude command; found automatically when empty
     pub cli_path: String,
 }
 
@@ -70,19 +70,19 @@ impl Default for ClaudeConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OpenAiCompatConfig {
-    /// 例如 Ollama 的 http://127.0.0.1:11434/v1
+    /// For example Ollama's http://127.0.0.1:11434/v1
     pub base_url: String,
     pub model: String,
-    /// 本地服务一般不需要
+    /// Local services usually don't need one
     pub api_key: String,
-    /// 界面上选的服务商：openai / gemini / deepseek / qwen / ollama / lmstudio / custom
+    /// Provider chosen in the UI: openai / gemini / deepseek / qwen / ollama / lmstudio / custom
     pub preset: String,
-    /// 是否当作前沿模型信任：信任的模型可以把离线规则的“拦截”降为“提醒”，也可以独立给出“拦截”
+    /// Whether to trust it like a frontier model: a trusted model can lower an offline Block to Warn, and can Block on its own
     pub trusted: bool,
 }
 
 impl OpenAiCompatConfig {
-    /// 本地模型推理慢、上下文短，要用更短的证据和更长的超时。
+    /// Local models are slow and have short contexts, so they get shorter evidence and a longer timeout.
     pub fn is_local(&self) -> bool {
         matches!(self.preset.as_str(), "ollama" | "lmstudio")
             || self.base_url.contains("://127.0.0.1")
@@ -105,15 +105,15 @@ impl Default for OpenAiCompatConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct IntelConfig {
-    /// 每天自动更新威胁情报
+    /// Update threat intel automatically every day
     pub auto_update: bool,
-    /// abuse.ch 的免费 Auth-Key，不填就不用 ThreatFox / URLhaus
+    /// Free abuse.ch Auth-Key; without it ThreatFox / URLhaus aren't used
     pub abusech_key: String,
-    /// 检查 npm / PyPI 包时在线查 OSV.dev
+    /// Query OSV.dev online when checking npm / PyPI packages
     pub online_lookup: bool,
-    /// Tsuba 规则包的下载地址（目录，下面有 tsuba.yar 和 tsuba.toml）。留空只用内置规则
+    /// Download location of the Tsuba rule pack (a directory holding tsuba.yar and tsuba.toml). Empty uses only the built-in rules
     pub rules_url: String,
-    /// VirusTotal API Key（用户自己的）。只查文件哈希，不上传文件
+    /// The user's own VirusTotal API key. Only file hashes are looked up; files are never uploaded
     pub virustotal_key: String,
 }
 
@@ -123,12 +123,12 @@ impl Default for IntelConfig {
     }
 }
 
-/// 计划扫描：定期用最新的规则把下载目录、代码目录重扫一遍。
+/// Scheduled scan: periodically rescans Downloads and code folders with the latest rules.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScanConfig {
     pub scheduled: bool,
-    /// 要扫的文件夹，支持 ~/ 开头
+    /// Folders to scan; may start with ~/
     pub folders: Vec<String>,
     pub interval_days: u32,
 }
@@ -147,9 +147,9 @@ pub struct Config {
     pub openai_compatible: OpenAiCompatConfig,
     pub watch_downloads: bool,
     pub watch_extensions: bool,
-    /// 扩展被判为“拦截”时自动移入隔离区
+    /// Move an extension to quarantine automatically when it is judged Block
     pub auto_quarantine: bool,
-    /// 监控 AI 编程工具新增的 MCP server、skill 和插件 hooks
+    /// Watch AI coding tools for new MCP servers, skills and plugin hooks
     pub watch_ai_tools: bool,
     pub intel: IntelConfig,
     pub scan: ScanConfig,
@@ -183,8 +183,8 @@ impl Config {
         c
     }
 
-    /// 只用本机规则和名单的配置：不联网、不调模型，不到一秒出结论。
-    /// 后台批量检查和“先给离线结论、再补 AI 判断”的第一段都用它。
+    /// A config that uses only local rules and lists: no network, no model, a verdict in under a second.
+    /// Background batch checks and the first step of "offline verdict first, AI review after" use it.
     pub fn offline_only(&self) -> Config {
         let mut c = Config { provider: Provider::Offline, ..self.clone() };
         c.intel.online_lookup = false;
@@ -192,13 +192,14 @@ impl Config {
         c
     }
 
-    /// 配置文件里有 API Key，权限设成只有自己能读。
+    /// The config file holds API keys, so only the owner may read it.
     pub fn save(&self) -> std::io::Result<()> {
         write_private("config.json", serde_json::to_string_pretty(self).unwrap_or_default().as_bytes())
     }
 }
 
-/// 检查记录的一条。
+/// One entry in the check history. Persisted in history.jsonl: older entries hold text in the language they were written in
+/// (Chinese before English was added), so text fields are shown as stored, never matched on.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogEntry {
     pub id: String,
@@ -209,7 +210,7 @@ pub struct LogEntry {
     #[serde(default)]
     pub cwd: String,
     pub report: Report,
-    /// 用户或程序最后做了什么：executed / cancelled / quarantined / notified
+    /// What the user or the program did last: executed / cancelled / quarantined / notified
     #[serde(default)]
     pub action: String,
     #[serde(default)]
@@ -239,7 +240,7 @@ pub fn append_log(entry: &LogEntry) {
     }
 }
 
-/// 最近的记录，新的在前。同一个 id 写过多次时（先出离线结论、再补上 AI 结论）只保留最后一次。
+/// Recent entries, newest first. An id written several times (offline verdict first, AI verdict later) keeps only the last one.
 pub fn read_log(limit: usize) -> Vec<LogEntry> {
     let text = std::fs::read_to_string(home().join("history.jsonl")).unwrap_or_default();
     let mut seen = std::collections::HashSet::new();

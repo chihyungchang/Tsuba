@@ -1,8 +1,9 @@
-//! 主动扫描一个文件夹：下载目录、外接硬盘、代码目录。
+//! Scans a folder on demand: Downloads, external drives, code folders.
 //!
-//! 不是全盘杀毒：只挑陌生代码会藏身的东西——安装包、脚本、扩展、AI 工具的 skill、带自动执行入口的项目，
-//! 照片视频这类文件直接跳过。批量扫描只用本机的离线规则和名单（不联网、不调模型），
-//! 可疑的再由用户单独做一次带 AI 的检查。扫过且没变的不重复扫。
+//! Not a full antivirus sweep: it only picks the places unfamiliar code hides in (installers, scripts, extensions, AI tool
+//! skills, projects with auto-run entry points) and skips photos, videos and the like. Batch scans use only the local offline
+//! rules and lists (no network, no model); the user can then run a full check with AI on anything suspicious. Items already
+//! scanned and unchanged aren't scanned again.
 
 use crate::rules::{Finding, Verdict};
 use crate::store::{self, Config};
@@ -11,12 +12,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, json};
 use std::path::{Path, PathBuf};
 
-/// 单个文件按扩展名挑：安装包、扩展包、脚本。
+/// Single files are picked by extension: installers, extension packages, scripts.
 const FILE_EXT: &[&str] = &[
     "dmg", "pkg", "mpkg", "vsix", "sh", "bash", "zsh", "command", "tool", "py", "js", "mjs", "cjs", "ts", "scpt", "applescript",
 ];
 
-/// 这些目录不往里走：依赖、版本库、系统和照片库，里面不是用户拿到的“陌生代码”入口。
+/// Directories not entered: dependencies, version control, system and photo libraries are not where unfamiliar code reaches the user.
 const SKIP_DIRS: &[&str] = &[
     "node_modules", ".git", ".hg", ".svn", ".Trash", ".cache", ".npm", ".pnpm-store", ".cargo", ".rustup", "target", "dist", "build",
     "__pycache__", ".venv", "venv", "Library", ".Spotlight-V100", ".fseventsd", ".DocumentRevisions-V100", ".TemporaryItems",
@@ -33,7 +34,7 @@ pub struct ScanHit {
     pub verdict: Verdict,
     pub summary: String,
     pub findings: Vec<Finding>,
-    /// 这次扫描是新检查的（false 表示内容没变，沿用上次的结果）
+    /// Checked fresh in this scan (false means unchanged, reusing the previous result)
     #[serde(default)]
     pub fresh: bool,
 }
@@ -43,13 +44,13 @@ pub struct FolderScan {
     pub root: String,
     pub checked: usize,
     pub unchanged: usize,
-    /// 需要注意和建议拦截的，严重的在前
+    /// Items to look at or block, most severe first
     pub hits: Vec<ScanHit>,
-    /// 东西太多没扫完时为 true
+    /// True when there was too much to scan everything
     pub truncated: bool,
 }
 
-/// 一个目录是不是值得作为整体检查的项目：有包清单、编辑器自动执行配置或 AI 工具配置。
+/// Whether a directory is a project worth checking as a whole: it has a package manifest, an editor auto-run config or an AI tool config.
 fn is_project(dir: &Path) -> bool {
     ["package.json", ".vscode/tasks.json", ".mcp.json", ".claude/settings.json", "CLAUDE.md"].iter().any(|f| dir.join(f).is_file())
 }
@@ -59,7 +60,7 @@ fn is_candidate_file(p: &Path) -> bool {
     FILE_EXT.contains(&ext.as_str())
 }
 
-/// 找出要检查的东西：项目、扩展、.app 作为整体，不再往里走；其他目录继续往下找单个文件。
+/// Finds what to check: projects, extensions and .app bundles as a whole, without going inside; other directories are searched for single files.
 pub fn candidates(root: &Path) -> (Vec<PathBuf>, bool) {
     let mut out = Vec::new();
     if root.is_file() {
@@ -67,7 +68,7 @@ pub fn candidates(root: &Path) -> (Vec<PathBuf>, bool) {
     }
     let mut stack = vec![(root.to_path_buf(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
-        // skill 要整体检查：它的 SKILL.md 不在单个文件的扩展名名单里，往下走就会被整个跳过
+        // A skill is checked as a whole: SKILL.md isn't on the single-file extension list, so walking into it would skip it entirely
         let is_skill = dir.join("SKILL.md").is_file();
         let is_unit = extension::looks_like_extension(&dir) || is_skill || is_project(&dir) || crate::macos::looks_like_volume(&dir) || dir.extension().is_some_and(|e| e == "app");
         if dir != root && is_unit {
@@ -99,7 +100,7 @@ pub fn candidates(root: &Path) -> (Vec<PathBuf>, bool) {
     (out, false)
 }
 
-/// 便宜的“变没变”标记：只看文件大小和修改时间，不读内容。目录取里面最新的修改时间和文件数。
+/// A cheap "has it changed" stamp: file size and modification time only, without reading contents. For directories, the newest modification time and the file count.
 fn quick_stamp(p: &Path) -> String {
     let mtime = |m: &std::fs::Metadata| m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
     let Ok(meta) = p.metadata() else { return String::new() };
@@ -111,14 +112,15 @@ fn quick_stamp(p: &Path) -> String {
     format!("{}:{newest}:{}", files.len(), mtime(&meta))
 }
 
-/// 规则或情报更新后，老文件要用新规则重扫一遍（PRD 7.6：把规则更新后才认出来的老文件找出来）。
+/// After a rule or intel update, old files are rescanned with the new rules (PRD 7.6: catch old files only the updated rules recognize).
+/// The language is part of it too, because cached results hold finding messages in the language they were scanned in.
 fn rules_version() -> String {
-    format!("{}|{}", env!("CARGO_PKG_VERSION"), intel::Manifest::load().updated)
+    format!("{}|{}|{}", env!("CARGO_PKG_VERSION"), intel::Manifest::load().updated, crate::i18n::lang().code())
 }
 
-/// 扫描一个文件夹（或单个文件）。progress 收到当前正在看的路径。
+/// Scans a folder (or a single file). `progress` receives the path being looked at.
 pub fn scan_folder(cfg: &Config, root: &Path, mut progress: impl FnMut(&str)) -> FolderScan {
-    // 批量扫描只用本机数据：不联网、不调模型
+    // Batch scans use local data only: no network, no model
     let cfg = cfg.offline_only();
     let version = rules_version();
     let mut cache = store::load_json("scan_cache.json");
@@ -139,7 +141,7 @@ pub fn scan_folder(cfg: &Config, root: &Path, mut progress: impl FnMut(&str)) ->
             progress(&key);
             result.checked += 1;
             let (kind, _, report) = crate::evaluate_path(&cfg, &p);
-            // 离线结论的摘要只是“未启用 AI”，列表里换成最严重的那条证据
+            // An offline report's summary only says AI review is off, so the list shows the most severe finding instead
             let summary = report.findings.iter().max_by_key(|f| f.severity).map(|f| f.message.clone()).unwrap_or(report.summary);
             ScanHit { path: key.clone(), kind: kind.into(), verdict: report.verdict, summary, findings: report.findings, fresh: true }
         };
@@ -148,7 +150,7 @@ pub fn scan_folder(cfg: &Config, root: &Path, mut progress: impl FnMut(&str)) ->
             result.hits.push(hit);
         }
     }
-    // 只保留这次还在的条目，其他文件夹的缓存原样留着
+    // Keep only the entries still present; cache entries for other folders stay as they are
     if let Some(old) = cache["items"].as_object_mut() {
         let prefix = format!("{}/", root.display());
         old.retain(|k, _| !k.starts_with(&prefix) && k != &result.root);
@@ -159,7 +161,7 @@ pub fn scan_folder(cfg: &Config, root: &Path, mut progress: impl FnMut(&str)) ->
     result
 }
 
-/// 计划扫描是否到期。
+/// Whether the scheduled scan is due.
 pub fn schedule_due(interval_days: u32) -> bool {
     let last = store::load_json("scan_schedule.json")["last"].as_str().map(String::from).unwrap_or_default();
     let Ok(t) = chrono::NaiveDateTime::parse_from_str(&last, "%Y-%m-%dT%H:%M:%S") else { return true };
@@ -174,7 +176,7 @@ pub fn last_scheduled_run() -> Option<String> {
     store::load_json("scan_schedule.json")["last"].as_str().map(String::from)
 }
 
-/// 配置里的文件夹路径，支持 ~/ 开头。
+/// A folder path from the config; may start with ~/.
 pub fn expand(p: &str) -> PathBuf {
     match p.strip_prefix("~/") {
         Some(rest) => crate::home_dir().join(rest),
