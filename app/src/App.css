@@ -1152,7 +1152,15 @@ button.footbar-settings:hover:not(:disabled) {
 
 /* ---------- Overview (dashboard) ---------- */
 
-/* Pages stay mounted inside a .page-host; the dashboard's host is the column that pushes the log to the bottom */
+/*
+  Pages stay mounted inside a .page-host and are switched with the hidden attribute. Any author display rule beats the
+  browser's [hidden] style, which once stacked every mounted page under the dashboard, so hidden always wins here.
+*/
+[hidden] {
+  display: none !important;
+}
+
+/* The dashboard's host is the column that pushes the log to the bottom */
 .content-overview > .page-host {
   min-height: 100%;
   display: flex;
