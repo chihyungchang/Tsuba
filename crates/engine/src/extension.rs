@@ -58,7 +58,7 @@ pub fn scan_extension(dir: &Path) -> (Value, Vec<Finding>) {
     info.insert("engines".into(), pkg["engines"].clone());
 
     if crate::intel::feeds::vscode_malicious(&id) {
-        findings.push(Finding::new(Severity::High, format!("VS Code 官方已经把 {id} 列为恶意扩展并下架"), &id));
+        findings.push(Finding::new(Severity::High, format!("VS Code 官方已经把 {id} 列为恶意扩展并下架"), &id).with_source(crate::intel::VSCODE));
     }
     let events: Vec<&str> = pkg["activationEvents"].as_array().map(|a| a.iter().filter_map(|v| v.as_str()).collect()).unwrap_or_default();
     if events.contains(&"*") {

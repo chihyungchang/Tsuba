@@ -170,7 +170,7 @@ pub fn scan(text: &str, location: &str) -> Vec<Finding> {
         ranges.sort_by_key(|x| x.start);
         let hit = ranges.into_iter().find(|x| !(m.skip_quoted && quoted(text, x.start)) && !(m.skip_well_known && only_well_known(&text[x.clone()])));
         let Some(hit) = hit else { continue };
-        let mut f = Finding::new(m.severity, m.message.clone(), location).with_snippet(rules::snippet(text, hit.start, hit.end, 120));
+        let mut f = Finding::new(m.severity, m.message.clone(), location).with_snippet(rules::snippet(text, hit.start, hit.end, 120)).with_source(super::TSUBA);
         f.rule = r.identifier().to_string();
         out.push(f);
     }
@@ -182,8 +182,8 @@ pub fn update(url: &str) -> SourceStatus {
     let p = pack();
     let mut s = SourceStatus {
         id: "tsuba".into(),
-        name: "Tsuba 规则".into(),
-        license: "Apache-2.0".into(),
+        name: super::TSUBA.0.into(),
+        license: super::TSUBA.1.into(),
         url: url.into(),
         count: p.meta.len(),
         version: format!("{}（{}）", p.lists.version, p.origin),

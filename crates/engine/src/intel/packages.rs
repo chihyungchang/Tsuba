@@ -38,8 +38,8 @@ fn affected_versions(a: &Value) -> Option<Vec<String>> {
 pub fn update_ossf(old: Option<&SourceStatus>) -> SourceStatus {
     let mut s = SourceStatus {
         id: "ossf".into(),
-        name: "OpenSSF Malicious Packages".into(),
-        license: "Apache-2.0".into(),
+        name: super::OSSF.0.into(),
+        license: super::OSSF.1.into(),
         url: "https://github.com/ossf/malicious-packages".into(),
         ..Default::default()
     };

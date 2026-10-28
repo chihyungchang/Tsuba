@@ -479,6 +479,8 @@ fn tool_poisoning_samples_blocked() {
         let (kind, _, report) = tsuba_engine::evaluate_path_untrusted(&cfg, &fix(name));
         let msgs = messages(&report.findings);
         assert!(msgs.contains("工具投毒"), "{name} 应认出工具投毒：{msgs}");
+        let poisoning = report.findings.iter().find(|f| f.message.contains("工具投毒")).unwrap();
+        assert_eq!(poisoning.source, "Tsuba 规则 · Apache-2.0", "规则包的命中要写明来源和授权");
         assert!(msgs.contains("对用户隐瞒"), "{name} 应认出要求隐瞒：{msgs}");
         assert_eq!(report.verdict, Verdict::Block, "{name}");
         if name == "poisoned_skill" {

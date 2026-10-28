@@ -179,6 +179,7 @@ export function FindingList({ findings }: { findings: Finding[] }) {
           <div className="finding-body">
             <div className="finding-message">{f.message}</div>
             {f.where && <div className="finding-where">{f.where}</div>}
+            {f.source && <div className="finding-source">来源：{f.source}</div>}
             {f.snippet && <pre className="snippet">{f.snippet}</pre>}
           </div>
         </li>

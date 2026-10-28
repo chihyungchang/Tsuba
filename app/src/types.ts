@@ -9,6 +9,8 @@ export interface Finding {
   message: string;
   where?: string;
   snippet?: string;
+  /** 来自哪份情报、按什么授权（“OpenSSF Malicious Packages · Apache-2.0”） */
+  source?: string;
 }
 
 export interface Report {

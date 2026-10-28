@@ -229,14 +229,14 @@ pub fn known_malicious(ecosystem: &str, items: &[(String, Option<String>)], onli
         if let Some(hit) = packages::lookup(ecosystem, name, ver.as_deref()) {
             let v = ver.as_deref().map(|v| format!("@{v}")).unwrap_or_default();
             let summary = if hit.summary.is_empty() { String::new() } else { format!("：{}", hit.summary) };
-            findings.push(Finding::new(Severity::High, format!("{name}{v} 在开源恶意包名单里（{}，OpenSSF）{summary}", hit.id), name.as_str()));
+            findings.push(Finding::new(Severity::High, format!("{name}{v} 在开源恶意包名单里（{}）{summary}", hit.id), name.as_str()).with_source(intel::OSSF));
             flagged.insert(name.clone());
         }
     }
     if online && !items.is_empty() {
         let rest: Vec<(String, Option<String>)> = items.iter().filter(|(n, _)| !flagged.contains(n)).take(2000).cloned().collect();
         for (name, ids) in packages::osv_query(ecosystem, &rest) {
-            findings.push(Finding::new(Severity::High, format!("{name} 被 OSV.dev 收录为恶意包（{}）", ids.join("、")), name.as_str()));
+            findings.push(Finding::new(Severity::High, format!("{name} 被 OSV.dev 收录为恶意包（{}）", ids.join("、")), name.as_str()).with_source(intel::OSV));
         }
     }
 }
@@ -343,7 +343,7 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                         .or_else(|| intel::feeds::ioc(if net::is_ip(&host) { "ips" } else { "domains" }, &host))
                         .or_else(|| intel::feeds::ioc("domains", &net::registered_domain(&host)));
                     if let Some(family) = ioc {
-                        findings.push(Finding::new(Severity::High, format!("下载地址在 abuse.ch 恶意地址名单里（{family}）"), url.as_str()));
+                        findings.push(Finding::new(Severity::High, format!("下载地址在 abuse.ch 恶意地址名单里（{family}）"), url.as_str()).with_source(intel::ABUSECH));
                     }
                     if let Some(age) = age.filter(|a| *a < 90) {
                         let sev = if age < 30 { Severity::High } else { Severity::Medium };
@@ -391,7 +391,7 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                         let locked: Vec<(String, Option<String>)> = lockfile_packages(&root).into_iter().map(|(n, v)| (n, Some(v))).collect();
                         let mut online_findings = Vec::new();
                         for (name, ids) in packages::osv_query("npm", &locked[..locked.len().min(2000)]) {
-                            online_findings.push(Finding::new(Severity::High, format!("lockfile 里的 {name} 被 OSV.dev 收录为恶意包（{}）", ids.join("、")), name.as_str()));
+                            online_findings.push(Finding::new(Severity::High, format!("lockfile 里的 {name} 被 OSV.dev 收录为恶意包（{}）", ids.join("、")), name.as_str()).with_source(intel::OSV));
                         }
                         // 本地名单已经报过的不重复报
                         online_findings.retain(|f| !findings.iter().any(|x| x.location == f.location && x.severity == Severity::High));
@@ -470,7 +470,7 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                         findings.extend(fs);
                         scans.push(info);
                     } else if intel::feeds::vscode_malicious(&ext) {
-                        findings.push(Finding::new(Severity::High, format!("VS Code 官方已经把 {ext} 列为恶意扩展并下架"), ext.as_str()));
+                        findings.push(Finding::new(Severity::High, format!("VS Code 官方已经把 {ext} 列为恶意扩展并下架"), ext.as_str()).with_source(intel::VSCODE));
                         scans.push(json!({ "id": ext, "malicious": true }));
                     } else {
                         // 商店里的扩展要装完才能看到代码；装好后扩展目录监控会马上检查

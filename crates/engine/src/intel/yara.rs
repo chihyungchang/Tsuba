@@ -220,7 +220,11 @@ pub fn scan(data: &[u8], location: &str) -> Vec<Finding> {
                 Some(sev @ (Severity::Low | Severity::Medium)) => (sev, format!("{source_name}提示可疑写法 {}{detail}", r.identifier())),
                 _ => (Severity::High, format!("命中已知恶意软件特征 {}（{source_name}）{detail}", r.identifier())),
             };
-            Finding::new(sev, msg, location)
+            let finding = Finding::new(sev, msg, location);
+            match src {
+                Some(s) => finding.with_source((s.name, s.license)),
+                None => finding,
+            }
         })
         .collect()
 }

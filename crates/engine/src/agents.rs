@@ -169,7 +169,7 @@ pub fn scan_mcp_server(s: &McpServer, online: bool) -> Vec<Finding> {
     if !s.url.is_empty() {
         let host = net::host_of(&s.url);
         if let Some(family) = intel::feeds::ioc("domains", &host).or_else(|| intel::feeds::ioc("ips", &host)) {
-            findings.push(Finding::new(Severity::High, format!("MCP server 连接的地址在 abuse.ch 恶意地址名单里（{family}）"), &loc));
+            findings.push(Finding::new(Severity::High, format!("MCP server 连接的地址在 abuse.ch 恶意地址名单里（{family}）"), &loc).with_source(intel::ABUSECH));
         }
         if net::is_ip(&host) && !host.starts_with("127.") && !host.starts_with("10.") && !host.starts_with("192.168.") {
             findings.push(Finding::new(Severity::Medium, format!("MCP server 直接连接一个公网 IP（{host}），没有域名"), &loc));

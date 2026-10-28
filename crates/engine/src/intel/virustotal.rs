@@ -68,15 +68,15 @@ pub fn enrich(key: &str, evidence: &mut Value, findings: &mut Vec<Finding>) {
                 let name = a["meaningful_name"].as_str().unwrap_or(short);
                 let detail = if label.is_empty() { String::new() } else { format!("（{label}）") };
                 let f = match bad {
-                    b if b >= 3 => Finding::new(Severity::High, format!("VirusTotal：{b}/{total} 个杀毒引擎认为 {name} 是恶意的{detail}"), &link),
-                    b if b >= 1 || sus >= 3 => Finding::new(Severity::Medium, format!("VirusTotal：{b} 个引擎报毒、{sus} 个认为可疑（共 {total} 个）：{name}{detail}"), &link),
-                    _ => Finding::new(Severity::Low, format!("VirusTotal：{total} 个引擎都没有报毒（不代表一定安全，新样本常常查不出来）：{name}"), &link),
+                    b if b >= 3 => Finding::new(Severity::High, format!("VirusTotal：{b}/{total} 个杀毒引擎认为 {name} 是恶意的{detail}"), &link).with_source(super::VIRUSTOTAL),
+                    b if b >= 1 || sus >= 3 => Finding::new(Severity::Medium, format!("VirusTotal：{b} 个引擎报毒、{sus} 个认为可疑（共 {total} 个）：{name}{detail}"), &link).with_source(super::VIRUSTOTAL),
+                    _ => Finding::new(Severity::Low, format!("VirusTotal：{total} 个引擎都没有报毒（不代表一定安全，新样本常常查不出来）：{name}"), &link).with_source(super::VIRUSTOTAL),
                 };
                 findings.push(f);
                 results.push(json!({ "sha256": h, "stats": stats, "label": label, "name": name, "first_seen": a["first_submission_date"] }));
             }
             Lookup::Unknown => {
-                findings.push(Finding::new(Severity::Low, format!("VirusTotal 上没有人见过这个文件（{short}…），是新样本"), &link));
+                findings.push(Finding::new(Severity::Low, format!("VirusTotal 上没有人见过这个文件（{short}…），是新样本"), &link).with_source(super::VIRUSTOTAL));
                 results.push(json!({ "sha256": h, "unknown": true }));
             }
             Lookup::Stop(e) => {

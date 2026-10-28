@@ -28,6 +28,15 @@ pub fn dir() -> PathBuf {
     store::home().join("intel")
 }
 
+/// 情报来源的名字和授权。证据里写明“这条结论是谁给的、按什么条款用的”，更新状态里也用同一份。
+pub type Credit = (&'static str, &'static str);
+pub const OSSF: Credit = ("OpenSSF Malicious Packages", "Apache-2.0");
+pub const OSV: Credit = ("OSV.dev", "授权见各条目的原始来源");
+pub const VSCODE: Credit = ("VS Code 恶意扩展名单", "Microsoft");
+pub const ABUSECH: Credit = ("abuse.ch ThreatFox / URLhaus", "CC0");
+pub const VIRUSTOTAL: Credit = ("VirusTotal", "用你自己的 API Key，只查哈希");
+pub const TSUBA: Credit = ("Tsuba 规则", "Apache-2.0");
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SourceStatus {
     pub id: String,

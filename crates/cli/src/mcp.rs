@@ -139,7 +139,7 @@ fn explain(e: &LogEntry) -> Value {
         "judged_by": match r.source.as_str() { "ai" => format!("离线规则 + AI（{}）", r.model), "trusted" => "用户标记过安全".into(), _ => "离线规则".into() },
         "reasons": r.reasons.iter().map(|x| clean(x, 500)).collect::<Vec<_>>(),
         "advice": clean(&r.advice, 800),
-        "evidence": r.findings.iter().map(|f| json!({ "severity": f.severity, "message": clean(&f.message, 500), "where": clean(&f.location, 300) })).collect::<Vec<_>>(),
+        "evidence": r.findings.iter().map(|f| json!({ "severity": f.severity, "message": clean(&f.message, 500), "where": clean(&f.location, 300), "source": f.source })).collect::<Vec<_>>(),
     })
 }
 

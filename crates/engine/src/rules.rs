@@ -44,11 +44,20 @@ pub struct Finding {
     pub location: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub snippet: String,
+    /// 结论来自哪份情报、按什么授权使用（“OpenSSF Malicious Packages · Apache-2.0”），本地规则的结构性判断没有
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source: String,
 }
 
 impl Finding {
     pub fn new(severity: Severity, message: impl Into<String>, location: impl Into<String>) -> Self {
-        Finding { severity, message: message.into(), rule: String::new(), location: location.into(), snippet: String::new() }
+        Finding { severity, message: message.into(), rule: String::new(), location: location.into(), snippet: String::new(), source: String::new() }
+    }
+
+    /// 写明这条证据来自哪份情报
+    pub fn with_source(mut self, (name, license): crate::intel::Credit) -> Self {
+        self.source = format!("{name} · {license}");
+        self
     }
 
     pub fn with_snippet(mut self, snippet: impl Into<String>) -> Self {

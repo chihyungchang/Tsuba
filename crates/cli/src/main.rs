@@ -49,7 +49,10 @@ fn print_findings(s: &Style, findings: &[Finding]) {
     eprintln!("  {}证据：{}", s.dim, s.rst);
     for f in shown {
         let mark = if f.severity == Severity::High { format!("{}高", s.red) } else { format!("{}中", s.yel) };
-        let loc = if f.location.is_empty() { String::new() } else { format!(" {}[{}]{}", s.dim, f.location, s.rst) };
+        let mut loc = if f.location.is_empty() { String::new() } else { format!(" {}[{}]{}", s.dim, f.location, s.rst) };
+        if !f.source.is_empty() {
+            loc.push_str(&format!(" {}来源：{}{}", s.dim, f.source, s.rst));
+        }
         eprintln!("   {mark}{} {}{loc}", s.rst, f.message);
         if !f.snippet.is_empty() {
             eprintln!("      {}{}{}", s.dim, f.snippet.chars().take(160).collect::<String>(), s.rst);

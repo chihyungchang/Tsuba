@@ -12,8 +12,8 @@ const IOC_FILE: &str = "iocs.json";
 pub fn update_vscode(_old: Option<&SourceStatus>) -> SourceStatus {
     let mut s = SourceStatus {
         id: "vscode".into(),
-        name: "VS Code 恶意扩展名单".into(),
-        license: "Microsoft".into(),
+        name: super::VSCODE.0.into(),
+        license: super::VSCODE.1.into(),
         url: "https://main.vscode-cdn.net/extensions/marketplace.json".into(),
         ..Default::default()
     };
@@ -54,8 +54,8 @@ pub fn vscode_malicious(id: &str) -> bool {
 pub fn update_abusech(key: &str, _old: Option<&SourceStatus>) -> SourceStatus {
     let mut s = SourceStatus {
         id: "abusech".into(),
-        name: "abuse.ch ThreatFox / URLhaus".into(),
-        license: "CC0".into(),
+        name: super::ABUSECH.0.into(),
+        license: super::ABUSECH.1.into(),
         url: "https://abuse.ch".into(),
         ..Default::default()
     };
