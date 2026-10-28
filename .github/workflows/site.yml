@@ -1,0 +1,29 @@
+# Rebuilds oliverz.dev when a release is published, so the product page picks up the new version, downloads,
+# checksums and changelog. The site reads them from the GitHub API at build time and only sees published releases,
+# which is why this runs on `published` and not when release.yml finishes building the draft.
+#
+# Needs the CLOUDFLARE_DEPLOY_HOOK secret (Cloudflare Pages → the site's project → Settings → Builds → Deploy hooks).
+# Without it the job does nothing.
+
+name: Update website
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  deploy-hook:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the Cloudflare Pages build
+        env:
+          HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice::CLOUDFLARE_DEPLOY_HOOK is not set; the website was not rebuilt."
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Website rebuild requested."
