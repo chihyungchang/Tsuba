@@ -101,7 +101,9 @@ cd app && pnpm release --bundles app   # local release build for this Mac, termi
 
 A release bundle carries the terminal checker as `Tsuba.app/Contents/MacOS/tsuba`. `tauri.release.conf.json` adds it and runs `app/scripts/build-cli-sidecar.sh`; it stays out of `tauri.conf.json` because Tauri refuses to build without the file, which would break `cargo test`.
 
-To publish: bump `version` in the root `Cargo.toml` (the single source for the App, CLI and DMG), commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. `.github/workflows/release.yml` runs the tests, builds a universal DMG and attaches it to a draft GitHub Release to review and publish. It signs and notarizes when these repository secrets are set: `APPLE_CERTIFICATE` (base64 .p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`.
+To publish, run `scripts/release.sh X.Y.Z` on a clean `main`: it sets the version in the root `Cargo.toml` (the single source for the App, CLI and DMG), runs the pre-commit checks, commits, tags `vX.Y.Z` and asks before pushing. The tag starts `.github/workflows/release.yml`, which runs the checks again, builds a universal DMG and attaches it to a draft GitHub Release with notes generated from the commits; review it and publish. Running the workflow by hand (Actions → Release → Run workflow, or `gh workflow run release.yml`) is a dry run that keeps the DMG as a workflow artifact instead.
+
+It signs and notarizes when these repository secrets are set: `APPLE_CERTIFICATE` (base64 .p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`. Without them the DMG is unsigned and Gatekeeper blocks it on download.
 
 ## Sandbox trial run (prototype)
 

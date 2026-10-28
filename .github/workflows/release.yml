@@ -1,8 +1,10 @@
 # Builds a universal macOS DMG and attaches it to a draft GitHub Release when a version tag is pushed.
 #
-#   1. Bump `version` in the root Cargo.toml (the single source: the App, CLI and DMG all read it) and commit.
-#   2. git tag v0.2.0 && git push origin v0.2.0
-#   3. Review the draft release this workflow creates, then publish it.
+#   1. scripts/release.sh 0.2.0   (bumps the version in the root Cargo.toml, runs the checks, commits, tags, pushes)
+#   2. Review the draft release this workflow creates, with notes generated from the commits, then publish it.
+#
+# Running it by hand (Actions → Release → Run workflow) is a dry run: it builds the DMG and keeps it as a workflow
+# artifact, without creating a release.
 #
 # Signing and notarization run only when the Apple secrets below are set. Without them the DMG is unsigned and
 # Gatekeeper blocks it on download, which a security app shouldn't ask its users to bypass, so set them before
@@ -13,6 +15,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,6 +32,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check the tag matches the version
+        if: github.event_name == 'push'
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
@@ -86,14 +90,34 @@ jobs:
           fi
 
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: app
           tauriScript: pnpm tauri
           args: --target universal-apple-darwin --config src-tauri/tauri.release.conf.json
-          tagName: ${{ github.ref_name }}
+          # Empty on a dry run, so nothing is released
+          tagName: ${{ github.event_name == 'push' && github.ref_name || '' }}
           releaseName: Tsuba ${{ github.ref_name }}
-          releaseBody: See the commits since the previous release for what changed.
+          releaseBody: Generating release notes…
           releaseDraft: true
           prerelease: false
+
+      # GitHub writes the notes from the commits and pull requests since the previous release
+      - name: Release notes
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+        run: |
+          notes=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$GITHUB_REF_NAME" --jq .body)
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -f body="$notes" > /dev/null
+
+      - name: Keep the dry-run DMG
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tsuba-dmg
+          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 7
