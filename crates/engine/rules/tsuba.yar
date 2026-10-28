@@ -264,3 +264,20 @@ rule tsuba_sudo
   condition:
     $a
 }
+
+rule tsuba_resource_fork_dropper
+{
+  meta:
+    severity = "high"
+    message = "脚本从文件的资源派生里截取数据再解压或解密（Bundlore 把载荷藏在资源派生里，躲过只看文件内容的扫描）"
+  strings:
+    $fork1 = "..namedfork/rsrc"
+    $fork2 = "com.apple.ResourceFork"
+    $cut1 = /tail\s+-c\s*\+?\d+/
+    $cut2 = /dd\s+[^\n]*skip=/
+    $unpack1 = /funzip\s+-\S+/
+    $unpack2 = /unzip\s+[^\n]*-P\s/
+    $unpack3 = /openssl\s+(enc\s+)?-d/
+  condition:
+    any of ($fork*) and (any of ($cut*) or any of ($unpack*))
+}

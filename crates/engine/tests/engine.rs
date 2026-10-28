@@ -371,6 +371,50 @@ fn fake_meeting_dmg_volume_blocked() {
     assert!(info["scripts"]["Installer.file"].is_string());
 }
 
+/// 资源派生里藏载荷（Bundlore，SentinelOne 2021）：镜像里只有一个很小的 .command，
+/// 运行时从自己的资源派生截出压缩包解压执行。资源派生在测试时现写：假图标数据 + 一个压缩包文件头，没有真实载荷。
+#[test]
+fn resource_fork_dropper_blocked() {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("Install.command");
+    std::fs::copy(fix("resource_fork_volume").join("Install.command"), &script).unwrap();
+    let mut fork = b"icns".to_vec();
+    fork.extend(std::iter::repeat_n(0x11u8, 9088));
+    fork.extend(b"PK\x03\x04");
+    fork.extend(std::iter::repeat_n(0u8, 4096));
+    std::fs::write(script.join("..namedfork/rsrc"), &fork).unwrap();
+
+    let mut findings = Vec::new();
+    let info = tsuba_engine::macos::inspect_volume(dir.path(), "Office365.dmg", &mut findings);
+    let msgs = messages(&findings);
+    assert!(msgs.contains("资源派生里藏着一个压缩包"), "应发现资源派生里的压缩包: {msgs}");
+    assert!(msgs.contains("从文件的资源派生里截取数据"), "应命中投放器脚本规则: {msgs}");
+    assert_eq!(rules::offline_verdict(&findings), Verdict::Block);
+    assert_eq!(info["resource_forks"][0]["size"], fork.len());
+}
+
+/// 正常文件用资源派生放自定义图标，不能误报。
+#[test]
+fn resource_fork_icon_is_not_flagged() {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let readme = dir.path().join("Read Me.txt");
+    std::fs::write(&readme, "安装说明").unwrap();
+    let mut icon = b"icns".to_vec();
+    icon.extend(std::iter::repeat_n(0x22u8, 30_000));
+    std::fs::write(readme.join("..namedfork/rsrc"), &icon).unwrap();
+    let mut findings = Vec::new();
+    tsuba_engine::macos::inspect_volume(dir.path(), "Tool.dmg", &mut findings);
+    assert!(!messages(&findings).contains("资源派生"), "只有图标的资源派生不该报: {}", messages(&findings));
+    // 只读取、不解压的规则：普通脚本提到 tail -c 不算
+    assert!(rules::scan_text("tail -c +100 build.log", "x.sh").is_empty());
+}
+
 #[test]
 fn lockfile_parsing() {
     let dir = tempfile::tempdir().unwrap();

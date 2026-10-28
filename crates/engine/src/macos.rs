@@ -225,6 +225,25 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
         scripts.insert(fname, json!(text.chars().take(6000).collect::<String>()));
     }
 
+    // 资源派生（文件的 com.apple.ResourceFork 扩展属性）：Bundlore 把加密载荷藏在这里，
+    // 镜像里只看得到一个 203 字节的 .command，它运行时从自己的资源派生里截出载荷、解压执行。
+    // 只读文件内容的扫描器看不到它。正常文件的资源派生只放自定义图标。
+    let mut forks = Vec::new();
+    for f in entries.iter().filter(|p| p.is_file() && !p.is_symlink()) {
+        let Some((size, embedded)) = resource_fork(f) else { continue };
+        let fname = name_of(f);
+        if let Some(kind) = embedded {
+            findings.push(Finding::new(
+                Severity::High,
+                format!("{fname} 的资源派生里藏着一个{kind}（{size} 字节）。正常文件的资源派生只放图标，这是把载荷藏在扫描器看不到的地方"),
+                label,
+            ));
+        } else if is_script(f) && size > SCRIPT_FORK_LIMIT {
+            findings.push(Finding::new(Severity::Medium, format!("可以直接运行的脚本 {fname} 带着 {size} 字节的资源派生，正常脚本没有"), label));
+        }
+        forks.push(json!({ "file": fname, "size": size, "embedded": embedded }));
+    }
+
     // 隐藏目录里的可执行程序：正常的安装镜像不会把程序藏起来
     let mut hidden = Vec::new();
     for p in entries.iter().filter(|p| name_of(p).starts_with('.') && !VOLUME_SYSTEM_FILES.contains(&name_of(p).as_str())) {
@@ -256,7 +275,35 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
     if !hidden.is_empty() {
         info.insert("hidden_executables".into(), json!(hidden));
     }
+    if !forks.is_empty() {
+        info.insert("resource_forks".into(), json!(forks));
+    }
     info
+}
+
+/// 脚本的资源派生超过这个大小才算异常：给脚本设个自定义图标也就几十 KB
+const SCRIPT_FORK_LIMIT: u64 = 64 * 1024;
+
+/// 文件的资源派生：大小，以及里面有没有藏着压缩包或可执行程序（只看文件头标记，不解压、不执行）。
+/// 没有资源派生时返回 None。
+fn resource_fork(p: &Path) -> Option<(u64, Option<&'static str>)> {
+    let fork = p.join("..namedfork/rsrc");
+    let size = std::fs::metadata(&fork).ok()?.len();
+    if size == 0 {
+        return None;
+    }
+    let mut data = Vec::new();
+    std::fs::File::open(&fork).ok()?.take(4 << 20).read_to_end(&mut data).ok()?;
+    const MAGICS: &[(&[u8], &str)] = &[
+        (b"PK\x03\x04", "压缩包"),
+        (b"\x1f\x8b\x08", "gzip 压缩数据"),
+        (b"7z\xbc\xaf\x27\x1c", "7z 压缩包"),
+        (b"\xcf\xfa\xed\xfe", "可执行程序（Mach-O）"),
+        (b"\xca\xfe\xba\xbe", "可执行程序（Mach-O）"),
+        (b"#!/bin/", "脚本"),
+    ];
+    let embedded = MAGICS.iter().find(|(m, _)| data.windows(m.len()).any(|w| w == *m)).map(|(_, k)| *k);
+    Some((size, embedded))
 }
 
 /// 当前挂载的磁盘镜像：挂载点 → 镜像文件路径。
