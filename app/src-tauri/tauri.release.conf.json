@@ -4,6 +4,11 @@
     "beforeBuildCommand": "pnpm build && sh scripts/build-cli-sidecar.sh"
   },
   "bundle": {
-    "externalBin": ["binaries/tsuba"]
+    "externalBin": [
+      "binaries/tsuba"
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    }
   }
 }
