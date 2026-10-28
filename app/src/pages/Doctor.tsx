@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon, type IconName } from "../icons";
 import { AiScanItem, ExtensionScan, Finding } from "../types";
-import { Banner, FindingList, toastDone, Group, PageHeader, Row, Section, Spinner, VerdictBadge, errText } from "../ui";
+import { Banner, FindingList, toastDone, Group, PageHeader, Row, Section, Spinner, VerdictBadge, errText, relativeTime } from "../ui";
 
 type Check = "doctor" | "exts" | "ai";
 
@@ -12,6 +12,7 @@ function CheckCard({
   detail,
   done,
   issue,
+  points,
   error,
   busy,
   onRun,
@@ -19,6 +20,7 @@ function CheckCard({
   icon: IconName;
   title: string;
   detail: string;
+  points: string[];
   done: string | null;
   issue?: boolean;
   error?: string;
@@ -35,6 +37,11 @@ function CheckCard({
       <div className="check-text">
         <h3>{title}</h3>
         <p>{detail}</p>
+        <ul className="check-points">
+          {points.map((x) => (
+            <li key={x}>{x}</li>
+          ))}
+        </ul>
         {busy && <div className="check-done muted">正在检查…</div>}
         {!busy && error && <div className="check-done tone-block">没查完：{error}</div>}
         {!busy && !error && done && <div className={`check-done ${issue ? "tone-warn" : "tone-allow"}`}>{done}</div>}
@@ -48,7 +55,20 @@ function CheckCard({
   );
 }
 
+/** 上次全部检查完的时间和结论，记在本机：没跑过体检时，页面头部也能告诉用户上次是什么时候、结果如何 */
+const LAST_RUN_KEY = "tsuba-doctor-last";
+type LastRun = { time: string; issues: number };
+
+function loadLastRun(): LastRun | null {
+  try {
+    return JSON.parse(localStorage.getItem(LAST_RUN_KEY) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
 export function DoctorPage({ reload }: { reload: () => void }) {
+  const [lastRun, setLastRun] = useState<LastRun | null>(loadLastRun);
   const [doctor, setDoctor] = useState<{ findings: Finding[]; advice: string } | null>(null);
   const [exts, setExts] = useState<ExtensionScan[] | null>(null);
   const [ai, setAi] = useState<AiScanItem[] | null>(null);
@@ -106,11 +126,45 @@ export function DoctorPage({ reload }: { reload: () => void }) {
   const aiRisky = ai?.filter((x) => x.verdict !== "allow") ?? [];
   const aiCount = (k: AiScanItem["kind"]) => ai?.filter((x) => x.kind === k).length ?? 0;
   const issues = (doctor?.findings.length ?? 0) + risky.length + aiRisky.length;
-  const allDone = doctor && exts && ai && running.size === 0;
+  const allDone = !!(doctor && exts && ai) && running.size === 0;
+
+  useEffect(() => {
+    if (!allDone) return;
+    const run = { time: new Date().toISOString(), issues };
+    setLastRun(run);
+    try {
+      localStorage.setItem(LAST_RUN_KEY, JSON.stringify(run));
+    } catch {
+      // 记不住只是下次看不到“上次体检”，不影响检查
+    }
+  }, [allDone, issues]);
+
+  const status =
+    running.size > 0
+      ? "体检中…"
+      : allDone
+        ? issues === 0
+          ? "这次没有发现问题"
+          : `${issues} 处需要看一下`
+        : lastRun
+          ? `上次体检 ${relativeTime(lastRun.time)} · ${lastRun.issues === 0 ? "没有发现问题" : `${lastRun.issues} 处需要看一下`}`
+          : "还没有体检过";
+  const tone = running.size > 0 ? "neutral" : allDone ? (issues === 0 ? "allow" : "warn") : lastRun && lastRun.issues > 0 ? "warn" : "neutral";
 
   return (
     <div className="page">
-      <PageHeader title="体检" subtitle="已经中招了吗？查一遍已知攻击留下的痕迹、已装的扩展和 AI 工具。">
+      <PageHeader
+        title="体检"
+        subtitle="已经中招了吗？查一遍已知攻击留下的痕迹、已装的扩展和 AI 工具。"
+        icon="doctor"
+        tone={tone}
+        status={status}
+        stats={[
+          { label: "感染痕迹", value: doctor ? (doctor.findings.length === 0 ? "未发现" : `${doctor.findings.length} 处`) : "—", tone: doctor ? (doctor.findings.length ? "block" : "allow") : undefined },
+          { label: "编辑器扩展", value: exts ? `${exts.length} 个 · ${risky.length} 个可疑` : "—", tone: exts ? (risky.length ? "warn" : "allow") : undefined },
+          { label: "AI 编程工具", value: ai ? `${aiCount("mcp")} 个 MCP · ${aiCount("skill")} 个 skill${aiRisky.length ? ` · ${aiRisky.length} 项可疑` : ""}` : "—", tone: ai ? (aiRisky.length ? "warn" : "allow") : undefined },
+        ]}
+      >
         <button className="primary" disabled={running.size === 3} onClick={runAll}>
           {running.size > 0 ? <Spinner /> : <Icon.doctor size={14} />}
           {running.size === 0 ? "全部检查" : running.size === 3 ? "体检中" : `检查其余 ${3 - running.size} 项`}
@@ -119,23 +173,12 @@ export function DoctorPage({ reload }: { reload: () => void }) {
 
       {error && <Banner onClose={() => setError("")}>{error}</Banner>}
 
-      {allDone && (
-        <div className={`verdict-panel ${issues === 0 ? "is-ok" : "is-issue"}`}>
-          {issues === 0 ? <Icon.check size={22} strokeWidth={2} /> : <Icon.alert size={22} strokeWidth={2} />}
-          <div>
-            <div className="verdict-panel-title">{issues === 0 ? "没有发现问题" : `${issues} 处需要看一下`}</div>
-            <div className="verdict-panel-detail">
-              {exts.length} 个扩展、{aiCount("mcp")} 个 MCP server、{aiCount("skill")} 个 skill 都查过了
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="check-grid">
         <CheckCard
           icon="overview"
           title="感染痕迹"
-          detail="隐藏的 Node 依赖目录、可疑的开机自启项、被改写的启动脚本"
+          detail="已知攻击留下的落地痕迹，几秒钟"
+          points={["家目录里攻击组织常用的落地目录，如 ~/.node_modules、~/.task、~/.n2", "开机自启项里的可疑命令（node、curl、base64 解码）", "痕迹清单随规则包每天更新"]}
           done={doctor ? (doctor.findings.length === 0 ? "没有发现已知痕迹" : `发现 ${doctor.findings.length} 处痕迹`) : null}
           issue={!!doctor && doctor.findings.length > 0}
           error={failed.doctor}
@@ -145,7 +188,8 @@ export function DoctorPage({ reload }: { reload: () => void }) {
         <CheckCard
           icon="extension"
           title="编辑器扩展"
-          detail="VS Code、Cursor、Windsurf 里已装的扩展，只用离线规则，几秒钟"
+          detail="已装的扩展，只用离线规则，几秒钟"
+          points={["VS Code、Cursor、Windsurf、VSCodium 里所有扩展", "官方恶意扩展名单、不可见字符藏代码", "启动即激活、可疑的网络和文件访问"]}
           done={exts ? `${exts.length} 个扩展，${risky.length === 0 ? "都正常" : `${risky.length} 个可疑`}` : null}
           issue={risky.length > 0}
           error={failed.exts}
@@ -155,7 +199,8 @@ export function DoctorPage({ reload }: { reload: () => void }) {
         <CheckCard
           icon="plug"
           title="AI 编程工具"
-          detail="Claude Code、Cursor、Codex 装的 MCP server、skill 和插件 hooks"
+          detail="AI 编程工具的配置和扩展"
+          points={["Claude Code、Cursor、Codex 等的 MCP server", "已安装的 skill 和插件 hooks", "工具投毒、要求对用户隐瞒、读取私钥"]}
           done={ai ? `${ai.length} 项，${aiRisky.length === 0 ? "都正常" : `${aiRisky.length} 项可疑`}` : null}
           issue={aiRisky.length > 0}
           error={failed.ai}

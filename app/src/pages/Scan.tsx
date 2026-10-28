@@ -98,7 +98,19 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
 
   return (
     <div className="page">
-      <PageHeader title="扫描" subtitle="下载目录、外接硬盘、代码目录里的安装包、脚本、扩展和项目。照片视频和依赖目录跳过。">
+      <PageHeader
+        title="扫描"
+        subtitle="下载目录、外接硬盘、代码目录里的安装包、脚本、扩展和项目。照片视频和依赖目录跳过。"
+        icon="scan"
+        tone={scanning ? "neutral" : result ? (result.hits.length ? "warn" : "allow") : "neutral"}
+        status={scanning ? "正在扫描…" : result ? (result.hits.length ? `这次发现 ${result.hits.length} 个需要看的` : "这次没有发现问题") : last ? `上次定期扫描 ${relativeTime(last)}` : "还没有扫描过"}
+        stats={[
+          { label: "常用文件夹", value: cfg ? cfg.scan.folders.length : "—" },
+          { label: "定期扫描", value: cfg ? (cfg.scan.scheduled ? `每 ${cfg.scan.interval_days} 天` : "已关闭") : "—" },
+          { label: "隔离区", value: quarantine.length, tone: quarantine.length ? "warn" : undefined },
+          { label: "白名单", value: trusted.length },
+        ]}
+      >
         <button className="primary" disabled={busy !== ""} onClick={pickAndScan}>
           <Icon.folder size={14} />
           选择文件夹…

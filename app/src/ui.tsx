@@ -32,14 +32,55 @@ export function relativeTime(iso: string): string {
   return `${t.getMonth() + 1}月${t.getDate()}日 ${hm}`;
 }
 
-export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children?: ReactNode }) {
+export type HeaderStat = { label: string; value: ReactNode; tone?: "allow" | "warn" | "block" };
+
+/**
+ * 详情页的头部卡片，和首页仪表盘一个语言：大图标 + 标题 + 状态，右边主操作，下面一排关键数字。
+ * tone 决定图标底块和状态胶囊的颜色（有问题时变琥珀或红）。
+ */
+export function PageHeader({
+  title,
+  subtitle,
+  icon,
+  tone = "neutral",
+  status,
+  stats,
+  children,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  icon?: IconName;
+  tone?: "neutral" | "allow" | "warn" | "block";
+  status?: ReactNode;
+  stats?: HeaderStat[];
+  children?: ReactNode;
+}) {
+  const I = icon ? Icon[icon] : null;
   return (
-    <header className="page-header" data-tauri-drag-region>
-      <div data-tauri-drag-region>
-        <h1 data-tauri-drag-region>{title}</h1>
-        {subtitle && <p className="page-subtitle">{subtitle}</p>}
+    <header className={`page-header ${I ? "page-hero" : ""} hero-tone-${tone}`} data-tauri-drag-region>
+      <div className="page-hero-main" data-tauri-drag-region>
+        {I && (
+          <span className="page-hero-icon">
+            <I size={26} strokeWidth={1.6} />
+          </span>
+        )}
+        <div className="page-hero-text" data-tauri-drag-region>
+          {status && <span className="page-hero-status">{status}</span>}
+          <h1 data-tauri-drag-region>{title}</h1>
+          {subtitle && <p className="page-subtitle">{subtitle}</p>}
+        </div>
+        {children && <div className="page-header-actions">{children}</div>}
       </div>
-      {children && <div className="page-header-actions">{children}</div>}
+      {stats && stats.length > 0 && (
+        <div className="page-hero-stats">
+          {stats.map((st) => (
+            <div key={st.label} className="page-hero-stat">
+              <span className={`page-hero-value ${st.tone ? `tone-${st.tone}` : ""}`}>{st.value}</span>
+              <span className="page-hero-label">{st.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </header>
   );
 }

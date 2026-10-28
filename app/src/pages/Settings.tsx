@@ -318,7 +318,22 @@ export function SettingsPage({ overview, reload }: { overview: Overview | null; 
 
   return (
     <div className="page">
-      <PageHeader title="设置" subtitle="离线规则总是先跑。AI 结合上下文判断，减少误报、补上规则漏掉的情况。" />
+      <PageHeader
+        title="设置"
+        subtitle="离线规则总是先跑。AI 结合上下文判断，减少误报、补上规则漏掉的情况。"
+        icon="settings"
+        tone={overview ? (overview.paused ? "block" : "allow") : "neutral"}
+        status={overview ? (overview.paused ? "守护已暂停" : "守护中") : undefined}
+        stats={
+          overview
+            ? [
+                { label: "防线", value: `${[overview.shell_hook.installed, overview.watch_downloads, overview.watch_extensions, overview.watch_ai_tools].filter(Boolean).length} / 4 道`, tone: overview.paused ? "block" : undefined },
+                { label: "判断方式", value: overview.provider === "offline" ? "只用离线规则" : overview.ai_available ? overview.provider_label.split(" · ")[0] : "AI 还没配置好", tone: overview.provider !== "offline" && !overview.ai_available ? "warn" : undefined },
+                { label: "白名单", value: `${overview.trusted} 项` },
+              ]
+            : undefined
+        }
+      />
 
       {overview && <DefenseSection overview={overview} reload={reload} />}
 
