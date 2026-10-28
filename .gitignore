@@ -10,3 +10,6 @@ app/src-tauri/binaries/
 
 # Product requirements: kept locally, not published
 /docs/PRD.md
+
+# Claude Code: personal skills, settings and agent worktrees, not part of the project
+.claude/
