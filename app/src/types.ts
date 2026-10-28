@@ -123,6 +123,8 @@ export interface Behavior {
   network: NetEvent[];
   new_files: string[];
   output: string;
+  /** 被沙箱拦下的越权操作（来自系统日志） */
+  denied?: { process: string; operation: string; target: string }[];
 }
 
 export interface SandboxResult {
@@ -164,5 +166,6 @@ export const ACTION_LABEL: Record<string, string> = {
   ejected: "已阻止打开",
   notified: "已提醒",
   allowed: "已放行",
+  deleted: "已删除",
   scanned: "",
 };
