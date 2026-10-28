@@ -151,7 +151,9 @@ fn get_config(state: State<AppState>) -> Config {
 }
 
 #[tauri::command]
-fn save_config(app: AppHandle, state: State<AppState>, config: Config) -> Result<(), String> {
+fn save_config(app: AppHandle, state: State<AppState>, mut config: Config) -> Result<(), String> {
+    // The language belongs to set_lang: a settings page loaded before a language switch must not write the old one back
+    config.language = state.config.lock().unwrap().language.clone();
     config.save().map_err(|e| e.to_string())?;
     *state.config.lock().unwrap() = config;
     restart_watchers(&app);
@@ -510,9 +512,18 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Ok(menu)
 }
 
-/// The window's language setting; the engine's findings, notifications and the tray menu follow it.
+/// The window's language setting. `preference` is "system", "en" or "zh-Hans"; `lang` is what the window resolved it to.
+/// It is saved to the config so the terminal check and every AI answer use it too, not only this process.
 #[tauri::command]
-fn set_lang(app: AppHandle, lang: String) -> Result<(), String> {
+fn set_lang(app: AppHandle, state: State<AppState>, preference: String, lang: String) -> Result<(), String> {
+    let stored = if preference == "system" { String::new() } else { preference };
+    {
+        let mut config = state.config.lock().unwrap();
+        if config.language != stored {
+            config.language = stored;
+            config.save().map_err(|e| e.to_string())?;
+        }
+    }
     let lang = tsuba_engine::i18n::Lang::parse(&lang);
     if lang == tsuba_engine::i18n::lang() {
         return Ok(());
@@ -563,8 +574,8 @@ pub fn run() {
             pause_item: Mutex::new(None),
         })
         .setup(|app| {
-            // Until the window reports its setting, follow the system language
-            tsuba_engine::i18n::set_lang(tsuba_engine::i18n::system_lang());
+            // The saved choice, until the window reports its setting
+            tsuba_engine::i18n::set_lang(app.state::<AppState>().config.lock().unwrap().lang());
             build_tray(app)?;
             shell_hook::refresh_if_installed();
             restart_watchers(app.handle());

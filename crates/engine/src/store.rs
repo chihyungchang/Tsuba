@@ -153,6 +153,9 @@ pub struct Config {
     pub watch_ai_tools: bool,
     pub intel: IntelConfig,
     pub scan: ScanConfig,
+    /// The language chosen in the App: empty follows the system, otherwise "en" or "zh-Hans". Stored here rather than
+    /// only in the window, so the terminal check and AI answers in every process match the App.
+    pub language: String,
 }
 
 impl Default for Config {
@@ -167,6 +170,7 @@ impl Default for Config {
             watch_ai_tools: true,
             intel: IntelConfig::default(),
             scan: ScanConfig::default(),
+            language: String::new(),
         }
     }
 }
@@ -181,6 +185,11 @@ impl Config {
             c.provider = Provider::Offline;
         }
         c
+    }
+
+    /// The language to use: the App's choice, or the system language when it follows the system.
+    pub fn lang(&self) -> crate::i18n::Lang {
+        if self.language.is_empty() { crate::i18n::system_lang() } else { crate::i18n::Lang::parse(&self.language) }
     }
 
     /// A config that uses only local rules and lists: no network, no model, a verdict in under a second.
@@ -254,4 +263,18 @@ pub fn read_log(limit: usize) -> Vec<LogEntry> {
 
 pub fn clear_log() {
     let _ = std::fs::remove_file(home().join("history.jsonl"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_without_language_keeps_other_settings() {
+        // Configs saved before the language setting existed must load unchanged and follow the system language
+        let c: Config = serde_json::from_str(r#"{"watch_downloads":false}"#).unwrap();
+        assert!(!c.watch_downloads && c.language.is_empty());
+        let c: Config = serde_json::from_str(r#"{"language":"zh-Hans"}"#).unwrap();
+        assert_eq!(c.lang(), crate::i18n::Lang::ZhHans);
+    }
 }

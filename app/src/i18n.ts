@@ -4,8 +4,8 @@
 // catalog maps that English text to Chinese (gettext style); a missing entry falls back to
 // English. `pnpm check:i18n` fails when a t() string has no entry or an entry is unused.
 //
-// The backend is told about every change, so notifications, the tray menu and new findings
-// come out in the same language as the window.
+// The backend is told about every change and saves it to the config, so notifications, the tray menu,
+// new findings, AI answers and the terminal check all come out in the same language as the window.
 
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -47,10 +47,11 @@ function resolve(pref: LangPreference): Lang {
 let current: Lang = resolve(loadLangPreference());
 const listeners = new Set<() => void>();
 
-function apply(lang: Lang) {
-  current = lang;
-  document.documentElement.lang = lang;
-  if (isNativeWindow) invoke("set_lang", { lang }).catch(() => {});
+function apply(pref: LangPreference) {
+  current = resolve(pref);
+  document.documentElement.lang = current;
+  // The backend saves the preference, so the terminal check and AI answers follow this window's language too
+  if (isNativeWindow) invoke("set_lang", { preference: pref, lang: current }).catch(() => {});
   listeners.forEach((l) => l());
 }
 
@@ -61,13 +62,13 @@ export function setLangPreference(pref: LangPreference) {
   } catch {
     // Not remembered, but this switch still applies
   }
-  apply(resolve(pref));
+  apply(pref);
 }
 
 export function initLang() {
-  apply(current);
+  apply(loadLangPreference());
   window.addEventListener("languagechange", () => {
-    if (loadLangPreference() === "system") apply(systemLang());
+    if (loadLangPreference() === "system") apply("system");
   });
 }
 

@@ -38,9 +38,10 @@ use tsuba_engine::{Report, collect, doctor, scan, trust};
 
 static ZH_HANS: tsuba_engine::i18n::Catalog = tsuba_engine::i18n::Catalog::new(|| tsuba_engine::i18n::parse_catalog(include_str!("../locales/zh-Hans.json")));
 
-/// `--lang en|zh-Hans` anywhere on the command line wins; otherwise the system language. Removes the flag from args.
+/// `--lang en|zh-Hans` anywhere on the command line wins; otherwise the language chosen in the App, which falls back to
+/// the system language. Removes the flag from args.
 fn take_lang(args: &mut Vec<String>) -> tsuba_engine::i18n::Lang {
-    use tsuba_engine::i18n::{Lang, system_lang};
+    use tsuba_engine::i18n::Lang;
     if let Some(i) = args.iter().position(|a| a == "--lang" || a.starts_with("--lang=")) {
         // after `--` everything belongs to the checked command, not to us
         if args.iter().position(|a| a == "--").is_none_or(|end| i < end) {
@@ -53,7 +54,7 @@ fn take_lang(args: &mut Vec<String>) -> tsuba_engine::i18n::Lang {
             return Lang::parse(&value);
         }
     }
-    system_lang()
+    Config::load().lang()
 }
 
 struct Style {
