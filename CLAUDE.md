@@ -10,7 +10,7 @@ Tsuba deals with **"things that come in new packaging every time and that nobody
 - Antivirus-looking capabilities such as scanning, quarantine and signature databases serve only the goal above: they scan unfamiliar code, installers and scripts, and rely on attack patterns and context, not on "how big the known-virus database is".
 - Recognizing known malware is left to XProtect and open-source threat intel. We reuse them directly instead of rebuilding them.
 
-Tsuba is security software: its mistakes either let an attack slip through, or bother the user every day until they uninstall it. Every rule below serves these two concerns. For product background see [PRD.md](./PRD.md); for the directory layout see [README.md](./README.md).
+Tsuba is security software: its mistakes either let an attack slip through, or bother the user every day until they uninstall it. Every rule below serves these two concerns. For product background see docs/PRD.md (local only, ignored by git); for the directory layout see [README.md](./README.md).
 
 ## Architecture
 

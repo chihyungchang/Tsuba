@@ -5,3 +5,6 @@ node_modules/
 app/dist/
 app/src-tauri/gen/
 .DS_Store
+
+# Product requirements: kept locally, not published
+/docs/PRD.md

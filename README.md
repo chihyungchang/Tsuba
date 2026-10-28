@@ -4,7 +4,7 @@
 
 Tsuba (鍔, the hand guard of a Japanese sword) is a macOS menu bar app. Fake interview projects, fake meeting software, poisoned npm packages, malicious editor extensions: these attacks come in new packaging every time and use ordinary tools like node, curl and bash, so traditional antivirus software rarely flags them. Tsuba steps in at the entry points where they run for the first time: it works out what the code is about to do, where it came from and whether it looks like a known attack pattern, then decides whether to Allow, Warn or Block.
 
-For product background, goals and the roadmap, see [PRD.md](PRD.md).
+For product background, goals and the roadmap, see docs/PRD.md (kept locally, not in the repository).
 
 ## What it checks
 
@@ -64,7 +64,6 @@ Code comments are stripped before anything reaches the model (to defeat prompt i
 
 ```
 Tsuba/
-├── PRD.md                  Product requirements document
 ├── Cargo.toml              Rust workspace
 ├── crates/
 │   ├── engine/             Detection engine (tsuba-engine): recognition, evidence collection, offline rules, threat intel, AI judgment
