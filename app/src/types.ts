@@ -113,6 +113,8 @@ export interface NetEvent {
   target: string;
   request?: string;
   leaked?: string[];
+  /** 明文请求里出现的真实格式密钥，只有种类 */
+  secrets?: string[];
   forwarded?: boolean;
 }
 

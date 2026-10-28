@@ -479,7 +479,10 @@ fn print_behavior(s: &Style, b: &tsuba_engine::sandbox::Behavior, title: &str) {
     if !b.network.is_empty() {
         eprintln!("  {}网络请求：{}", s.bold, s.rst);
         for ev in &b.network {
-            let leak = if ev.leaked.is_empty() { String::new() } else { format!("  {}← 发出了诱饵数据 {}{}", s.red, ev.leaked.join("、"), s.rst) };
+            let mut leak = if ev.leaked.is_empty() { String::new() } else { format!("  {}← 发出了诱饵数据 {}{}", s.red, ev.leaked.iter().map(|m| tsuba_engine::sandbox::decoy_label(m)).collect::<Vec<_>>().join("、"), s.rst) };
+            if !ev.secrets.is_empty() {
+                leak.push_str(&format!("  {}← 请求里带着疑似 {}{}", s.red, ev.secrets.join("、"), s.rst));
+            }
             let note = if ev.forwarded { "（npm 官方源，已放行）" } else { "" };
             eprintln!("   • {} {}{}{note}{}{leak}", ev.target, s.dim, ev.request, s.rst);
         }

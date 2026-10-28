@@ -42,6 +42,7 @@ function SandboxPanel({ r }: { r: SandboxResult }) {
                 <span className="mono">{e.target}</span>
                 {e.forwarded && <span className="muted small"> npm 官方源，已放行</span>}
                 {e.leaked && e.leaked.length > 0 && <span className="tone-block small"> 发出了诱饵数据 {e.leaked.join("、")}</span>}
+                {e.secrets && e.secrets.length > 0 && <span className="tone-block small"> 请求里带着疑似 {e.secrets.join("、")}</span>}
               </li>
             ))}
           </ul>

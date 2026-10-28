@@ -55,6 +55,9 @@ pub struct NetEvent {
     /// 命中的诱饵标记（说明程序把诱饵数据发了出去）
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub leaked: Vec<String>,
+    /// 明文请求里出现的其他真实格式的密钥，只记种类，不记值
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secrets: Vec<String>,
     /// 试装依赖时到 npm 官方源的连接，真的转发了出去
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forwarded: bool,
@@ -92,17 +95,78 @@ pub struct Denied {
 struct Decoy {
     rel: &'static str,
     marker: &'static str,
+    label: &'static str,
     body: &'static str,
 }
 
 const DECOYS: &[Decoy] = &[
-    Decoy { rel: ".ssh/id_ed25519", marker: "TSUBA-DECOY-SSH", body: "-----BEGIN OPENSSH PRIVATE KEY-----\nTSUBA-DECOY-SSH not-a-real-key\n-----END OPENSSH PRIVATE KEY-----\n" },
-    Decoy { rel: ".aws/credentials", marker: "TSUBA-DECOY-AWS", body: "[default]\naws_access_key_id = TSUBA-DECOY-AWS\naws_secret_access_key = not-a-real-secret\n" },
-    Decoy { rel: ".config/solana/id.json", marker: "TSUBA-DECOY-SOLANA", body: "[\"TSUBA-DECOY-SOLANA\", 0, 0]\n" },
+    Decoy { rel: ".ssh/id_ed25519", marker: "TSUBA-DECOY-SSH", label: "SSH 私钥", body: "-----BEGIN OPENSSH PRIVATE KEY-----\nTSUBA-DECOY-SSH not-a-real-key\n-----END OPENSSH PRIVATE KEY-----\n" },
+    Decoy { rel: ".aws/credentials", marker: "TSUBA-DECOY-AWS", label: "AWS 凭证文件", body: "[default]\naws_access_key_id = TSUBA-DECOY-AWS\naws_secret_access_key = not-a-real-secret\n" },
+    Decoy { rel: ".config/solana/id.json", marker: "TSUBA-DECOY-SOLANA", label: "Solana 钱包", body: "[\"TSUBA-DECOY-SOLANA\", 0, 0]\n" },
     // 浏览器密码库和钱包扩展数据的占位
-    Decoy { rel: "Library/Application Support/Google/Chrome/Default/Login Data", marker: "TSUBA-DECOY-CHROME", body: "SQLite format 3\x00 TSUBA-DECOY-CHROME\n" },
-    Decoy { rel: "Library/Application Support/Exodus/exodus.wallet/seed.seco", marker: "TSUBA-DECOY-WALLET", body: "TSUBA-DECOY-WALLET not-a-real-wallet\n" },
+    Decoy { rel: "Library/Application Support/Google/Chrome/Default/Login Data", marker: "TSUBA-DECOY-CHROME", label: "Chrome 密码库", body: "SQLite format 3\x00 TSUBA-DECOY-CHROME\n" },
+    Decoy { rel: "Library/Application Support/Exodus/exodus.wallet/seed.seco", marker: "TSUBA-DECOY-WALLET", label: "Exodus 钱包", body: "TSUBA-DECOY-WALLET not-a-real-wallet\n" },
 ];
+
+/// 环境变量里的诱饵密钥：格式和真的一样（有的窃密程序先校验格式再外传），中间嵌着唯一标记。
+/// 偷环境变量是投毒包最常见的手法之一，文件诱饵抓不到它。
+struct EnvDecoy {
+    name: &'static str,
+    value: &'static str,
+    marker: &'static str,
+    label: &'static str,
+}
+
+const ENV_DECOYS: &[EnvDecoy] = &[
+    EnvDecoy { name: "OPENAI_API_KEY", value: "sk-proj-TSUBADECOYOPENAI7f3kQ9xLm2Vb8Nc4Rt6Yw1Zp5Hs0Jd", marker: "TSUBADECOYOPENAI", label: "OpenAI API Key（环境变量）" },
+    EnvDecoy { name: "ANTHROPIC_API_KEY", value: "sk-ant-api03-TSUBADECOYANTHROPIC4hG8kL2mN6pQ0rS3tV7wX1yZ5aB9cD", marker: "TSUBADECOYANTHROPIC", label: "Anthropic API Key（环境变量）" },
+    EnvDecoy { name: "AWS_ACCESS_KEY_ID", value: "AKIATSUBADECOYAWSK7Q", marker: "TSUBADECOYAWSK", label: "AWS 访问密钥（环境变量）" },
+    EnvDecoy { name: "AWS_SECRET_ACCESS_KEY", value: "TSUBADECOYAWSSECRET/9xLm2Vb8Nc4Rt6Yw1Zp5Hs0", marker: "TSUBADECOYAWSSECRET", label: "AWS 私密访问密钥（环境变量）" },
+    EnvDecoy { name: "GITHUB_TOKEN", value: "ghp_TSUBADECOYGITHUB4hG8kL2mN6pQ0rS3tV7w", marker: "TSUBADECOYGITHUB", label: "GitHub 令牌（环境变量）" },
+    EnvDecoy { name: "NPM_TOKEN", value: "npm_TSUBADECOYNPM8kL2mN6pQ0rS3tV7wX1yZ5a", marker: "TSUBADECOYNPM", label: "npm 令牌（环境变量）" },
+];
+
+/// 诱饵标记对应的说明，给证据里的人看
+pub fn decoy_label(marker: &str) -> &str {
+    DECOYS.iter().find(|d| d.marker == marker).map(|d| d.label).or_else(|| ENV_DECOYS.iter().find(|d| d.marker == marker).map(|d| d.label)).unwrap_or(marker)
+}
+
+/// 真实密钥的格式。出站明文里出现它们（又不是我们放的诱饵），说明程序在往外发密钥。
+/// 证据里只记种类、不记值（工程守则：日志和证据不写 API Key）。
+fn secret_patterns() -> &'static [(&'static str, regex::Regex)] {
+    static PATTERNS: std::sync::OnceLock<Vec<(&'static str, regex::Regex)>> = std::sync::OnceLock::new();
+    PATTERNS.get_or_init(|| {
+        [
+            ("OpenAI / Anthropic API Key", r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}"),
+            ("AWS 访问密钥", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
+            ("GitHub 令牌", r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b|\bgithub_pat_[A-Za-z0-9_]{60,}"),
+            ("Google API Key", r"\bAIza[0-9A-Za-z_-]{35}\b"),
+            ("Slack 令牌", r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),
+            ("npm 令牌", r"\bnpm_[A-Za-z0-9]{36}\b"),
+            ("私钥", r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
+        ]
+        .into_iter()
+        .map(|(kind, re)| (kind, regex::Regex::new(re).expect("密钥格式正则")))
+        .collect()
+    })
+}
+
+/// 检查一段出站数据：带出了哪些诱饵（标记），以及哪些种类的真实格式密钥。
+pub fn scan_outbound(text: &str) -> (Vec<String>, Vec<String>) {
+    let leaked: Vec<String> = DECOYS.iter().map(|d| d.marker).chain(ENV_DECOYS.iter().map(|d| d.marker)).filter(|m| text.contains(m)).map(String::from).collect();
+    // 先去掉我们自己的诱饵值，剩下的密钥才是“别的”
+    let mut rest = text.to_string();
+    for d in ENV_DECOYS {
+        rest = rest.replace(d.value, "");
+    }
+    let secrets: Vec<String> = secret_patterns().iter().filter(|(_, re)| re.is_match(&rest)).map(|(kind, _)| kind.to_string()).collect();
+    (leaked, secrets)
+}
+
+/// 记进证据之前把密钥换成“[种类 已隐去]”
+pub fn redact_secrets(text: &str) -> String {
+    secret_patterns().iter().fold(text.to_string(), |acc, (kind, re)| re.replace_all(&acc, format!("[{kind} 已隐去]")).into_owned())
+}
 
 /// 运行后这些目录里出现新文件就是可疑的持久化 / 落地痕迹
 const WATCH_NEW: &[&str] = &["Library/LaunchAgents", ".node_modules", ".task", ".n2", ".npl", ".config/.node"];
@@ -351,9 +415,13 @@ fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>, f
         if data.len() > 256 * 1024 {
             break;
         }
-        // 读到请求头结束就够了（明文 HTTP）；CONNECT 只有一行
-        if data.windows(4).any(|w| w == b"\r\n\r\n") {
-            break;
+        // 请求头读完后，按 Content-Length 把正文也读进来：外传的数据多半在 POST 正文里
+        if let Some(end) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+            let head = String::from_utf8_lossy(&data[..end]).to_ascii_lowercase();
+            let body_len = head.lines().find_map(|l| l.strip_prefix("content-length:")).and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(0);
+            if data.len() >= end + 4 + body_len.min(256 * 1024) {
+                break;
+            }
         }
     }
     let text = String::from_utf8_lossy(&data);
@@ -366,7 +434,7 @@ fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>, f
         if forward_registry && REGISTRY_HOSTS.contains(&target.to_lowercase().as_str()) {
             // 连上就记，不等隧道关闭：npm 用长连接，结束时隧道可能还没断
             let upstream = connect_upstream(&target);
-            events.lock().unwrap().push(NetEvent { target, request, leaked: vec![], forwarded: upstream.is_some() });
+            events.lock().unwrap().push(NetEvent { target, request, leaked: vec![], secrets: vec![], forwarded: upstream.is_some() });
             match upstream {
                 Some(u) => tunnel(stream, u),
                 None => {
@@ -380,13 +448,13 @@ fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>, f
         // GET http://host/path HTTP/1.1 —— 明文，能看到完整请求
         let url = rest.split_whitespace().next().unwrap_or("");
         target = url.strip_prefix("http://").and_then(|u| u.split('/').next()).unwrap_or(url).to_string();
-        request = format!("{method} {url}");
+        request = redact_secrets(&format!("{method} {url}"));
         let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
     }
-    let leaked: Vec<String> = DECOYS.iter().filter(|d| text.contains(d.marker)).map(|d| d.marker.to_string()).collect();
+    let (leaked, secrets) = scan_outbound(&text);
     let mut events = events.lock().unwrap();
     if (!target.is_empty() || !leaked.is_empty()) && events.len() < MAX_NET_EVENTS {
-        events.push(NetEvent { target, request, leaked, forwarded: false });
+        events.push(NetEvent { target, request, leaked, secrets, forwarded: false });
     }
 }
 
@@ -527,6 +595,7 @@ fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> s
         .env("https_proxy", &jail.proxy_url)
         .env("npm_config_proxy", &jail.proxy_url)
         .env("npm_config_https_proxy", &jail.proxy_url)
+        .envs(ENV_DECOYS.iter().map(|d| (d.name, d.value)))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -682,9 +751,12 @@ pub fn findings(b: &Behavior) -> Vec<Finding> {
         if !ev.leaked.is_empty() {
             out.push(Finding::new(
                 Severity::High,
-                format!("程序把诱饵敏感数据（{}）发往 {}，这是窃取数据的铁证", ev.leaked.join("、"), ev.target),
+                format!("程序把诱饵敏感数据（{}）发往 {}，这是窃取数据的铁证", ev.leaked.iter().map(|m| decoy_label(m)).collect::<Vec<_>>().join("、"), ev.target),
                 loc,
             ));
+        }
+        if !ev.secrets.is_empty() {
+            out.push(Finding::new(Severity::High, format!("程序发往 {} 的明文请求里带着疑似 {}，可能在外传密钥", ev.target, ev.secrets.join("、")), loc));
         }
     }
     // 连接裸 IP 作为证据交给上层判断（正常安装脚本一般连域名）

