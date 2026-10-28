@@ -225,6 +225,10 @@ fn write_decoys(home: &Path) -> std::io::Result<()> {
 /// An App launched from Finder or as a login item gets only /usr/bin:/bin:/usr/sbin:/sbin as PATH;
 /// paths set up in ~/.zshrc (fnm, nvm) are missing. If node still isn't found in the fixed locations,
 /// ask the user's login shell for its PATH once (the result is cached).
+///
+/// Folders the profile won't let the program read are left out. They aren't just useless: with one ahead of
+/// Homebrew's node (say ~/bin, or CI's tool cache under the home folder), npm segfaults on the EPERM it gets while
+/// looking itself up, so a plain `npm install` crashed in the sandbox.
 fn sandbox_path() -> String {
     static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     PATH.get_or_init(|| {
@@ -236,11 +240,24 @@ fn sandbox_path() -> String {
         {
             dirs.extend(std::env::split_paths(&p));
         }
+        let home = crate::home_dir();
         let mut seen = std::collections::HashSet::new();
-        dirs.retain(|d| !d.as_os_str().is_empty() && seen.insert(d.clone()));
+        dirs.retain(|d| !d.as_os_str().is_empty() && is_readable_in_sandbox(d, &home) && seen.insert(d.clone()));
         std::env::join_paths(dirs).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
     })
     .clone()
+}
+
+/// Whether the profile lets a sandboxed program read this folder: mirrors the read rules in `profile`. The real home
+/// is hidden except its tool folders; other users' folders, external drives and the shared temp folders are hidden.
+fn is_readable_in_sandbox(dir: &Path, real_home: &Path) -> bool {
+    // Rules match resolved paths: /tmp is /private/tmp, and a PATH entry may be a symlink
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let home = std::fs::canonicalize(real_home).unwrap_or_else(|_| real_home.to_path_buf());
+    if dir.starts_with(&home) {
+        return TOOL_SUBDIRS.iter().any(|t| dir.starts_with(home.join(t)));
+    }
+    !["/Users", "/Volumes", "/private/tmp", "/private/var/folders"].iter().any(|hidden| dir.starts_with(hidden))
 }
 
 /// Kills the process group we started ourselves with process_group(0) (the group id is the child's pid).
@@ -879,6 +896,17 @@ fn classify_denial(d: &Denied) -> Option<(Severity, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_keeps_only_folders_the_sandbox_can_read() {
+        let home = Path::new("/Users/someone");
+        for readable in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/Users/someone/.local/bin", "/Users/someone/.fnm/node-versions/v24/installation/bin", "/Users/someone/Library/pnpm"] {
+            assert!(is_readable_in_sandbox(Path::new(readable), home), "{readable}");
+        }
+        for hidden in ["/Users/someone/bin", "/Users/someone/hostedtoolcache/node/24/arm64/bin", "/Users/other/.local/bin", "/Volumes/USB/bin", "/private/tmp/bin"] {
+            assert!(!is_readable_in_sandbox(Path::new(hidden), home), "{hidden}");
+        }
+    }
 
     #[test]
     fn parses_kernel_denial_lines() {

@@ -78,13 +78,11 @@ jobs:
       - name: Install front-end dependencies
         working-directory: app
         run: pnpm install --frozen-lockfile
-      # sandbox_runs_npm_installed_in_home is skipped here only: on GitHub's runners setup-node's npm lives under the
-      # home folder, which the sandbox denies, so npm falls back to Homebrew's node, which then crashes inside the
-      # sandbox. The test is meant for fnm / nvm installs and passes on a developer Mac.
-      # TODO: find why Homebrew's node segfaults in the sandbox.
+      # setup-node installs node under the home folder, which the sandbox hides. Homebrew's node is on the runner too,
+      # so sandbox_runs_npm_installed_in_home also covers npm crashing when a hidden folder sat ahead of it in PATH.
       - name: Test
         run: |
-          cargo test --workspace --locked -- --skip sandbox_runs_npm_installed_in_home
+          cargo test --workspace --locked
           cargo clippy --workspace --locked -- -D warnings
           cd app && pnpm exec tsc --noEmit && pnpm -s check:i18n
 
