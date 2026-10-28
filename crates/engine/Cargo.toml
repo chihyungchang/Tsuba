@@ -1,6 +1,6 @@
 [package]
 name = "tsuba-engine"
-description = "Tsuba 检测引擎：在陌生代码第一次运行之前做检查"
+description = "Tsuba detection engine: checks unfamiliar code before it first runs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

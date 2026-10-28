@@ -1,5 +1,5 @@
 #!/bin/bash
-# 惰性样本：模仿 2026 年 10 月真实的假会议软件 Zeff 安装镜像的结构。
+# Inert sample: mimics the layout of the real fake meeting app Zeff installer image from October 2026.
 # This script launches the application without using Apple's official code signing or notarization process.
 DIR="$(cd "$(dirname "$0")" && pwd)"
 TEMP_APP="/tmp/tsuba-fixture"

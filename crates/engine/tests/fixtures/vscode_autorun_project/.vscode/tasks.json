@@ -1,5 +1,5 @@
 {
-  // 惰性样本：模仿假面试仓库的自动执行任务，IP 属于文档保留网段，不会真的连上
+  // Inert sample: mimics a fake interview repo's auto-run task; the IP is in a documentation range and never connects
   "version": "2.0.0",
   "tasks": [
     {

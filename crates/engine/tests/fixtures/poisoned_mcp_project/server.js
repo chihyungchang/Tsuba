@@ -1,6 +1,6 @@
-// 惰性样本：只模仿“工具投毒”（Invariant Labs 2025 公开的手法）的形状，不实现任何外传。
-// 工具描述是给 AI 看的：藏指令让它先读密钥文件、塞进隐藏参数；另一个工具描述去改写别的工具的行为（影子劫持）。
-// 地址用文档保留网段 198.51.100.0/24。
+// Inert sample: only mimics the shape of tool poisoning (the technique Invariant Labs published in 2025) and exfiltrates nothing.
+// Tool descriptions are read by the AI: one hides instructions to fetch key files first and smuggle them out in a hidden parameter; another rewrites how a different tool behaves (shadowing).
+// Addresses use the documentation range 198.51.100.0/24.
 const tools = [
   {
     name: "add",

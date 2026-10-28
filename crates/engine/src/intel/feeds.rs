@@ -1,4 +1,4 @@
-//! 名单类情报：VS Code 官方恶意扩展名单、abuse.ch 恶意地址。
+//! List intel: VS Code's official malicious extension list and abuse.ch malicious addresses.
 
 use super::{SourceStatus, agent, read_json, write_atomic};
 use crate::store;
@@ -7,24 +7,26 @@ use std::sync::OnceLock;
 
 const VSCODE_FILE: &str = "vscode_malicious.json";
 const IOC_FILE: &str = "iocs.json";
+const UNNAMED_MALWARE: &str = "unnamed_malware";
+const UNNAMED_URL: &str = "unnamed_url";
 
-/// VS Code 自己用来禁用恶意扩展的名单
+/// The list VS Code itself uses to disable malicious extensions
 pub fn update_vscode(_old: Option<&SourceStatus>) -> SourceStatus {
     let mut s = SourceStatus {
         id: "vscode".into(),
-        name: super::VSCODE.0.into(),
-        license: super::VSCODE.1.into(),
+        name: super::VSCODE.0.to_string(),
+        license: super::VSCODE.1.to_string(),
         url: "https://main.vscode-cdn.net/extensions/marketplace.json".into(),
         ..Default::default()
     };
     let body: Value = match agent(30).get(&s.url).call().map_err(|e| e.to_string()).and_then(|r| r.into_json().map_err(|e| e.to_string())) {
         Ok(v) => v,
         Err(e) => {
-            s.error = Some(format!("下载失败：{e}"));
+            s.error = Some(tr!("Download failed: {error}", error = e));
             return s;
         }
     };
-    // 条目可能是字符串，也可能是 {"id": ...}
+    // Entries may be strings or {"id": ...}
     let ids: Vec<String> = body["malicious"]
         .as_array()
         .into_iter()
@@ -41,7 +43,7 @@ pub fn update_vscode(_old: Option<&SourceStatus>) -> SourceStatus {
     s
 }
 
-/// 扩展 ID（publisher.name）是否在官方恶意名单里
+/// Whether an extension ID (publisher.name) is on the official malicious list
 pub fn vscode_malicious(id: &str) -> bool {
     static LIST: OnceLock<Vec<String>> = OnceLock::new();
     let list = LIST.get_or_init(|| serde_json::from_value(read_json(VSCODE_FILE)).unwrap_or_default());
@@ -49,18 +51,18 @@ pub fn vscode_malicious(id: &str) -> bool {
     list.contains(&id)
 }
 
-/// abuse.ch 的 ThreatFox（C2 的 IP、域名、样本哈希）和 URLhaus（投递恶意软件的网址）。
-/// 2025 年起需要免费注册的 Auth-Key：https://auth.abuse.ch/
+/// abuse.ch ThreatFox (C2 IPs, domains, sample hashes) and URLhaus (URLs that deliver malware).
+/// Since 2025 this needs a free Auth-Key: https://auth.abuse.ch/
 pub fn update_abusech(key: &str, _old: Option<&SourceStatus>) -> SourceStatus {
     let mut s = SourceStatus {
         id: "abusech".into(),
-        name: super::ABUSECH.0.into(),
-        license: super::ABUSECH.1.into(),
+        name: super::ABUSECH.0.to_string(),
+        license: super::ABUSECH.1.to_string(),
         url: "https://abuse.ch".into(),
         ..Default::default()
     };
     if key.is_empty() {
-        s.error = Some("未设置 Auth-Key，已跳过（在设置里填写免费的 abuse.ch Auth-Key 后启用）".into());
+        s.error = Some(tr!("Skipped: no Auth-Key set (add a free abuse.ch Auth-Key in Settings to turn it on)"));
         return s;
     }
     let mut iocs: Map<String, Value> = ["domains", "ips", "urls", "sha256"].iter().map(|k| (k.to_string(), json!({}))).collect();
@@ -75,7 +77,7 @@ pub fn update_abusech(key: &str, _old: Option<&SourceStatus>) -> SourceStatus {
         Ok(body) if body["query_status"] == "ok" => {
             for d in body["data"].as_array().into_iter().flatten() {
                 let ioc = d["ioc"].as_str().unwrap_or("").to_lowercase();
-                let label = d["malware_printable"].as_str().unwrap_or("恶意软件");
+                let label = d["malware_printable"].as_str().unwrap_or(UNNAMED_MALWARE);
                 match d["ioc_type"].as_str().unwrap_or("") {
                     "domain" => add("domains", ioc, label),
                     "ip:port" => add("ips", ioc.split(':').next().unwrap_or("").to_string(), label),
@@ -86,11 +88,11 @@ pub fn update_abusech(key: &str, _old: Option<&SourceStatus>) -> SourceStatus {
             }
         }
         Ok(body) => {
-            s.error = Some(format!("ThreatFox 返回 {}", body["query_status"]));
+            s.error = Some(tr!("ThreatFox returned {status}", status = body["query_status"]));
             return s;
         }
         Err(e) => {
-            s.error = Some(format!("ThreatFox 下载失败：{e}"));
+            s.error = Some(tr!("ThreatFox download failed: {error}", error = e));
             return s;
         }
     }
@@ -98,7 +100,7 @@ pub fn update_abusech(key: &str, _old: Option<&SourceStatus>) -> SourceStatus {
     let uh = agent(60).get("https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/").set("Auth-Key", key).call();
     if let Ok(body) = uh.map_err(|e| e.to_string()).and_then(|r| r.into_json::<Value>().map_err(|e| e.to_string())) {
         for u in body["urls"].as_array().into_iter().flatten() {
-            let label = u["threat"].as_str().unwrap_or("恶意网址");
+            let label = u["threat"].as_str().unwrap_or(UNNAMED_URL);
             if let Some(url) = u["url"].as_str() {
                 add("urls", url.to_lowercase(), label);
             }
@@ -125,7 +127,13 @@ fn iocs() -> &'static Value {
     IOCS.get_or_init(|| read_json(IOC_FILE))
 }
 
-/// 查一个域名、IP、网址或 sha256 是否在 abuse.ch 名单里，返回恶意软件家族名。
+/// Looks up whether a domain, IP, URL or sha256 is on the abuse.ch lists and returns the malware family name.
 pub fn ioc(kind: &str, value: &str) -> Option<String> {
-    iocs()[kind][value.to_lowercase()].as_str().map(String::from)
+    let label = iocs()[kind][value.to_lowercase()].as_str()?;
+    // Entries without a family name are stored with a placeholder (in Chinese by older versions) and named in the current language here
+    Some(match label {
+        UNNAMED_MALWARE | "恶意软件" => tr!("malware"),
+        UNNAMED_URL | "恶意网址" => tr!("malicious URL"),
+        family => family.to_string(),
+    })
 }

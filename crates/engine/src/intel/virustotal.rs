@@ -1,16 +1,16 @@
-//! VirusTotal：用文件的 SHA-256 查询 70 多家杀毒引擎的结论。
+//! VirusTotal: looks up a file's SHA-256 to get the verdicts of 70+ antivirus engines.
 //!
-//! 只发送哈希，不上传文件（上传的文件会共享给 VirusTotal 的付费用户，可能泄露代码或隐私）。
-//! 需要用户自己的 API Key。免费的公开 API 每分钟 4 次、每天 500 次，条款不允许用在商业产品里。
+//! Only the hash is sent, never the file (uploads are shared with VirusTotal's paying customers and could leak code or private data).
+//! Needs the user's own API key. The free public API allows 4 lookups a minute and 500 a day, and its terms forbid use in commercial products.
 
 use crate::rules::{Finding, Severity};
 use serde_json::{Value, json};
 use std::time::Duration;
 
-/// 一次检查最多查几个哈希（免费额度每分钟 4 次）
+/// At most this many hashes per check (the free quota is 4 a minute)
 const MAX_LOOKUPS: usize = 4;
 
-/// 证据里出现的所有 sha256（下载的安装包、镜像里的程序、远程脚本……）
+/// Every sha256 in the evidence (downloaded installers, apps inside disk images, remote scripts…)
 fn collect_hashes(v: &Value, out: &mut Vec<String>) {
     match v {
         Value::Object(o) => {
@@ -41,13 +41,13 @@ fn lookup(key: &str, hash: &str) -> Lookup {
     match agent.get(&format!("https://www.virustotal.com/api/v3/files/{hash}")).set("x-apikey", key).call() {
         Ok(r) => r.into_json::<Value>().map(|v| Lookup::Found(v["data"]["attributes"].clone())).unwrap_or(Lookup::Unknown),
         Err(ureq::Error::Status(404, _)) => Lookup::Unknown,
-        Err(ureq::Error::Status(401 | 403, _)) => Lookup::Stop("VirusTotal API Key 无效".into()),
-        Err(ureq::Error::Status(429, _)) => Lookup::Stop("VirusTotal 查询太频繁（免费额度每分钟 4 次）".into()),
-        Err(e) => Lookup::Stop(format!("无法连接 VirusTotal：{e}")),
+        Err(ureq::Error::Status(401 | 403, _)) => Lookup::Stop(tr!("The VirusTotal API key is invalid")),
+        Err(ureq::Error::Status(429, _)) => Lookup::Stop(tr!("Too many VirusTotal lookups (the free quota is 4 a minute)")),
+        Err(e) => Lookup::Stop(tr!("Couldn't connect to VirusTotal: {error}", error = e)),
     }
 }
 
-/// 查证据里的文件哈希，把结论加进证据和规则命中里。没有 Key 时什么都不做。
+/// Looks up the file hashes in the evidence and adds the verdicts to the evidence and findings. Does nothing without a key.
 pub fn enrich(key: &str, evidence: &mut Value, findings: &mut Vec<Finding>) {
     if key.is_empty() {
         return;
@@ -66,17 +66,17 @@ pub fn enrich(key: &str, evidence: &mut Value, findings: &mut Vec<Finding>) {
                 let total = bad + sus + n("undetected") + n("harmless");
                 let label = a["popular_threat_classification"]["suggested_threat_label"].as_str().unwrap_or("");
                 let name = a["meaningful_name"].as_str().unwrap_or(short);
-                let detail = if label.is_empty() { String::new() } else { format!("（{label}）") };
+                let detail = if label.is_empty() { String::new() } else { tr!(" ({label})", label = label) };
                 let f = match bad {
-                    b if b >= 3 => Finding::new(Severity::High, format!("VirusTotal：{b}/{total} 个杀毒引擎认为 {name} 是恶意的{detail}"), &link).with_source(super::VIRUSTOTAL),
-                    b if b >= 1 || sus >= 3 => Finding::new(Severity::Medium, format!("VirusTotal：{b} 个引擎报毒、{sus} 个认为可疑（共 {total} 个）：{name}{detail}"), &link).with_source(super::VIRUSTOTAL),
-                    _ => Finding::new(Severity::Low, format!("VirusTotal：{total} 个引擎都没有报毒（不代表一定安全，新样本常常查不出来）：{name}"), &link).with_source(super::VIRUSTOTAL),
+                    b if b >= 3 => Finding::new(Severity::High, tr!("VirusTotal: {bad}/{total} antivirus engines consider {name} malicious{detail}", bad = b, total = total, name = name, detail = detail), &link).with_source(super::VIRUSTOTAL),
+                    b if b >= 1 || sus >= 3 => Finding::new(Severity::Medium, tr!("VirusTotal: {bad} engines flag it as malicious and {suspicious} as suspicious (of {total}): {name}{detail}", bad = b, suspicious = sus, total = total, name = name, detail = detail), &link).with_source(super::VIRUSTOTAL),
+                    _ => Finding::new(Severity::Low, tr!("VirusTotal: none of {total} engines flag it (that doesn't prove it's safe; new samples often go undetected): {name}", total = total, name = name), &link).with_source(super::VIRUSTOTAL),
                 };
                 findings.push(f);
                 results.push(json!({ "sha256": h, "stats": stats, "label": label, "name": name, "first_seen": a["first_submission_date"] }));
             }
             Lookup::Unknown => {
-                findings.push(Finding::new(Severity::Low, format!("VirusTotal 上没有人见过这个文件（{short}…），是新样本"), &link).with_source(super::VIRUSTOTAL));
+                findings.push(Finding::new(Severity::Low, tr!("Nobody has seen this file on VirusTotal before ({hash}…); it's a new sample", hash = short), &link).with_source(super::VIRUSTOTAL));
                 results.push(json!({ "sha256": h, "unknown": true }));
             }
             Lookup::Stop(e) => {
