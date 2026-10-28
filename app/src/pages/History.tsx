@@ -12,7 +12,7 @@ const PATH_SOURCES: LogEntry["source"][] = ["download", "extension", "scan"];
 const FILE_SOURCES: LogEntry["source"][] = [...PATH_SOURCES, "mount"];
 const isCommand = (e: LogEntry) => e.source === "terminal" || e.source === "paste";
 
-// Replaces SOURCE_LABEL / ACTION_LABEL in types.ts: labels must be built at render time to follow the language
+// Built at render time so the labels follow the current language
 function sourceLabel(source: LogEntry["source"]): string {
   switch (source) {
     case "terminal":
@@ -353,7 +353,7 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
               {/* Irreversible actions go on the far right, apart from the other buttons */}
               {FILE_SOURCES.includes(current.source) && !qItem && !isDeleted && (
                 <span className="toolbar-end">
-                  <ConfirmButton confirm={t("Click Again to Delete Forever")} onConfirm={() => act("delete_entry_file", { entryId: current.id })}>
+                  <ConfirmButton confirm={t("Click Again to Delete Permanently")} onConfirm={() => act("delete_entry_file", { entryId: current.id })}>
                     <Icon.trash size={14} />
                     {t("Delete File")}
                   </ConfirmButton>

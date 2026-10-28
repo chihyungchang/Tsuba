@@ -5,8 +5,8 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { GuardianKatana } from "../brand";
 import { Icon } from "../icons";
 import { IntelManifest, LogEntry, Overview } from "../types";
-import { Banner, Spinner, baseName, errText, relativeTime } from "../ui";
-import { lang, t } from "../i18n";
+import { Banner, Spinner, baseName, errText, formatCompact, formatNumber, relativeTime } from "../ui";
+import { t } from "../i18n";
 
 type Go = (page: "history" | "scan" | "doctor" | "settings") => void;
 
@@ -23,17 +23,6 @@ function logTag(e: LogEntry): { text: string; tone: string } {
 }
 
 const LOG_OPEN_KEY = "tsuba-log-open";
-
-// Number formats follow the window language; could move next to relativeTime in ui.tsx
-const numberLocale = () => (lang() === "zh-Hans" ? "zh-CN" : "en");
-const formatCount = (n: number) => n.toLocaleString(numberLocale());
-
-/** Big counts in the tile: Chinese groups by 万 ("23.4 万"), English uses K / M ("234K") */
-function formatCompactCount(n: number): string {
-  if (n < 10000) return formatCount(n);
-  if (lang() === "zh-Hans") return `${(n / 10000).toFixed(1)} 万`;
-  return new Intl.NumberFormat("en", { notation: "compact" }).format(n);
-}
 
 /**
  * Terminal log at the bottom: the latest checks, one per line like command output; click a line for details.
@@ -247,7 +236,7 @@ export function OverviewPage({
             {risky[0] && <span className="cell-last">{entryName(risky[0], 46)}</span>}
           </button>
           <button type="button" className="cell" onClick={() => go("history")}>
-            <span className="cell-num">{formatCount(overview.recent.total)}</span>
+            <span className="cell-num">{formatNumber(overview.recent.total)}</span>
             <span className="cell-label">{overview.recent.total === 1 ? t("check") : t("checks")}</span>
           </button>
           <button type="button" className="cell" onClick={() => go("scan")}>
@@ -255,7 +244,7 @@ export function OverviewPage({
             <span className="cell-label">{t("in quarantine")}</span>
           </button>
           <button type="button" className="cell cell-intel" onClick={() => go("settings")}>
-            <span className="cell-num">{formatCompactCount(intelCount)}</span>
+            <span className="cell-num">{formatCompact(intelCount)}</span>
             <span className="cell-label">{intel?.updated ? t("Threat intel · updated {time}", { time: relativeTime(intel.updated) }) : t("Threat intel · not downloaded yet")}</span>
           </button>
         </section>

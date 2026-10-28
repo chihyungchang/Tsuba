@@ -161,22 +161,3 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
   get warn() { return t("Needs Attention"); },
   get block() { return t("Block Recommended"); },
 };
-export const SOURCE_LABEL: Record<LogEntry["source"], string> = {
-  get terminal() { return t("Terminal command"); },
-  get paste() { return t("Pasted command"); },
-  get download() { return t("Download"); },
-  get mount() { return t("Opened disk image"); },
-  get extension() { return t("Editor extension"); },
-  get ai_tool() { return t("AI tool"); },
-  get scan() { return t("Manual check"); },
-};
-export const ACTION_LABEL: Record<string, string> = {
-  get executed() { return t("Ran"); },
-  get cancelled() { return t("Cancelled"); },
-  get quarantined() { return t("Quarantined"); },
-  get ejected() { return t("Blocked from opening"); },
-  get notified() { return t("Warned"); },
-  get allowed() { return t("Allowed"); },
-  get deleted() { return t("Deleted"); },
-  scanned: "",
-};
