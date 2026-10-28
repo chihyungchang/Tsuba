@@ -1,0 +1,3 @@
+{
+  "Usage: tsuba check -- <command> | tsuba scan <path> | tsuba doctor | tsuba mcp (read-only MCP tools for Claude Code and others) [--lang en|zh-Hans]": "用法：tsuba check -- <命令> | tsuba scan <路径> | tsuba doctor | tsuba mcp（给 Claude Code 等用的只读 MCP 工具）[--lang en|zh-Hans]"
+}

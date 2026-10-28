@@ -109,9 +109,9 @@ fn fake_interview_project_blocked() {
     let r = fix("fake_interview_project");
     let (ctx, findings) = collect::project_context(&r, Some("server/server.js"));
     let msgs = messages(&findings);
-    assert!(msgs.contains("屏幕右侧"), "{msgs}");
+    assert!(msgs.contains("right edge of the screen"), "{msgs}");
     assert!(msgs.contains("eval"), "{msgs}");
-    assert!(msgs.contains("硬编码的 IP"), "{msgs}");
+    assert!(msgs.contains("hard-coded IP"), "{msgs}");
     assert_eq!(rules::offline_verdict(&findings), Verdict::Block);
     assert!(ctx["files_with_hits"].get("server/server.js").is_some());
 }
@@ -136,7 +136,7 @@ fn vscode_folder_open_task_blocked() {
 fn malicious_extension_blocked() {
     let (info, findings) = extension::scan_extension(&fix("malicious_extension"));
     let msgs = messages(&findings);
-    assert!(msgs.contains("不可见"), "{msgs}");
+    assert!(msgs.contains("invisible Unicode"), "{msgs}");
     assert!(msgs.contains("一启动就激活"), "{msgs}");
     assert_eq!(rules::offline_verdict(&findings), Verdict::Block);
     assert_eq!(info["id"], "esbenp-tools.prettier-vscode-plus");

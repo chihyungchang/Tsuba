@@ -37,9 +37,20 @@ pub struct Lists {
 struct RuleMeta {
     severity: Severity,
     message: String,
+    /// The rule pack carries its own translation: packs update without a release, so the app's catalog can't know new rules.
+    message_zh: Option<String>,
     skip_quoted: bool,
     doc_keep: bool,
     skip_well_known: bool,
+}
+
+impl RuleMeta {
+    fn localized_message(&self) -> String {
+        match (crate::i18n::lang(), &self.message_zh) {
+            (crate::i18n::Lang::ZhHans, Some(zh)) => zh.clone(),
+            _ => self.message.clone(),
+        }
+    }
 }
 
 struct Pack {
@@ -79,6 +90,7 @@ fn compile(yar: &str, toml_text: &str, origin: &'static str) -> Result<Pack, Str
             RuleMeta {
                 severity,
                 message: meta_str(&m, "message").unwrap_or(r.identifier()).to_string(),
+                message_zh: meta_str(&m, "message_zh").map(str::to_string),
                 skip_quoted: meta_bool(&m, "skip_quoted"),
                 doc_keep: meta_bool(&m, "doc_keep"),
                 skip_well_known: meta_bool(&m, "skip_well_known"),
@@ -170,7 +182,7 @@ pub fn scan(text: &str, location: &str) -> Vec<Finding> {
         ranges.sort_by_key(|x| x.start);
         let hit = ranges.into_iter().find(|x| !(m.skip_quoted && quoted(text, x.start)) && !(m.skip_well_known && only_well_known(&text[x.clone()])));
         let Some(hit) = hit else { continue };
-        let mut f = Finding::new(m.severity, m.message.clone(), location).with_snippet(rules::snippet(text, hit.start, hit.end, 120)).with_source(super::TSUBA);
+        let mut f = Finding::new(m.severity, m.localized_message(), location).with_snippet(rules::snippet(text, hit.start, hit.end, 120)).with_source(super::TSUBA);
         f.rule = r.identifier().to_string();
         out.push(f);
     }

@@ -1,0 +1,8 @@
+{
+  "Code is pushed off the right edge of the screen by whitespace, out of sight (a typical way to hide a poisoned payload)": "代码被大量空白推到屏幕右侧之外，人眼看不到（典型的隐藏投毒手法）",
+  "Connects straight to a hard-coded IP address and port (typical of a C2 server)": "直接连接硬编码的 IP 地址加端口（C2 服务器的典型特征）",
+  "The code has {count} bidirectional text control characters, so what is displayed may differ from what runs": "代码里有 {count} 个双向文本控制字符，显示出来的代码可能和实际执行的不一致",
+  "The code hides a run of {count} invisible Unicode characters that may encode malicious code (the GlassWorm technique)": "代码里藏着一串连续 {count} 个不可见的 Unicode 字符，可能把恶意代码编码在里面（GlassWorm 手法）",
+  "⟨{count} invisible characters⟩": "⟨{count} 个不可见字符⟩",
+  "⟨{gap} spaces⟩": "⟨{gap} 个空格⟩"
+}

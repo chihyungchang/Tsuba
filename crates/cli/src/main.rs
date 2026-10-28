@@ -14,6 +14,11 @@
 //!                                                     --install 试装项目依赖，看安装脚本做了什么（只放行 npm 官方源）
 //! tsuba mcp                                           只读 MCP 工具，让 Claude Code 等查询检查记录（claude mcp add tsuba -- tsuba mcp）
 
+/// User-facing text in the CLI: `tr!("Found {n} files", n = count)`. Defined before the modules so they can use it.
+macro_rules! tr {
+    ($($args:tt)*) => { tsuba_engine::tr_in!(crate::ZH_HANS, $($args)*) };
+}
+
 mod mcp;
 
 use serde_json::{Value, json};
@@ -23,6 +28,26 @@ use tsuba_engine::detect::{self, Kind};
 use tsuba_engine::rules::{Finding, Severity, Verdict};
 use tsuba_engine::store::{self, Config, LogEntry};
 use tsuba_engine::{Report, collect, doctor, scan, trust};
+
+static ZH_HANS: tsuba_engine::i18n::Catalog = tsuba_engine::i18n::Catalog::new(|| tsuba_engine::i18n::parse_catalog(include_str!("../locales/zh-Hans.json")));
+
+/// `--lang en|zh-Hans` anywhere on the command line wins; otherwise the system language. Removes the flag from args.
+fn take_lang(args: &mut Vec<String>) -> tsuba_engine::i18n::Lang {
+    use tsuba_engine::i18n::{Lang, system_lang};
+    if let Some(i) = args.iter().position(|a| a == "--lang" || a.starts_with("--lang=")) {
+        // after `--` everything belongs to the checked command, not to us
+        if args.iter().position(|a| a == "--").is_none_or(|end| i < end) {
+            let flag = args.remove(i);
+            let value = match flag.strip_prefix("--lang=") {
+                Some(v) => v.to_string(),
+                None if i < args.len() => args.remove(i),
+                None => String::new(),
+            };
+            return Lang::parse(&value);
+        }
+    }
+    system_lang()
+}
 
 struct Style {
     red: &'static str,
@@ -771,7 +796,8 @@ fn cmd_mcp() -> i32 {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    tsuba_engine::i18n::set_lang(take_lang(&mut args));
     let code = match args.first().map(String::as_str) {
         Some("check") => cmd_check(&args[1..]),
         Some("scan") => cmd_scan(&args[1..]),
@@ -788,9 +814,33 @@ fn main() {
             0
         }
         _ => {
-            eprintln!("用法：tsuba check -- <命令> | tsuba scan <路径> | tsuba doctor | tsuba mcp（给 Claude Code 等用的只读 MCP 工具）");
+            eprintln!("{}", tr!("Usage: tsuba check -- <command> | tsuba scan <path> | tsuba doctor | tsuba mcp (read-only MCP tools for Claude Code and others) [--lang en|zh-Hans]"));
             2
         }
     };
     std::process::exit(code);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zh_hans_catalog_matches_sources() {
+        let sources = tsuba_engine::i18n::read_sources(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+        let sources: Vec<&str> = sources.iter().map(String::as_str).collect();
+        if let Err(e) = tsuba_engine::i18n::check_catalog(&ZH_HANS, &sources, &[]) {
+            panic!("{e}");
+        }
+    }
+
+    #[test]
+    fn lang_flag_stops_at_double_dash() {
+        let mut args: Vec<String> = ["check", "--", "ls", "--lang", "en"].map(String::from).to_vec();
+        take_lang(&mut args);
+        assert_eq!(args.len(), 5);
+        let mut args: Vec<String> = ["--lang=zh-Hans", "scan", "x"].map(String::from).to_vec();
+        assert_eq!(take_lang(&mut args), tsuba_engine::i18n::Lang::ZhHans);
+        assert_eq!(args, ["scan", "x"]);
+    }
 }

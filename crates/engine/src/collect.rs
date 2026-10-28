@@ -17,6 +17,8 @@ const SRC_EXT: &[&str] = &["js", "cjs", "mjs", "ts", "jsx", "tsx", "sh", "py", "
 const MAX_FILES: usize = 800;
 const MAX_FILE_BYTES: usize = 2_000_000;
 
+
+const RELEASE_COOLDOWN: &str = "release_cooldown";
 fn git(root: &Path, args: &[&str]) -> String {
     Command::new("git")
         .arg("-C")
@@ -292,7 +294,7 @@ fn check_packages(specs: &[String], online: bool, findings: &mut Vec<Finding>) -
         } else if let Some(age) = num("version_published_days_ago").filter(|a| *a < 7) {
             // 发布冷却期：被盗号的热门包通常几小时到几天内就会被发现并撤下
             let ver = info.get("version").and_then(|v| v.as_str()).unwrap_or("");
-            findings.push(Finding::new(Severity::Medium, format!("{name}@{ver} 发布才 {age} 天，还在 7 天冷却期内（被盗号投毒的版本通常在这段时间内被发现）"), name));
+            findings.push(Finding::new(Severity::Medium, format!("{name}@{ver} 发布才 {age} 天，还在 7 天冷却期内（被盗号投毒的版本通常在这段时间内被发现）"), name).with_rule(RELEASE_COOLDOWN));
         }
         if let Some(scripts) = info.get("install_scripts").and_then(|v| v.as_object()) {
             for (k, v) in scripts {
@@ -402,7 +404,7 @@ pub fn collect(cfg: &Config, cmd: &str, cwd: &Path, targets: &[Target]) -> (Valu
                         .filter(|i| i.contains_key("error") || i.get("created_days_ago").and_then(|v| v.as_i64()).unwrap_or(9999) < 30 || i.get("install_scripts").and_then(|v| v.as_object()).is_some_and(|o| !o.is_empty()))
                         .map(Value::Object)
                         .collect();
-                    findings.extend(dep_findings.into_iter().filter(|f| !f.message.contains("冷却期")));
+                    findings.extend(dep_findings.into_iter().filter(|f| f.rule != RELEASE_COOLDOWN));
                     item.insert("project".into(), ctx);
                     item.insert("dependency_checks".into(), json!(checks));
                 }
