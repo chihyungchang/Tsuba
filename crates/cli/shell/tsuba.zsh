@@ -1,15 +1,17 @@
-# Tsuba zsh 集成：粘贴进终端时先提醒一次，按下回车后、命令真正执行前再做完整检查。
+# Tsuba zsh integration: a quick warning when something is pasted into the terminal, then a full check
+# after Return is pressed and before the command actually runs.
 #
-# 由 Tsuba App 安装，在 ~/.zshrc 里 source 这个文件。
-# 临时关闭：export TSUBA_DISABLE=1
-# 跳过单条命令：在命令前加 tskip，例如  tskip npm install
+# Installed by the Tsuba App, which sources this file from ~/.zshrc.
+# Turn off for now: export TSUBA_DISABLE=1
+# Skip one command: prefix it with tskip, e.g.  tskip npm install
+# Messages are printed by the tsuba binary (localized there); this script prints nothing itself.
 
 typeset -g TSUBA_BIN=${TSUBA_BIN:-"$HOME/.tsuba/bin/tsuba"}
 
-# 先用一个便宜的正则粗筛，只有可能危险的命令才启动检查程序
+# A cheap regex prefilter: only start the checker for commands that might be dangerous
 typeset -g _TSUBA_RE='(curl|wget)[^|]*[|][[:space:]]*(sudo[[:space:]]+)?[A-Za-z/]*(sh|python3?|node|perl|ruby|osascript)([[:space:]]|$)|<[(][[:space:]]*(curl|wget)|[$][(][[:space:]]*(curl|wget)|base64[[:space:]]+-[[:alnum:]-]*[dD]|(^|[;&|[:space:]])(npm|pnpm|yarn|bun|npx|pnpx|bunx|node|hdiutil|installer|xattr|spctl|osascript|code|code-insiders|cursor|windsurf|codium)([[:space:]]|$)|open[[:space:]].*[.](dmg|pkg|mpkg|app)'
 
-# git clone 本身只下载不执行，所以放过去；克隆完、提示符回来时再检查新仓库
+# git clone itself only downloads and runs nothing, so let it through; check the new repository when the prompt returns
 typeset -g _TSUBA_CLONE_RE='(^|[;&|[:space:]])(git[[:space:]]+clone|gh[[:space:]]+repo[[:space:]]+clone)[[:space:]]'
 
 typeset -g _TSUBA_PASTED=
@@ -19,7 +21,7 @@ tskip() { TSUBA_DISABLE=1 "$@" }
 
 zmodload zsh/zleparameter 2>/dev/null
 
-# 如果别的插件（oh-my-zsh、autosuggestions 等）已经接管了这两个 widget，检查完后交还给它
+# If another plugin (oh-my-zsh, autosuggestions, ...) already wraps these widgets, hand back to it after checking
 if [[ ${widgets[accept-line]} == user:* && ${widgets[accept-line]} != user:_tsuba_accept_line ]]; then
   zle -N _tsuba_prev_accept_line ${widgets[accept-line]#user:}
 fi
@@ -53,17 +55,17 @@ _tsuba_accept_line() {
     zle -I
     local -a flags
     [[ -n $pasted ]] && flags=(--pasted)
-    # 报告走 stderr/终端，交互提示走 /dev/tty；stdout 捕获下来，用于“直接运行已检查过的脚本”
+    # The report goes to stderr/the terminal and prompts to /dev/tty; stdout is captured for "run the checked script directly"
     local out
     out=$("$TSUBA_BIN" check $flags -- "$cmd" </dev/tty)
     if (( $? != 0 )); then
-      print -s -- "$cmd"   # 保留在历史里，方便核实后再执行
+      print -s -- "$cmd"   # keep it in history so it can be run after verifying
       BUFFER=""
       zle reset-prompt
       return 0
     fi
-    # TOCTOU 防护：远程脚本确认执行时，跑 Tsuba 固定下来、已检查过的那一份，
-    # 不让 shell 重新 curl（服务器可能第二次下发恶意内容）。历史里仍保留用户原本输入的命令。
+    # TOCTOU guard: when a remote script is confirmed, run the copy Tsuba pinned and checked instead of letting
+    # the shell curl it again (the server could serve malicious content the second time). History keeps what the user typed.
     if [[ $out == *TSUBA_EXEC:* ]]; then
       local run=${out##*TSUBA_EXEC:}
       run=${run%%$'\n'*}

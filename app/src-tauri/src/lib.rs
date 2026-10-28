@@ -1,4 +1,4 @@
-//! Tsuba 菜单栏应用：托盘菜单、主窗口、后台监控，以及给界面调用的命令。
+//! Tsuba's menu bar app: tray menu, main window, background watchers and the commands the UI calls.
 
 /// User-facing text in the App backend: `tr!("Found {n} files", n = count)`. Defined before the modules so they can use it.
 macro_rules! tr {
@@ -28,7 +28,7 @@ struct AppState {
     pause_item: Mutex<Option<MenuItem<tauri::Wry>>>,
 }
 
-/// 窗口打开时显示 Dock 图标和菜单栏（复制粘贴快捷键要靠菜单栏），关掉后只留托盘图标。
+/// While the window is open, show the Dock icon and menu bar (copy and paste shortcuts need the menu bar); once closed, only the tray icon stays.
 pub fn show_window(app: &AppHandle) {
     let _ = app.set_activation_policy(ActivationPolicy::Regular);
     if let Some(w) = app.get_webview_window("main") {
@@ -102,10 +102,10 @@ fn get_overview(state: State<AppState>) -> Overview {
         extension_dirs: extension::extension_dirs().iter().map(|p| p.to_string_lossy().to_string()).collect(),
         provider: cfg.provider,
         provider_label: match cfg.provider {
-            store::Provider::ClaudeCli => format!("Claude Code 账号 · {}", cfg.claude.model),
+            store::Provider::ClaudeCli => tr!("Claude Code account · {model}", model = cfg.claude.model),
             store::Provider::Claude => format!("Claude API · {}", cfg.claude.model),
             store::Provider::OpenaiCompatible => format!("{} · {}", cfg.openai_compatible.preset, cfg.openai_compatible.model),
-            store::Provider::Offline => "仅离线规则".into(),
+            store::Provider::Offline => tr!("Offline rules only"),
         },
         ai_available: judge::available(&cfg),
         sandbox_available: sandbox_available(),
@@ -159,29 +159,34 @@ fn save_config(app: AppHandle, state: State<AppState>, config: Config) -> Result
     Ok(())
 }
 
-/// 用一段无害的样例证据试一次模型，确认配置能用。
+/// Tries the model once on harmless sample evidence to confirm the configuration works.
 #[tauri::command]
 async fn test_ai(config: Config) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if !judge::available(&config) {
-            return Err("配置不完整".to_string());
+            return Err(tr!("The configuration is incomplete"));
         }
         let evidence = json!({ "command": "brew install wget", "cwd": "~", "targets": [], "findings": [] });
         let start = std::time::Instant::now();
         let j = judge::ask(&config, &evidence)?;
-        Ok(format!("连接成功：{}，用时 {:.1} 秒，样例判断为 {:?}", j.model, start.elapsed().as_secs_f64(), j.verdict))
+        let verdict = match j.verdict {
+            Verdict::Allow => tr!("Allow"),
+            Verdict::Warn => tr!("Warn"),
+            Verdict::Block => tr!("Block"),
+        };
+        Ok(tr!("Connected to {model} in {seconds} s. The sample was judged: {verdict}", model = j.model, seconds = format!("{:.1}", start.elapsed().as_secs_f64()), verdict = verdict))
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// 本机 claude 命令的位置，找不到返回 None。
+/// Location of the local claude command, None if not found.
 #[tauri::command]
 fn detect_claude_cli(configured: String) -> Option<String> {
     judge::find_claude_cli(&configured).map(|p| p.to_string_lossy().to_string())
 }
 
-/// 扫描本机所有 AI 工具的 MCP server、skill、插件 hooks（只用离线规则，几秒钟）。
+/// Scans MCP servers, skills and plugin hooks of every local AI tool (offline rules only, takes a few seconds).
 #[tauri::command]
 async fn scan_ai_tools(state: State<'_, AppState>) -> Result<Vec<tsuba_engine::agents::ScanItem>, String> {
     let online = state.config.lock().unwrap().intel.online_lookup;
@@ -193,7 +198,7 @@ fn intel_status() -> tsuba_engine::intel::Manifest {
     tsuba_engine::intel::Manifest::load()
 }
 
-/// 立即更新威胁情报。更新时把当前步骤推给界面显示进度。
+/// Updates threat intel now, pushing each step to the UI as progress.
 #[tauri::command]
 async fn intel_update(app: AppHandle, state: State<'_, AppState>) -> Result<tsuba_engine::intel::Manifest, String> {
     let cfg = state.config.lock().unwrap().clone();
@@ -206,7 +211,7 @@ async fn intel_update(app: AppHandle, state: State<'_, AppState>) -> Result<tsub
     .map_err(|e| e.to_string())
 }
 
-/// 每天自动更新一次威胁情报（App 启动时先检查一次）。
+/// Updates threat intel once a day (checked once when the App starts).
 fn start_intel_updater(app: AppHandle, config: Arc<Mutex<Config>>) {
     std::thread::spawn(move || loop {
         let cfg = config.lock().unwrap().clone();
@@ -245,7 +250,7 @@ struct ExtensionScan {
     findings: Vec<Finding>,
 }
 
-/// 批量扫描已装扩展。扩展可能有几十个，只用离线规则，不调模型；可疑的再单独深度检查。
+/// Scans all installed extensions. There can be dozens, so offline rules only and no model; suspicious ones get a deep check on their own.
 #[tauri::command]
 async fn scan_installed_extensions() -> Vec<ExtensionScan> {
     tauri::async_runtime::spawn_blocking(|| {
@@ -269,14 +274,14 @@ async fn scan_installed_extensions() -> Vec<ExtensionScan> {
     .unwrap_or_default()
 }
 
-/// 检查用户拖进来或选中的一个文件或目录（带 AI 判断），并记进检查记录。
+/// Checks one file or folder the user dropped in or picked (with AI judgment) and records it in the check history.
 #[tauri::command]
 async fn scan_path(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<LogEntry, String> {
     let cfg = state.config.lock().unwrap().clone();
     let entry = tauri::async_runtime::spawn_blocking(move || {
         let p = PathBuf::from(&path);
         if !p.exists() {
-            return Err(format!("找不到：{path}"));
+            return Err(tr!("Not found: {path}", path = path));
         }
         let (_, _, report) = tsuba_engine::evaluate_path(&cfg, &p);
         let mut entry = LogEntry::new("scan", &path, "", report);
@@ -295,7 +300,7 @@ fn quarantine_list() -> Vec<quarantine::QuarantineItem> {
     quarantine::list()
 }
 
-/// 把任意文件、目录或扩展移入隔离区；有检查记录的，记录上标明已隔离。
+/// Moves any file, folder or extension into quarantine; if it has a check record, the record is marked as quarantined.
 #[tauri::command]
 fn quarantine_path(app: AppHandle, path: String, reason: String, entry_id: Option<String>) -> Result<(), String> {
     let item = quarantine::quarantine(std::path::Path::new(&path), &reason).map_err(|e| e.to_string())?;
@@ -325,13 +330,13 @@ fn delete_quarantine(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 检查记录里的“删除文件”：按记录 id 找路径，前端不能指定任意路径。
-/// 只有磁盘上的东西（下载、安装镜像、扩展、手动检查）才能删；删完在记录上标明。
+/// "Delete File" in the check history: the path is looked up by record id, so the UI cannot name an arbitrary path.
+/// Only things on disk (downloads, disk images, extensions, manual checks) can be deleted; the record is marked afterwards.
 #[tauri::command]
 fn delete_entry_file(app: AppHandle, entry_id: String) -> Result<(), String> {
-    let mut entry = store::read_log(2000).into_iter().find(|e| e.id == entry_id).ok_or("找不到这条检查记录")?;
+    let mut entry = store::read_log(2000).into_iter().find(|e| e.id == entry_id).ok_or_else(|| tr!("This check record no longer exists"))?;
     if !["download", "mount", "extension", "scan"].contains(&entry.source.as_str()) {
-        return Err("这条记录不是磁盘上的文件".into());
+        return Err(tr!("This record is not a file on disk"));
     }
     quarantine::delete_path(std::path::Path::new(&entry.title))?;
     entry.action = "deleted".into();
@@ -346,7 +351,7 @@ fn trusted_list() -> Vec<trust::TrustItem> {
     trust::list()
 }
 
-/// 标记为安全：路径或 mcp:<key>。按内容指纹记录，内容变了会重新检查。
+/// Mark as safe: a path or mcp:<key>. Recorded by content fingerprint, so a change triggers a new check.
 #[tauri::command]
 fn trust_item(app: AppHandle, key: String) -> Result<(), String> {
     trust::trust(&key)?;
@@ -360,12 +365,13 @@ fn untrust_item(app: AppHandle, key: String) {
     let _ = app.emit("status-changed", ());
 }
 
-/// 用系统的选择文件夹对话框，取消时返回 None。
+/// The system folder picker; None when cancelled.
 #[tauri::command]
 async fn choose_folder() -> Option<String> {
-    tauri::async_runtime::spawn_blocking(|| {
+    let prompt = tr!("Choose a folder to scan").replace('\\', "").replace('"', "'");
+    tauri::async_runtime::spawn_blocking(move || {
         let out = std::process::Command::new("osascript")
-            .args(["-e", "POSIX path of (choose folder with prompt \"选择要扫描的文件夹\")"])
+            .args(["-e", &format!("POSIX path of (choose folder with prompt \"{prompt}\")")])
             .output()
             .ok()?;
         let p = String::from_utf8_lossy(&out.stdout).trim().trim_end_matches('/').to_string();
@@ -376,14 +382,14 @@ async fn choose_folder() -> Option<String> {
     .flatten()
 }
 
-/// 扫描一个文件夹：只挑安装包、脚本、扩展和项目，用离线规则；扫过且没变的沿用上次结果。
+/// Scans a folder: only installers, scripts, extensions and projects, with offline rules; unchanged items reuse the last result.
 #[tauri::command]
 async fn scan_folder(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<scan::FolderScan, String> {
     let cfg = state.config.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let root = scan::expand(&path);
         if !root.exists() {
-            return Err(format!("找不到：{path}"));
+            return Err(tr!("Not found: {path}", path = path));
         }
         Ok(scan::scan_folder(&cfg, &root, |p| {
             let _ = app.emit("scan-progress", p.to_string());
@@ -403,10 +409,10 @@ fn scan_schedule_status() -> ScheduleStatus {
     ScheduleStatus { last: scan::last_scheduled_run() }
 }
 
-/// 计划扫描：到期时用最新规则重扫配置里的文件夹，新发现的问题记进检查记录并通知。
+/// Scheduled scan: when due, rescan the configured folders with the latest rules; new problems go into the check history with a notification.
 fn start_scan_scheduler(app: AppHandle, config: Arc<Mutex<Config>>) {
     std::thread::spawn(move || loop {
-        // 刚开机时让出资源，过几分钟再开始
+        // Leave the machine alone right after startup; begin a few minutes later
         std::thread::sleep(std::time::Duration::from_secs(300));
         let cfg = config.lock().unwrap().clone();
         if cfg.scan.scheduled && !is_paused() && scan::schedule_due(cfg.scan.interval_days) {
@@ -435,7 +441,7 @@ fn start_scan_scheduler(app: AppHandle, config: Arc<Mutex<Config>>) {
             }
             scan::mark_scheduled_run();
             if found > 0 {
-                watch::notify_user("Tsuba：定期扫描发现问题", &format!("有 {found} 个文件需要看一下，打开 Tsuba 的检查记录查看。"));
+                watch::notify_user(&tr!("Tsuba: the scheduled scan found problems"), &tr!("{count} files need a look. Open Check History in Tsuba to see them.", count = found));
                 let _ = app.emit("history-updated", ());
             }
         }
@@ -455,12 +461,12 @@ struct SandboxResult {
     verdict: Verdict,
 }
 
-/// 把一个脚本文件或项目目录放进沙箱试运行，看它实际做了什么（不联真实外网）。
-/// install 为 true 时试装项目依赖，看安装脚本做了什么（只放行 npm 官方源）。
+/// Tries a script file or project folder in the sandbox to see what it actually does (no real internet access).
+/// With install set, tries installing the project's dependencies to see what install scripts do (only the npm registry is reachable).
 #[tauri::command]
 async fn sandbox_script(path: String, install: Option<bool>) -> Result<SandboxResult, String> {
     if !tsuba_engine::sandbox::available() {
-        return Err("当前系统没有 sandbox-exec，无法使用沙箱".into());
+        return Err(tr!("This system has no sandbox-exec, so the sandbox isn't available"));
     }
     tauri::async_runtime::spawn_blocking(move || {
         let p = std::path::Path::new(&path);
@@ -471,7 +477,7 @@ async fn sandbox_script(path: String, install: Option<bool>) -> Result<SandboxRe
             let argv = tsuba_engine::sandbox::project_start_argv(p);
             tsuba_engine::sandbox::run_project(p, &argv, timeout).map_err(|e| e.to_string())?
         } else {
-            let script = std::fs::read_to_string(&path).map_err(|e| format!("读不到 {path}：{e}"))?;
+            let script = std::fs::read_to_string(&path).map_err(|e| tr!("Can't read {path}: {error}", path = path, error = e))?;
             tsuba_engine::sandbox::run_script(&script, "/bin/bash", timeout).map_err(|e| e.to_string())?
         };
         let findings = tsuba_engine::sandbox::findings(&b);
@@ -521,7 +527,7 @@ fn set_lang(app: AppHandle, lang: String) -> Result<(), String> {
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = tray_menu(app.handle())?;
     TrayIconBuilder::with_id("tsuba")
-        // 菜单栏用单色的模板图标：系统按浅色 / 深色菜单栏自动着色，彩色 App 图标在菜单栏里会显得突兀
+        // A monochrome template icon: the system tints it for light and dark menu bars, and the colored App icon looks out of place there
         .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?)
         .icon_as_template(true)
         .tooltip("Tsuba")
@@ -564,7 +570,7 @@ pub fn run() {
             restart_watchers(app.handle());
             start_intel_updater(app.handle().clone(), app.state::<AppState>().config.clone());
             start_scan_scheduler(app.handle().clone(), app.state::<AppState>().config.clone());
-            // 用户主动打开 App 时显示窗口；之后关窗只是隐藏，后台继续守护
+            // Show the window when the user opens the App; closing it later only hides it and protection continues in the background
             show_window(app.handle());
             Ok(())
         })
@@ -609,9 +615,9 @@ pub fn run() {
             sandbox_script,
         ])
         .build(tauri::generate_context!())
-        .expect("Tsuba 启动失败")
+        .expect("failed to start Tsuba")
         .run(|_app, event| {
-            // 关掉最后一个窗口不退出，继续在菜单栏守护
+            // Closing the last window doesn't quit; protection continues from the menu bar
             if let tauri::RunEvent::ExitRequested { api, code: None, .. } = event {
                 api.prevent_exit();
             }

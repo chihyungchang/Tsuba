@@ -45,7 +45,7 @@
       "icons/icon.ico"
     ],
     "category": "DeveloperTool",
-    "shortDescription": "在陌生代码第一次运行之前，先替你看一眼",
+    "shortDescription": "Looks over unfamiliar code before it runs for the first time",
     "macOS": {
       "minimumSystemVersion": "13.0"
     }
