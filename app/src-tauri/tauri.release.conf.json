@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": "pnpm build && sh scripts/build-cli-sidecar.sh"
+  },
+  "bundle": {
+    "externalBin": ["binaries/tsuba"]
+  }
+}

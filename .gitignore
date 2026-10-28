@@ -4,6 +4,8 @@ target/
 node_modules/
 app/dist/
 app/src-tauri/gen/
+# Release-only terminal checker built by app/scripts/build-cli-sidecar.sh
+app/src-tauri/binaries/
 .DS_Store
 
 # Product requirements: kept locally, not published

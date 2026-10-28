@@ -1,0 +1,99 @@
+# Builds a universal macOS DMG and attaches it to a draft GitHub Release when a version tag is pushed.
+#
+#   1. Bump `version` in the root Cargo.toml (the single source: the App, CLI and DMG all read it) and commit.
+#   2. git tag v0.2.0 && git push origin v0.2.0
+#   3. Review the draft release this workflow creates, then publish it.
+#
+# Signing and notarization run only when the Apple secrets below are set. Without them the DMG is unsigned and
+# Gatekeeper blocks it on download, which a security app shouldn't ask its users to bypass, so set them before
+# publishing a release for anyone else.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match Cargo.toml version $version"
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install front-end dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      # The same gate as before every commit: a release must not ship failing tests, warnings or untranslated text
+      - name: Test
+        run: |
+          cargo test --workspace --locked
+          cargo clippy --workspace --locked -- -D warnings
+          cd app && pnpm exec tsc --noEmit && pnpm -s check:i18n
+
+      # GitHub sets missing secrets to empty strings, and Tauri treats an empty APPLE_CERTIFICATE as a certificate
+      # to import, so only export the signing variables when they are really there.
+      - name: Signing environment
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              eval "value=\$$name"
+              echo "::add-mask::$value"
+              echo "$name=$value" >> "$GITHUB_ENV"
+            done
+          else
+            echo "::warning::Apple signing secrets are not set: the DMG will be unsigned and not notarized."
+          fi
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tauriScript: pnpm tauri
+          args: --target universal-apple-darwin --config src-tauri/tauri.release.conf.json
+          tagName: ${{ github.ref_name }}
+          releaseName: Tsuba ${{ github.ref_name }}
+          releaseBody: See the commits since the previous release for what changed.
+          releaseDraft: true
+          prerelease: false

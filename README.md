@@ -93,6 +93,16 @@ During development the App looks for the terminal checker next to itself (`targe
 
 Test samples are all inert: they only mimic the shape of attack code, their IPs belong to documentation ranges, and decoded content is harmless too.
 
+### Releasing
+
+```bash
+cd app && pnpm release --bundles app   # local release build for this Mac, terminal checker included
+```
+
+A release bundle carries the terminal checker as `Tsuba.app/Contents/MacOS/tsuba`. `tauri.release.conf.json` adds it and runs `app/scripts/build-cli-sidecar.sh`; it stays out of `tauri.conf.json` because Tauri refuses to build without the file, which would break `cargo test`.
+
+To publish: bump `version` in the root `Cargo.toml` (the single source for the App, CLI and DMG), commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. `.github/workflows/release.yml` runs the tests, builds a universal DMG and attaches it to a draft GitHub Release to review and publish. It signs and notarizes when these repository secrets are set: `APPLE_CERTIFICATE` (base64 .p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`.
+
 ## Sandbox trial run (prototype)
 
 For a script you're unsure about, you can run it briefly in a sandbox and see what it actually does, instead of reading the code line by line:
