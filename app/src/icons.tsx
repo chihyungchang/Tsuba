@@ -1,5 +1,5 @@
-// 界面用的线条图标：统一 20×20 画布、1.5 线宽、圆角端点，颜色跟随文字。
-// 自己画而不是引图标库：数量少，风格能和品牌标志保持一致。
+// Line icons for the UI: one 20×20 canvas, 1.5 stroke width, round caps, color follows the text.
+// Drawn by hand rather than taken from an icon library: there are few of them, and they stay in the brand mark's style.
 
 import type { SVGProps } from "react";
 
@@ -25,8 +25,8 @@ function Svg({ size = 18, children, ...rest }: IconProps & { children: React.Rea
 }
 
 /**
- * 一把斜放的日本刀的剪影（64 × 64）：有弧度的刀身、圆盘护手（鍔）、刀柄。
- * 和 App 图标是同一把刀；菜单栏模板图标 icons/tray-template.png 也是这个形状。
+ * Silhouette of a katana laid diagonally (64 × 64): curved blade, round guard (tsuba), handle.
+ * The same sword as the App icon; the menu bar template icon icons/tray-template.png has this shape too.
  */
 export function KatanaGlyph({ fill }: { fill: string }) {
   return (
@@ -38,7 +38,7 @@ export function KatanaGlyph({ fill }: { fill: string }) {
   );
 }
 
-/** 品牌标志：朱红圆角方块里一把白色的刀，和 App 图标同一个样子。 */
+/** Brand mark: a white sword in a vermilion rounded square, same look as the App icon. */
 export function TsubaMark({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
@@ -57,7 +57,7 @@ export const Icon = {
       <path d="m7.5 10 1.8 1.8 3.4-3.6" />
     </Svg>
   ),
-  /** 盾牌被一道斜线划掉：守护已暂停 */
+  /** A shield struck through: protection is paused */
   shieldOff: (p: IconProps) => (
     <Svg {...p}>
       <path d="M6.2 3.9 10 2.75l6 2.25v4.6c0 1.3-.3 2.5-.85 3.6M13.9 15.3A8.6 8.6 0 0 1 10 17.25c-3.5-1.05-6-3.95-6-7.65V5.6" />

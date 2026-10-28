@@ -7,7 +7,7 @@ import { initTheme } from "./theme";
 initTheme();
 initLang();
 
-// 开发时在普通浏览器里打开（没有 Tauri 后端）时，用假数据渲染界面，方便调样式
+// In development, opened in a plain browser (no Tauri backend), render with mock data to make styling easier
 const ready = import.meta.env.DEV && !("__TAURI_INTERNALS__" in window) ? import("./devMock") : Promise.resolve();
 
 ready.then(() => {
