@@ -67,7 +67,7 @@ Tsuba is security software: its mistakes either let an attack slip through, or b
 cargo test                       # all tests
 cargo clippy --workspace         # no warnings left
 cd app && pnpm exec tsc --noEmit # front-end type check
-cd app && pnpm -s check:i18n     # every UI string has a zh-Hans entry, none unused
+pnpm -s check:i18n               # (in app/) every UI string has a zh-Hans entry, none unused
 ```
 
 When you change detection rules, also measure false positives on real extensions and skills (see above).
