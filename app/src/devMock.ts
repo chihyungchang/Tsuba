@@ -89,6 +89,7 @@ const historyEntries = [
 const config = {
   provider: "claude_cli",
   claude: { api_key: "", model: "claude-opus-5-5", effort: "low", cli_path: "" },
+  codex: { model: "", effort: "low", cli_path: "" },
   openai_compatible: { base_url: "http://127.0.0.1:11434/v1", model: "", api_key: "", preset: "ollama", trusted: false },
   watch_downloads: true,
   watch_extensions: true,
@@ -141,6 +142,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     ],
   }),
   detect_claude_cli: () => "/Users/oliver/.local/bin/claude",
+  detect_codex_cli: () => "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
   run_doctor: () => new Promise((r) => setTimeout(() => r({ findings: [], advice: "" }), 900)),
   scan_installed_extensions: () =>
     new Promise((r) =>

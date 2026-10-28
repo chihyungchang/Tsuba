@@ -1,6 +1,6 @@
 // UI parts shared by every page: page header, grouped lists, verdict badges, evidence lists, empty states.
 
-import { Fragment, createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Fragment, createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { lang, t } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { Finding, Report, Verdict, VERDICT_LABEL } from "./types";
@@ -364,7 +364,7 @@ export function Toaster() {
 }
 
 /** Actions that can't be undone take two clicks: the first turns the button into "Confirm…", and only a second click within three seconds runs it */
-export function ConfirmButton({ children, confirm, onConfirm, className = "danger" }: { children: ReactNode; confirm: string; onConfirm: () => void; className?: string }) {
+export function ConfirmButton({ children, confirm, onConfirm, className = "danger", label }: { children: ReactNode; confirm: string; onConfirm: () => void; className?: string; label?: string }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return;
@@ -374,6 +374,8 @@ export function ConfirmButton({ children, confirm, onConfirm, className = "dange
   return (
     <button
       className={`${className} ${armed ? "is-armed" : ""}`}
+      aria-label={armed ? confirm : label}
+      title={armed ? undefined : label}
       onClick={() => {
         if (armed) {
           setArmed(false);
@@ -383,5 +385,49 @@ export function ConfirmButton({ children, confirm, onConfirm, className = "dange
     >
       {armed ? confirm : children}
     </button>
+  );
+}
+
+/** A button that opens a short list of related actions, so variants of one action take one slot in a toolbar */
+export function MenuButton({ label, disabled, items }: { label: ReactNode; disabled?: boolean; items: { label: string; detail?: string; onSelect: () => void }[] }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+  return (
+    <span className="menu-button" ref={root}>
+      <button type="button" disabled={disabled} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {label}
+        <Icon.chevron size={11} className="menu-chevron" />
+      </button>
+      {open && (
+        <span className="menu" role="menu">
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              <span>{item.label}</span>
+              {item.detail && <span className="menu-detail">{item.detail}</span>}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }

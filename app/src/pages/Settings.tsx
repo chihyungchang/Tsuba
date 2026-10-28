@@ -22,7 +22,8 @@ const presets = (): { id: string; name: string; group: PresetGroup; url: string;
 ];
 
 const providers = (): { id: Provider; icon: IconName; label: string; desc: string }[] => [
-  { id: "claude_cli", icon: "terminal", label: t("Claude Code Account"), desc: t("Uses the Claude Code signed in on this Mac; no API key needed") },
+  // One card for both coding tools: they work the same way (a signed-in CLI, no API key), and a fifth card wouldn't fit
+  { id: "claude_cli", icon: "terminal", label: t("Coding Tool Account"), desc: t("Uses the Claude Code or Codex signed in on this Mac; no API key needed") },
   { id: "claude", icon: "brain", label: "Claude API", desc: t("Anthropic API key, billed by usage") },
   { id: "openai_compatible", icon: "globe", label: t("Other Models"), desc: t("OpenAI, Gemini, DeepSeek or a local model") },
   { id: "offline", icon: "lock", label: t("Offline Rules Only"), desc: t("No network, no model calls") },
@@ -299,12 +300,14 @@ export function SettingsPage({ overview, reload }: { overview: Overview | null; 
   const [models, setModels] = useState<string[]>([]);
   const [listing, setListing] = useState(false);
   const [cliPath, setCliPath] = useState<string | null>(null);
+  const [codexPath, setCodexPath] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     invoke<Config>("get_config").then((c) => {
       setCfg(c);
       invoke<string | null>("detect_claude_cli", { configured: c.claude.cli_path }).then(setCliPath);
+      invoke<string | null>("detect_codex_cli", { configured: c.codex.cli_path }).then(setCodexPath);
     });
   }, []);
   if (!cfg) return null;
@@ -386,9 +389,12 @@ export function SettingsPage({ overview, reload }: { overview: Overview | null; 
         <div className="choice-grid" role="radiogroup" aria-label={t("Judgment")}>
           {providers().map((p) => {
             const I = Icon[p.icon];
-            const on = cfg.provider === p.id;
+            const isAccount = (v: Provider) => v === "claude_cli" || v === "codex_cli";
+            const on = cfg.provider === p.id || (p.id === "claude_cli" && isAccount(cfg.provider));
+            // The account card keeps whichever tool was chosen; first time, Codex only when Claude Code isn't installed
+            const pick = (): Provider => (p.id !== "claude_cli" ? p.id : isAccount(cfg.provider) ? cfg.provider : !cliPath && codexPath ? "codex_cli" : "claude_cli");
             return (
-              <button key={p.id} role="radio" aria-checked={on} className={`choice ${on ? "on" : ""}`} onClick={() => set({ provider: p.id })}>
+              <button key={p.id} role="radio" aria-checked={on} className={`choice ${on ? "on" : ""}`} onClick={() => set({ provider: pick() })}>
                 <I size={18} />
                 <span className="choice-label">{p.label}</span>
                 <span className="choice-desc">{p.desc}</span>
@@ -399,6 +405,61 @@ export function SettingsPage({ overview, reload }: { overview: Overview | null; 
 
         {cfg.provider !== "offline" && (
           <div className="panel form">
+            {(cfg.provider === "claude_cli" || cfg.provider === "codex_cli") && (
+              <Field label={t("Coding Tool")}>
+                <div className="segmented segmented-inline" role="radiogroup" aria-label={t("Coding Tool")}>
+                  {(
+                    [
+                      ["claude_cli", "Claude Code"],
+                      ["codex_cli", "Codex"],
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} type="button" role="radio" aria-checked={cfg.provider === v} className={cfg.provider === v ? "on" : ""} onClick={() => set({ provider: v })}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
+            {cfg.provider === "codex_cli" && (
+              <>
+                <Field
+                  label={t("codex Command")}
+                  hint={
+                    codexPath ? (
+                      <span className="tone-allow">{t("Found at {path}", { path: codexPath })}</span>
+                    ) : (
+                      <span className="tone-block">{t("Not found. Install Codex or the ChatGPT app and sign in, or enter its location here.")}</span>
+                    )
+                  }
+                >
+                  <input
+                    value={cfg.codex.cli_path}
+                    placeholder={t("Find automatically")}
+                    onChange={(e) => set({ codex: { ...cfg.codex, cli_path: e.target.value.trim() } })}
+                    onBlur={() => invoke<string | null>("detect_codex_cli", { configured: cfg.codex.cli_path }).then(setCodexPath)}
+                  />
+                </Field>
+                <Field label={t("Model")} hint={t("Leave empty to use Codex's default model")}>
+                  <input value={cfg.codex.model} placeholder={t("Codex default")} onChange={(e) => set({ codex: { ...cfg.codex, model: e.target.value.trim() } })} />
+                </Field>
+                <Field label={t("Thinking Effort")}>
+                  <div className="segmented segmented-inline">
+                    {(
+                      [
+                        ["low", t("Fast")],
+                        ["medium", t("Medium")],
+                        ["high", t("Thorough")],
+                      ] as const
+                    ).map(([v, l]) => (
+                      <button key={v} type="button" className={cfg.codex.effort === v ? "on" : ""} onClick={() => set({ codex: { ...cfg.codex, effort: v } })}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              </>
+            )}
             {cfg.provider === "claude_cli" && (
               <Field
                 label={t("claude Command")}

@@ -246,7 +246,7 @@ fn sandbox_path() -> String {
 /// Kills the process group we started ourselves with process_group(0) (the group id is the child's pid).
 /// Only ever use it on such self-created groups. With pid 0 or 1, kill(-pid) would hit every process of the
 /// current user, so those are refused first.
-fn kill_own_group(child_pid: u32) {
+pub(crate) fn kill_own_group(child_pid: u32) {
     let Ok(pgid) = i32::try_from(child_pid) else { return };
     if pgid > 1 {
         unsafe { libc::kill(-pgid, libc::SIGKILL) };

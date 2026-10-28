@@ -251,6 +251,7 @@ pub fn available(cfg: &Config) -> bool {
     match cfg.provider {
         Provider::Offline => false,
         Provider::ClaudeCli => find_claude_cli(&cfg.claude.cli_path).is_some(),
+        Provider::CodexCli => find_codex_cli(&cfg.codex.cli_path).is_some(),
         Provider::Claude => !cfg.claude.api_key.is_empty() || std::env::var_os("ANTHROPIC_AUTH_TOKEN").is_some(),
         Provider::OpenaiCompatible => !cfg.openai_compatible.base_url.is_empty() && !cfg.openai_compatible.model.is_empty(),
     }
@@ -268,7 +269,7 @@ pub enum Trust {
 
 pub fn trust(cfg: &Config) -> Trust {
     match cfg.provider {
-        Provider::Claude | Provider::ClaudeCli => Trust::Frontier,
+        Provider::Claude | Provider::ClaudeCli | Provider::CodexCli => Trust::Frontier,
         Provider::OpenaiCompatible if cfg.openai_compatible.trusted => Trust::Frontier,
         _ => Trust::Limited,
     }
@@ -278,6 +279,7 @@ pub fn ask(cfg: &Config, evidence: &Value) -> Result<Judgement, String> {
     match cfg.provider {
         Provider::Claude => ask_claude(cfg, evidence),
         Provider::ClaudeCli => ask_claude_cli(cfg, evidence),
+        Provider::CodexCli => ask_codex_cli(cfg, evidence),
         Provider::OpenaiCompatible => ask_openai_compatible(cfg, evidence),
         Provider::Offline => Err(tr!("AI review is off")),
     }
@@ -435,6 +437,149 @@ fn ask_claude_cli(cfg: &Config, evidence: &Value) -> Result<Judgement, String> {
     parse_judgement(resp["result"].as_str().unwrap_or(""), &model)
 }
 
+/// Where the codex command is: the configured path, the usual install locations, the copy the ChatGPT app ships, then PATH.
+pub fn find_codex_cli(configured: &str) -> Option<PathBuf> {
+    let home = crate::home_dir();
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if !configured.is_empty() {
+        candidates.push(PathBuf::from(configured));
+    }
+    candidates.extend([
+        PathBuf::from("/opt/homebrew/bin/codex"),
+        PathBuf::from("/usr/local/bin/codex"),
+        home.join(".local/bin/codex"),
+        home.join(".npm-global/bin/codex"),
+        PathBuf::from("/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"),
+        home.join("Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"),
+    ]);
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|d| d.join("codex")));
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Codex features that give the model a way to act. All are switched off; `--ignore-user-config` also drops the
+/// user's MCP servers. A Codex update can add new ones, which is why `ask_codex_cli` also watches for tool calls.
+const CODEX_DISABLED_FEATURES: &[&str] = &[
+    "shell_tool", "unified_exec", "apps", "plugins", "hooks", "multi_agent", "browser_use", "browser_use_external",
+    "computer_use", "image_generation", "view_image", "skill_search", "tool_suggest", "sleep_tool", "in_app_browser",
+    "goals", "memories",
+];
+
+#[derive(Debug, PartialEq)]
+enum CodexEvent {
+    /// A finished answer from the model
+    Message(String),
+    /// The model started or finished using a tool: never expected, since every tool is off
+    Tool(String),
+    Failed(String),
+    Other,
+}
+
+/// One line of `codex exec --json`. Anything that is not the model talking or thinking counts as a tool.
+fn codex_event(line: &str) -> CodexEvent {
+    let Ok(v) = serde_json::from_str::<Value>(line) else { return CodexEvent::Other };
+    match v["type"].as_str().unwrap_or("") {
+        "item.started" | "item.updated" | "item.completed" => match v["item"]["type"].as_str().unwrap_or("") {
+            "agent_message" if v["type"] == "item.completed" => CodexEvent::Message(v["item"]["text"].as_str().unwrap_or("").to_string()),
+            "agent_message" | "reasoning" => CodexEvent::Other,
+            other => CodexEvent::Tool(other.to_string()),
+        },
+        "turn.failed" => CodexEvent::Failed(v["error"]["message"].as_str().unwrap_or("").to_string()),
+        "error" if v["message"].as_str().is_some_and(|m| !m.starts_with("Reconnecting")) => CodexEvent::Failed(v["message"].as_str().unwrap_or("").to_string()),
+        _ => CodexEvent::Other,
+    }
+}
+
+/// Calls `codex exec`, using the ChatGPT account Codex is signed in with.
+///
+/// Same rules as Claude Code: the evidence may carry prompt injection, so the session must be unable to do anything.
+/// Every tool feature is off, the user's config and rules are ignored, commands would be read-only, it runs in an empty
+/// temporary directory and nothing is saved. As a last line, the event stream is watched: the moment the model
+/// starts any tool, the whole process group is killed and the answer discarded, so a tool's output (say, a file
+/// it read) never goes back to the model service.
+fn ask_codex_cli(cfg: &Config, evidence: &Value) -> Result<Judgement, String> {
+    use std::io::BufRead;
+    use std::os::unix::process::CommandExt;
+    let bin = find_codex_cli(&cfg.codex.cli_path).ok_or_else(|| tr!("Can't find the codex command. Install Codex (or the ChatGPT app) and sign in first"))?;
+    let tmp = tempfile::Builder::new().prefix("tsuba-codex-").tempdir().map_err(|e| e.to_string())?;
+    let schema_path = tmp.path().join("schema.json");
+    std::fs::write(&schema_path, schema().to_string()).map_err(|e| e.to_string())?;
+    let mut cmd = Command::new(&bin);
+    cmd.args(["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "--sandbox", "read-only", "--color", "never"])
+        .arg("-C")
+        .arg(tmp.path())
+        .arg("--output-schema")
+        .arg(&schema_path)
+        .args(["-c", "web_search=\"disabled\""]);
+    for feature in CODEX_DISABLED_FEATURES {
+        cmd.args(["--disable", feature]);
+    }
+    if !cfg.codex.model.is_empty() {
+        cmd.args(["-m", &cfg.codex.model]);
+    }
+    if !cfg.codex.effort.is_empty() {
+        cmd.args(["-c", &format!("model_reasoning_effort=\"{}\"", cfg.codex.effort)]);
+    }
+    let mut child = cmd
+        .arg("-")
+        .current_dir(tmp.path())
+        // Its own process group, so killing it also stops anything it started
+        .process_group(0)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| tr!("Can't start codex: {error}", error = e))?;
+    // codex exec has no system prompt option: the instructions go first in the prompt
+    let prompt = format!("{}\n\n{}", system_prompt(), user_message(evidence, 120_000));
+    let mut stdin = child.stdin.take().ok_or_else(|| tr!("Can't write to codex"))?;
+    let writer = std::thread::spawn(move || {
+        let _ = stdin.write_all(prompt.as_bytes());
+    });
+    let stdout = child.stdout.take().ok_or_else(|| tr!("Can't read codex's output"))?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
+            if tx.send(codex_event(&line)).is_err() {
+                break;
+            }
+        }
+    });
+    let pid = child.id();
+    let stop = |child: &mut std::process::Child| {
+        crate::sandbox::kill_own_group(pid);
+        let _ = child.wait();
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(180);
+    let mut answer = None;
+    loop {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        match rx.recv_timeout(left) {
+            Ok(CodexEvent::Message(text)) => answer = Some(text),
+            Ok(CodexEvent::Tool(kind)) => {
+                stop(&mut child);
+                return Err(tr!("Codex tried to use a tool ({tool}), so it was stopped and its answer discarded", tool = kind));
+            }
+            Ok(CodexEvent::Failed(msg)) => {
+                stop(&mut child);
+                return Err(tr!("The codex call failed: {error}", error = msg));
+            }
+            Ok(CodexEvent::Other) => {}
+            // The output closed: codex has finished
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                stop(&mut child);
+                return Err(tr!("codex timed out without answering"));
+            }
+        }
+    }
+    let _ = child.wait();
+    let _ = writer.join();
+    let model = if cfg.codex.model.is_empty() { "Codex".to_string() } else { format!("{} (Codex)", cfg.codex.model) };
+    parse_judgement(&answer.ok_or_else(|| tr!("The model returned no verdict"))?, &model)
+}
+
 /// Waits for the child process to finish and collects stdout; kills it on timeout.
 fn wait_output(mut child: std::process::Child, timeout: Duration) -> Result<Vec<u8>, String> {
     let mut so = child.stdout.take().ok_or_else(|| tr!("Can't read claude's output"))?;
@@ -538,6 +683,18 @@ pub fn list_models(base_url: &str, api_key: &str) -> Result<Vec<String>, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_tool_use_is_caught() {
+        // Every tool is off, so any item other than the model talking or thinking means something slipped through
+        assert_eq!(codex_event(r#"{"type":"item.started","item":{"id":"1","type":"command_execution","command":"cat ~/.ssh/id_rsa"}}"#), CodexEvent::Tool("command_execution".into()));
+        assert_eq!(codex_event(r#"{"type":"item.completed","item":{"type":"mcp_tool_call"}}"#), CodexEvent::Tool("mcp_tool_call".into()));
+        assert_eq!(codex_event(r#"{"type":"item.started","item":{"type":"web_search"}}"#), CodexEvent::Tool("web_search".into()));
+        assert_eq!(codex_event(r#"{"type":"item.completed","item":{"type":"reasoning","text":"…"}}"#), CodexEvent::Other);
+        assert_eq!(codex_event(r#"{"type":"item.completed","item":{"type":"agent_message","text":"{\"verdict\":\"allow\"}"}}"#), CodexEvent::Message(r#"{"verdict":"allow"}"#.into()));
+        assert_eq!(codex_event(r#"{"type":"error","message":"Reconnecting... 1/5"}"#), CodexEvent::Other);
+        assert_eq!(codex_event(r#"{"type":"turn.failed","error":{"message":"unauthorized (401)"}}"#), CodexEvent::Failed("unauthorized (401)".into()));
+    }
 
     #[test]
     fn prompt_asks_for_the_current_language_and_marks_evidence_as_data() {

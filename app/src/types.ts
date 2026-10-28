@@ -4,7 +4,7 @@ import { t } from "./i18n";
 
 export type Verdict = "allow" | "warn" | "block";
 export type Severity = "low" | "medium" | "high";
-export type Provider = "claude_cli" | "claude" | "openai_compatible" | "offline";
+export type Provider = "claude_cli" | "codex_cli" | "claude" | "openai_compatible" | "offline";
 
 export interface Finding {
   severity: Severity;
@@ -39,6 +39,7 @@ export interface LogEntry {
 export interface Config {
   provider: Provider;
   claude: { api_key: string; model: string; effort: string; cli_path: string };
+  codex: { model: string; effort: string; cli_path: string };
   openai_compatible: { base_url: string; model: string; api_key: string; preset: string; trusted: boolean };
   watch_downloads: boolean;
   watch_extensions: boolean;

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Icon } from "../icons";
 import { LogEntry, QuarantineItem, SandboxResult } from "../types";
-import { BackLink, Banner, ConfirmButton, Empty, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
+import { BackLink, Banner, ConfirmButton, Empty, MenuButton, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
 import { lang, t } from "../i18n";
 
 /** Sources whose entry title is a path on disk: can be quarantined, marked safe and shown in Finder */
@@ -345,31 +345,36 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
                   <button onClick={() => act("trust_item", { key: current.title })}>{t("Mark as Safe")}</button>
                 </>
               )}
-              {FILE_SOURCES.includes(current.source) && !qItem && !isDeleted && (
-                <button onClick={() => invoke("reveal_in_finder", { path: current.title })}>{t("Show in Finder")}</button>
-              )}
               {current.source === "scan" && isScript && (
                 <button disabled={sandboxing} onClick={() => runSandbox(current.title)}>
                   {sandboxing ? <Spinner /> : null}
                   {sandboxing ? t("Running in Sandbox") : t("Try in Sandbox")}
                 </button>
               )}
+              {/* Two ways to try a project share one slot: running it and installing its dependencies */}
               {isFolder && (
-                <>
-                  <button disabled={sandboxing} onClick={() => runSandbox(current.title)}>
-                    {sandboxing ? t("Running in Sandbox…") : t("Try Project in Sandbox")}
-                  </button>
-                  <button disabled={sandboxing} onClick={() => runSandbox(current.title, true)} title={t("Runs npm install in the sandbox to see what the dependencies' install scripts do")}>
-                    {t("Try Installing in Sandbox")}
-                  </button>
-                </>
+                <MenuButton
+                  disabled={sandboxing}
+                  label={
+                    <>
+                      {sandboxing ? <Spinner /> : null}
+                      {sandboxing ? t("Running in Sandbox") : t("Try in Sandbox")}
+                    </>
+                  }
+                  items={[
+                    { label: t("Run the Project"), detail: t("Starts it and watches what it reads, writes and connects to"), onSelect: () => runSandbox(current.title) },
+                    { label: t("Install Dependencies"), detail: t("Runs npm install to see what the install scripts do"), onSelect: () => runSandbox(current.title, true) },
+                  ]}
+                />
               )}
-              {/* Irreversible actions go on the far right, apart from the other buttons */}
+              {/* Finder and delete are icons at the far right: delete stays apart from the other buttons and asks twice */}
               {FILE_SOURCES.includes(current.source) && !qItem && !isDeleted && (
                 <span className="toolbar-end">
-                  <ConfirmButton confirm={t("Click Again to Delete Permanently")} onConfirm={() => act("delete_entry_file", { entryId: current.id })}>
-                    <Icon.trash size={14} />
-                    {t("Delete File")}
+                  <button className="icon-button" aria-label={t("Show in Finder")} title={t("Show in Finder")} onClick={() => invoke("reveal_in_finder", { path: current.title })}>
+                    <Icon.folder size={15} />
+                  </button>
+                  <ConfirmButton className="icon-button danger" label={t("Delete File")} confirm={t("Click Again to Delete Permanently")} onConfirm={() => act("delete_entry_file", { entryId: current.id })}>
+                    <Icon.trash size={15} />
                   </ConfirmButton>
                 </span>
               )}

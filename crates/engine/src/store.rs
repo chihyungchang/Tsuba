@@ -43,6 +43,8 @@ pub enum Provider {
     /// Calls the local Claude Code (claude -p) with the account it is signed in to; no API key needed. Suited to personal use
     #[default]
     ClaudeCli,
+    /// Calls the local Codex CLI (codex exec) with the ChatGPT account it is signed in to; no API key needed
+    CodexCli,
     /// Anthropic Claude API
     Claude,
     /// Any service compatible with the OpenAI Chat Completions API: Ollama, LM Studio, llama.cpp, vLLM, and cloud models
@@ -65,6 +67,17 @@ impl Default for ClaudeConfig {
     fn default() -> Self {
         ClaudeConfig { api_key: String::new(), model: "claude-opus-5-5".into(), effort: "low".into(), cli_path: String::new() }
     }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CodexConfig {
+    /// Empty uses the model Codex picks by default
+    pub model: String,
+    /// Reasoning effort: low / medium / high; empty leaves it to Codex
+    pub effort: String,
+    /// Location of the codex command; found automatically when empty (including the copy inside the ChatGPT app)
+    pub cli_path: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -144,6 +157,7 @@ impl Default for ScanConfig {
 pub struct Config {
     pub provider: Provider,
     pub claude: ClaudeConfig,
+    pub codex: CodexConfig,
     pub openai_compatible: OpenAiCompatConfig,
     pub watch_downloads: bool,
     pub watch_extensions: bool,
@@ -163,6 +177,7 @@ impl Default for Config {
         Config {
             provider: Provider::ClaudeCli,
             claude: ClaudeConfig::default(),
+            codex: CodexConfig { effort: "low".into(), ..CodexConfig::default() },
             openai_compatible: OpenAiCompatConfig::default(),
             watch_downloads: true,
             watch_extensions: true,

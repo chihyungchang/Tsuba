@@ -1131,10 +1131,11 @@ button.footbar-settings:hover:not(:disabled) {
   flex-direction: column;
 }
 
+/* Anchored to the top, not centered: centering made everything above jump whenever the log below opened or closed */
 .dashboard {
   width: 100%;
-  margin: auto;
-  padding: 4px 40px 26px;
+  margin: 0 auto;
+  padding: 36px 40px 26px;
   display: flex;
   flex-direction: column;
   gap: 28px;
@@ -1162,27 +1163,25 @@ button.footbar-settings:hover:not(:disabled) {
   --hero-soft: var(--block-soft);
 }
 
-.status-pill {
+.hero-status {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 24px;
-  padding: 0 11px;
-  border-radius: var(--r-pill);
-  font-size: 11.5px;
-  font-weight: 650;
+  gap: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--hero-tone);
-  background: var(--hero-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hero-tone) 45%, transparent);
 }
 
-.status-pill::before {
+/* The dot sends out a slow ring while guarding: alive, without a box drawing attention to itself */
+.hero-status::before {
   content: "";
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--hero-tone);
-  box-shadow: 0 0 6px var(--hero-tone);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--hero-tone) 55%, transparent);
 }
 
 .dash-hero h1 {
@@ -1662,6 +1661,31 @@ button.term-toggle:hover:not(:disabled) {
   transition: transform 0.2s var(--ease);
 }
 
+/* 0fr → 1fr animates to the content's own height without measuring it */
+.term-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.26s var(--ease);
+}
+
+.term-log.is-open .term-body {
+  grid-template-rows: 1fr;
+}
+
+/* The bottom gap is content, not padding: padding can't shrink below its size, which left a sliver of the first row
+   showing when collapsed */
+.term-lines::after {
+  content: "";
+  flex: 0 0 10px;
+}
+
+.term-body > .term-lines {
+  min-height: 0;
+  /* Grid items default to their content width, which would stop long summaries from truncating with "…" */
+  min-width: 0;
+}
+
 .term-log.is-open .term-chevron {
   transform: rotate(90deg);
 }
@@ -1697,7 +1721,7 @@ button.term-more:hover:not(:disabled) {
 .term-lines {
   display: flex;
   flex-direction: column;
-  padding: 0 12px 10px;
+  padding: 0 12px;
   animation: rise-in 0.25s var(--ease) both;
 }
 
@@ -2207,6 +2231,73 @@ button.footbar-key:hover:not(:disabled) {
 
 .toolbar-end {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* An armed icon-only delete grows into a labelled button so the second click is a deliberate one */
+button.icon-button.danger:hover:not(:disabled) {
+  color: var(--block);
+}
+
+button.icon-button.is-armed {
+  width: auto;
+  padding: 0 10px;
+  font-size: 12.5px;
+  color: var(--block);
+  background: color-mix(in srgb, var(--block) 12%, transparent);
+}
+
+.menu-button {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu-chevron {
+  margin-left: 2px;
+  transform: rotate(90deg);
+  opacity: 0.6;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 260px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  background: var(--raised);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 12px 32px rgba(0, 0, 0, 0.22);
+  animation: rise-in 0.14s var(--ease);
+}
+
+.menu > button {
+  height: auto;
+  padding: 7px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: none;
+  box-shadow: none;
+  border-radius: 6px;
+}
+
+.menu > button:hover {
+  background: var(--hover);
+}
+
+.menu-detail {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-3);
 }
 
 .toolbar-note {
@@ -2862,8 +2953,15 @@ button.link.is-armed {
   }
 }
 
-.dash-hero:not(.is-paused):not(.is-partial) .status-pill::before {
-  animation: breathe 2.8s ease-in-out infinite;
+.dash-hero:not(.is-paused):not(.is-partial) .hero-status::before {
+  animation: status-ripple 2.4s ease-out infinite;
+}
+
+@keyframes status-ripple {
+  70%,
+  100% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--hero-tone) 0%, transparent);
+  }
 }
 
 /* The primary button's glow brightens on hover */

@@ -37,9 +37,10 @@ function TermLog({ entries, status, openEntry, go }: { entries: LogEntry[]; stat
     }
   });
   const toggle = () => {
-    setOpen(!open);
+    const next = !open;
+    setOpen(next);
     try {
-      localStorage.setItem(LOG_OPEN_KEY, open ? "0" : "1");
+      localStorage.setItem(LOG_OPEN_KEY, next ? "1" : "0");
     } catch {
       // Not remembered: it just opens expanded next time
     }
@@ -57,7 +58,8 @@ function TermLog({ entries, status, openEntry, go }: { entries: LogEntry[]; stat
           {t("All History →")}
         </button>
       </div>
-      {open && (
+      {/* Always rendered so opening and closing can animate the height; inert keeps hidden rows out of Tab order */}
+      <div className="term-body" inert={!open}>
         <div className="term-lines">
           {entries.length === 0 && <div className="term-empty">{t("No checks yet. Once the terminal is connected, checked commands show up here.")}</div>}
           {entries.map((e) => {
@@ -72,7 +74,7 @@ function TermLog({ entries, status, openEntry, go }: { entries: LogEntry[]; stat
             );
           })}
         </div>
-      )}
+      </div>
     </section>
   );
 }
@@ -172,7 +174,10 @@ export function OverviewPage({
         <section className={`dash-hero ${paused ? "is-paused" : active < defenses.length ? "is-partial" : ""}`} data-tauri-drag-region>
           <GuardianKatana paused={paused} partial={active < defenses.length} />
           <div className="dash-hero-text">
-            <span className="status-pill">{paused ? t("Protection is paused · You are not protected") : active === defenses.length ? t("Protection is on · All four defenses working") : t("Protection is on · {active} of {total} defenses working", { active, total: defenses.length })}</span>
+            {/* A quiet label, not a capsule: the checks below already say which defenses are on */}
+            <span className="hero-status" role="status">
+              {paused ? t("Unprotected") : active === defenses.length ? t("Guarding") : t("{active} of {total} defenses on", { active, total: defenses.length })}
+            </span>
             <h1>{paused ? t("Active Defense Paused") : t("AI Active Defense")}</h1>
             <p className="dash-hero-lede">
               {paused ? t("The sword is sheathed: commands you run, installers you download, and new extensions and AI tools are not being checked. Resume as soon as you are done.") : t("Before unfamiliar code runs, offline rules and AI look at it for you: fake interview projects, fake meeting apps, poisoned packages and extensions, malicious MCP servers and skills.")}

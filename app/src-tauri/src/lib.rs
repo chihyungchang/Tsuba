@@ -53,6 +53,14 @@ fn set_paused_flag(app: &AppHandle, paused: bool) -> Result<(), String> {
     if let Some(item) = app.state::<AppState>().pause_item.lock().unwrap().as_ref() {
         let _ = item.set_text(pause_label(paused));
     }
+    if let Some(tray) = app.tray_by_id("tsuba") {
+        if let Ok(icon) = tray_icon(paused) {
+            let _ = tray.set_icon(Some(icon));
+            // Replacing the image drops the template flag, which would draw it black on a dark menu bar
+            let _ = tray.set_icon_as_template(true);
+        }
+        let _ = tray.set_tooltip(Some(tray_tooltip(paused)));
+    }
     let _ = app.emit("status-changed", ());
     Ok(())
 }
@@ -103,6 +111,9 @@ fn get_overview(state: State<AppState>) -> Overview {
         provider: cfg.provider,
         provider_label: match cfg.provider {
             store::Provider::ClaudeCli => tr!("Claude Code account · {model}", model = cfg.claude.model),
+            store::Provider::CodexCli => {
+                if cfg.codex.model.is_empty() { tr!("Codex account") } else { tr!("Codex account · {model}", model = cfg.codex.model) }
+            }
             store::Provider::Claude => format!("Claude API · {}", cfg.claude.model),
             store::Provider::OpenaiCompatible => format!("{} · {}", cfg.openai_compatible.preset, cfg.openai_compatible.model),
             store::Provider::Offline => tr!("Offline rules only"),
@@ -186,6 +197,12 @@ async fn test_ai(config: Config) -> Result<String, String> {
 #[tauri::command]
 fn detect_claude_cli(configured: String) -> Option<String> {
     judge::find_claude_cli(&configured).map(|p| p.to_string_lossy().to_string())
+}
+
+/// Location of the local codex command (including the copy inside the ChatGPT app), None if not found.
+#[tauri::command]
+fn detect_codex_cli(configured: String) -> Option<String> {
+    judge::find_codex_cli(&configured).map(|p| p.to_string_lossy().to_string())
 }
 
 /// Scans MCP servers, skills and plugin hooks of every local AI tool (offline rules only, takes a few seconds).
@@ -531,17 +548,32 @@ fn set_lang(app: AppHandle, state: State<AppState>, preference: String, lang: St
     tsuba_engine::i18n::set_lang(lang);
     if let Some(tray) = app.tray_by_id("tsuba") {
         tray.set_menu(Some(tray_menu(&app).map_err(|e| e.to_string())?)).map_err(|e| e.to_string())?;
+        let _ = tray.set_tooltip(Some(tray_tooltip(is_paused())));
     }
     Ok(())
 }
 
+/// Monochrome template icons: the system tints them for light and dark menu bars, and the colored App icon looks out of
+/// place there. Paused shows the sword sheathed and dimmed, so the state is visible without opening anything.
+fn tray_icon(paused: bool) -> tauri::Result<tauri::image::Image<'static>> {
+    if paused {
+        tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template-paused.png"))
+    } else {
+        tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))
+    }
+}
+
+fn tray_tooltip(paused: bool) -> String {
+    if paused { tr!("Tsuba · Protection paused") } else { tr!("Tsuba · Guarding") }
+}
+
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = tray_menu(app.handle())?;
+    let paused = is_paused();
     TrayIconBuilder::with_id("tsuba")
-        // A monochrome template icon: the system tints it for light and dark menu bars, and the colored App icon looks out of place there
-        .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?)
+        .icon(tray_icon(paused)?)
         .icon_as_template(true)
-        .tooltip("Tsuba")
+        .tooltip(tray_tooltip(paused))
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -605,6 +637,7 @@ pub fn run() {
             test_ai,
             list_models,
             detect_claude_cli,
+            detect_codex_cli,
             intel_status,
             scan_ai_tools,
             intel_update,
