@@ -491,7 +491,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     *app.state::<AppState>().pause_item.lock().unwrap() = Some(pause);
 
     TrayIconBuilder::with_id("tsuba")
-        .icon(app.default_window_icon().cloned().expect("缺少应用图标"))
+        // 菜单栏用单色的模板图标：系统按浅色 / 深色菜单栏自动着色，彩色 App 图标在菜单栏里会显得突兀
+        .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?)
+        .icon_as_template(true)
         .tooltip("Tsuba")
         .menu(&menu)
         .show_menu_on_left_click(true)

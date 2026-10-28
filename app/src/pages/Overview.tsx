@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { Icon, type IconName } from "../icons";
+import { ENSO_PATH, Icon, type IconName } from "../icons";
 import { IntelManifest, LogEntry, Overview } from "../types";
 import { Banner, Spinner, baseName, errText, relativeTime } from "../ui";
 
@@ -33,17 +33,13 @@ function HeroArt({ paused }: { paused: boolean }) {
         <text x="34" y="96">$ curl -fsSL get.sh | bash</text>
       </g>
       <circle cx="105" cy="60" r="34" fill="url(#hero-glow)" />
-      <g transform="translate(83 38) scale(1.375)">
-        <g fill="#eef7f8" opacity=".95">
-          <circle cx="16" cy="10.6" r="10.2" />
-          <circle cx="16" cy="21.4" r="10.2" />
-          <circle cx="10.6" cy="16" r="10.2" />
-          <circle cx="21.4" cy="16" r="10.2" />
-        </g>
+      {/* 屏幕中央是品牌的圆相：守护中圈里打勾，暂停时打叉 */}
+      <g transform="translate(83 38) scale(0.6875)">
+        <path d={ENSO_PATH} fill="#eef7f8" opacity=".95" />
         {paused ? (
-          <path d="M11.5 11.5l9 9M20.5 11.5l-9 9" stroke="#c0392b" strokeWidth="2.4" strokeLinecap="round" />
+          <path d="M23 23l14 14M37 23L23 37" stroke="#ff8a7a" strokeWidth="4.2" strokeLinecap="round" />
         ) : (
-          <path d="M11 16.2l3.3 3.3 6.7-7" stroke="#2f7f8e" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M21.5 31l6.5 6.5 11.5-13" stroke="#9fe3d6" strokeWidth="4.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         )}
       </g>
       <path d="M8 114h194l-6 8H14z" fill="#3a3c44" />
