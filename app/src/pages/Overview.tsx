@@ -256,7 +256,7 @@ export function OverviewPage({
           </button>
           <button type="button" className="cell cell-intel" onClick={() => go("settings")}>
             <span className="cell-num">{formatCompact(intelCount)}</span>
-            <span className="cell-label">{intel?.updated ? t("Threat intel · updated {time}", { time: relativeTime(intel.updated) }) : t("Threat intel · not downloaded yet")}</span>
+            <span className="cell-label">{intel?.updated ? t("Threat intel · updated {time}", { time: relativeTime(intel.updated, { short: true }) }) : t("Threat intel · not downloaded yet")}</span>
           </button>
         </section>
       </div>

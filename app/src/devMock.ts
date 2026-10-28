@@ -49,6 +49,23 @@ const historyEntries = [
     },
   },
   {
+    id: "6",
+    time: ago(75),
+    source: "scan",
+    title: "/Users/oliver/code/interview-take-home",
+    cwd: "",
+    action: "scanned",
+    report: {
+      verdict: "block",
+      summary: "A fake interview project: opening it in VS Code runs a task that fetches a script from a bare IP address.",
+      reasons: [],
+      advice: "",
+      source: "offline",
+      model: "",
+      findings: [{ severity: "high", message: "Connects straight to a hard-coded IP address and port (typical of a C2 server)", where: ".vscode/tasks.json" }],
+    },
+  },
+  {
     id: "3",
     time: ago(130),
     source: "terminal",
