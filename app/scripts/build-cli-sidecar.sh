@@ -15,9 +15,13 @@ build() {
 }
 
 if [ "$target" = universal-apple-darwin ]; then
-  build aarch64-apple-darwin
-  build x86_64-apple-darwin
-  lipo -create -output "$out/tsuba-$target" ../target/aarch64-apple-darwin/release/tsuba ../target/x86_64-apple-darwin/release/tsuba
+  # A universal build compiles each architecture on its own first, and each of those looks for its own sidecar;
+  # only the final bundle uses the merged one
+  for arch in aarch64-apple-darwin x86_64-apple-darwin; do
+    build "$arch"
+    cp "../target/$arch/release/tsuba" "$out/tsuba-$arch"
+  done
+  lipo -create -output "$out/tsuba-$target" "$out/tsuba-aarch64-apple-darwin" "$out/tsuba-x86_64-apple-darwin"
 else
   build "$target"
   cp "../target/$target/release/tsuba" "$out/tsuba-$target"
