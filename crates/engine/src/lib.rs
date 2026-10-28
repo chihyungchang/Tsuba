@@ -110,37 +110,41 @@ pub fn judge_evidence(cfg: &Config, evidence: &Value, findings: Vec<Finding>) ->
     }
     match judge::ask(cfg, evidence) {
         Err(e) => offline_report(format!("AI 判断不可用（{e}），以下为离线规则结果")),
-        Ok(j) => {
-            let mut r = Report {
-                verdict: j.verdict,
-                summary: j.summary,
-                reasons: j.reasons,
-                advice: j.advice,
-                source: "ai".into(),
-                model: j.model,
-                findings: findings.clone(),
-            };
-            match judge::trust(cfg) {
-                judge::Trust::Frontier => {
-                    // 离线规则有高危命中时，AI 不能直接放行，至少提醒
-                    if r.verdict == Verdict::Allow && offline == Verdict::Block {
-                        r.verdict = Verdict::Warn;
-                        r.reasons.push("离线规则命中高危特征，已从“放行”升级为“提醒”，请看下方证据".into());
-                    }
-                }
-                judge::Trust::Limited => {
-                    let ai = r.verdict;
-                    r.verdict = ai.min(Verdict::Warn).max(offline);
-                    if ai == Verdict::Block && offline < Verdict::Block {
-                        r.reasons.push("这个模型认为应该拦截。本地和自定义模型的结论最多只给“提醒”，请看下方证据自己判断".into());
-                    } else if ai < offline {
-                        r.reasons.push("这个模型的结论不能降低离线规则判出的风险，已按离线规则的结果处理".into());
-                    }
-                }
+        Ok(j) => merge_judgement(offline, findings, j, judge::trust(cfg)),
+    }
+}
+
+/// 把模型的结论和离线规则的结论合并。证据可能是写给 AI 的攻击，模型可能被骗：
+/// 前沿模型不能把离线规则判出的“拦截”直接放行（至少提醒）；本地和其他模型不能降低离线结论，自己最多给“提醒”。
+pub fn merge_judgement(offline: Verdict, findings: Vec<Finding>, j: judge::Judgement, trust: judge::Trust) -> Report {
+    let mut r = Report {
+        verdict: j.verdict,
+        summary: j.summary,
+        reasons: j.reasons,
+        advice: j.advice,
+        source: "ai".into(),
+        model: j.model,
+        findings,
+    };
+    match trust {
+        judge::Trust::Frontier => {
+            // 离线规则有高危命中时，AI 不能直接放行，至少提醒
+            if r.verdict == Verdict::Allow && offline == Verdict::Block {
+                r.verdict = Verdict::Warn;
+                r.reasons.push("离线规则命中高危特征，已从“放行”升级为“提醒”，请看下方证据".into());
             }
-            r
+        }
+        judge::Trust::Limited => {
+            let ai = r.verdict;
+            r.verdict = ai.min(Verdict::Warn).max(offline);
+            if ai == Verdict::Block && offline < Verdict::Block {
+                r.reasons.push("这个模型认为应该拦截。本地和自定义模型的结论最多只给“提醒”，请看下方证据自己判断".into());
+            } else if ai < offline {
+                r.reasons.push("这个模型的结论不能降低离线规则判出的风险，已按离线规则的结果处理".into());
+            }
         }
     }
+    r
 }
 
 /// 检查一条即将执行的命令。pasted 表示命令是粘贴进终端的。
