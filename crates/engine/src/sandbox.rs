@@ -1,25 +1,32 @@
-//! 动态分析：把拿不准的脚本放进 macOS 自带的沙箱（Seatbelt / sandbox-exec）里跑一小会儿，
-//! 看它实际做了什么，而不是逐行读代码。
+//! Dynamic analysis: run a script we are unsure about for a short while inside macOS's built-in sandbox
+//! (Seatbelt / sandbox-exec) and watch what it actually does, instead of reading the code line by line.
 //!
-//! 被检查的东西是不可信的，所以不靠单独一层，而是几层叠起来，任何一层被绕过还有下一层：
-//! 1. 最小权限：只给程序假家目录和工作目录的读写；家目录以外也不能写（防止往 /opt/homebrew/bin
-//!    劫持命令、往 /Applications 落地），外接硬盘、其他用户目录、共享临时目录都看不到。
-//! 2. 堵住“让系统替它干活”的出口：LaunchServices（open）、AppleEvents（osascript）、launchctl、
-//!    剪贴板、钥匙串、DNS、偏好设置、给沙箱外的进程发信号或读它们的命令行——这些都是 Seatbelt
-//!    文件和网络规则管不到、但能逃出沙箱或把数据带出去的路。
-//! 3. 网络微隔离：只能连本机的一个记录代理，所有请求都被看见；直连外网被系统挡住。
-//! 4. 资源上限：单个文件、CPU 时间、进程数都有上限，叉子炸弹和写满磁盘拖不垮用户的电脑。
-//! 5. 行为监控：诱饵文件（每份带唯一标记）、运行后对比假家目录、收集被沙箱拦下的越权操作
-//!    （系统日志里带本次运行标记的拒绝记录），以及脱离进程组想在后台驻留的进程。
+//! What we check is untrusted, so we don't rely on a single layer but stack several; if one is bypassed the next still holds:
+//! 1. Least privilege: the program can only read and write a fake home folder and a work folder. It cannot write anywhere
+//!    else either (no hijacking commands in /opt/homebrew/bin, no dropping files in /Applications), and external drives,
+//!    other users' folders and the shared temp folders are invisible.
+//! 2. Close the "make the system do it for me" exits: LaunchServices (open), AppleEvents (osascript), launchctl,
+//!    the clipboard, the keychain, DNS, preferences, signalling processes outside the sandbox or reading their command
+//!    lines. Seatbelt's file and network rules don't cover these, yet they can escape the sandbox or carry data out.
+//! 3. Network micro-segmentation: the only reachable address is a local recording proxy, so every request is seen;
+//!    direct connections to the internet are blocked by the system.
+//! 4. Resource limits: file size, CPU time and process count are capped, so fork bombs and disk fillers can't take down
+//!    the user's machine.
+//! 5. Behaviour monitoring: decoy files (each with a unique marker), a diff of the fake home folder after the run,
+//!    the operations the sandbox denied (denial records in the system log carrying this run's tag), and processes that
+//!    leave the process group to linger in the background.
 //!
-//! 运行有时间上限，结束后（不论是否超时）把它启动的所有进程一起杀掉，临时目录整个删除。
+//! Runs have a time limit. Afterwards (timed out or not) every process the run started is killed and the temp folder is removed.
 //!
-//! 局限：
-//! - 跑一分钟没看到坏行为，不代表安全（有的程序会拖延发作、或等用户输密码）。结论只说“这次看到了什么”。
-//! - 苹果已不推荐 sandbox-exec 接口，未来可能需要换成虚拟机方案。这里把它包在一个模块里，方便替换。
-//! - 第一阶段的代理只能看明文 HTTP；HTTPS 只能看到连了哪个域名，看不到内容（留待后续做证书拦截）。
-//! - 试装依赖（npm install）时代理只把到 npm 官方源的连接真正转发出去，让包能下载下来、安装脚本能跑起来；
-//!   安装脚本想连的其他地址照样只记录、不放行。从 git 地址装的依赖下载不到。
+//! Limitations:
+//! - Seeing nothing bad in a minute doesn't mean safe (some programs delay, or wait for the user to type a password).
+//!   The verdict only says what was seen this time.
+//! - Apple no longer recommends sandbox-exec and a VM may be needed one day; it is wrapped in this one module so it is easy to replace.
+//! - The first-stage proxy only sees plain HTTP; for HTTPS it sees which host was contacted but not the content
+//!   (certificate interception is left for later).
+//! - When trying an install (npm install) the proxy forwards only connections to the official npm registry, so packages
+//!   download and install scripts run; any other address an install script contacts is still only recorded, never let
+//!   through. Dependencies installed from git URLs can't be downloaded.
 
 use crate::rules::{Finding, Severity};
 use serde::Serialize;
@@ -34,7 +41,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// 仅供测试：生成一份样例规则，确认真实家目录被锁死、网络被限制。
+/// Test only: builds a sample profile to check that the real home folder is locked and the network restricted.
 pub fn _profile_for_test() -> String {
     let jail = JailPaths { root: "/tmp/jail".into(), fake_home: "/tmp/jail/home".into(), work: "/tmp/jail/work".into() };
     profile(Path::new("/Users/someone"), &jail, 12345, "tag")
@@ -44,117 +51,141 @@ pub fn available() -> bool {
     Path::new("/usr/bin/sandbox-exec").is_file()
 }
 
-/// 代理看到的一次网络请求
+/// One network request seen by the proxy
 #[derive(Clone, Debug, Serialize)]
 pub struct NetEvent {
-    /// 连接的目标：HTTP 是 host[:port]，HTTPS CONNECT 是 host:443
+    /// Where it connected: host[:port] for HTTP, host:443 for an HTTPS CONNECT
     pub target: String,
-    /// 明文请求时能看到的方法和路径（HTTPS 看不到）
+    /// Method and path, visible only for plain HTTP requests
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub request: String,
-    /// 命中的诱饵标记（说明程序把诱饵数据发了出去）
+    /// Decoy markers found in the request (the program sent decoy data out)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub leaked: Vec<String>,
-    /// 明文请求里出现的其他真实格式的密钥，只记种类，不记值
+    /// Kinds of other real-looking secrets in a plain request (`SecretKind` ids); only the kind is kept, never the value.
+    /// Records from before the English conversion hold Chinese kind names; `secret_label` shows those unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secrets: Vec<String>,
-    /// 试装依赖时到 npm 官方源的连接，真的转发了出去
+    /// A connection to the official npm registry during an install that was really forwarded
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forwarded: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Behavior {
-    /// 程序是否正常结束、退出码、是否超时被杀
+    /// Exit code, or None when the program was killed for running too long
     pub exit_code: Option<i32>,
     pub timed_out: bool,
     pub seconds: f64,
-    /// 代理记录的网络请求
+    /// Network requests recorded by the proxy
     pub network: Vec<NetEvent>,
-    /// 运行后假家目录里新出现的文件（相对假家目录）
+    /// Files that appeared in the fake home folder during the run (relative to it)
     pub new_files: Vec<String>,
-    /// stdout / stderr 的开头
+    /// The start of stdout / stderr
     pub output: String,
-    /// 被沙箱拦下的越权操作（来自系统日志），例如往 /opt/homebrew/bin 写文件、运行 osascript
+    /// Operations the sandbox denied (from the system log), e.g. writing to /opt/homebrew/bin or running osascript
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub denied: Vec<Denied>,
 }
 
-/// 沙箱拦下的一次越权操作
+/// One operation the sandbox denied
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Denied {
-    /// 做这件事的程序名
+    /// Name of the program that tried it
     pub process: String,
-    /// Seatbelt 的操作名，例如 file-write-create、process-exec*、network-outbound
+    /// Seatbelt operation name, e.g. file-write-create, process-exec*, network-outbound
     pub operation: String,
-    /// 目标：路径、程序、偏好设置域或端口
+    /// Target: a path, program, preferences domain or port
     pub target: String,
 }
 
-/// 诱饵：假家目录里的一个文件，内容带唯一标记。程序读了并外传，标记就会出现在网络请求里。
+/// A decoy: a file in the fake home folder whose content carries a unique marker. If the program reads it and sends it out,
+/// the marker shows up in the network request.
 struct Decoy {
     rel: &'static str,
     marker: &'static str,
-    label: &'static str,
+    label: fn() -> String,
     body: &'static str,
 }
 
 const DECOYS: &[Decoy] = &[
-    Decoy { rel: ".ssh/id_ed25519", marker: "TSUBA-DECOY-SSH", label: "SSH 私钥", body: "-----BEGIN OPENSSH PRIVATE KEY-----\nTSUBA-DECOY-SSH not-a-real-key\n-----END OPENSSH PRIVATE KEY-----\n" },
-    Decoy { rel: ".aws/credentials", marker: "TSUBA-DECOY-AWS", label: "AWS 凭证文件", body: "[default]\naws_access_key_id = TSUBA-DECOY-AWS\naws_secret_access_key = not-a-real-secret\n" },
-    Decoy { rel: ".config/solana/id.json", marker: "TSUBA-DECOY-SOLANA", label: "Solana 钱包", body: "[\"TSUBA-DECOY-SOLANA\", 0, 0]\n" },
-    // 浏览器密码库和钱包扩展数据的占位
-    Decoy { rel: "Library/Application Support/Google/Chrome/Default/Login Data", marker: "TSUBA-DECOY-CHROME", label: "Chrome 密码库", body: "SQLite format 3\x00 TSUBA-DECOY-CHROME\n" },
-    Decoy { rel: "Library/Application Support/Exodus/exodus.wallet/seed.seco", marker: "TSUBA-DECOY-WALLET", label: "Exodus 钱包", body: "TSUBA-DECOY-WALLET not-a-real-wallet\n" },
+    Decoy { rel: ".ssh/id_ed25519", marker: "TSUBA-DECOY-SSH", label: || tr!("SSH private key"), body: "-----BEGIN OPENSSH PRIVATE KEY-----\nTSUBA-DECOY-SSH not-a-real-key\n-----END OPENSSH PRIVATE KEY-----\n" },
+    Decoy { rel: ".aws/credentials", marker: "TSUBA-DECOY-AWS", label: || tr!("AWS credentials file"), body: "[default]\naws_access_key_id = TSUBA-DECOY-AWS\naws_secret_access_key = not-a-real-secret\n" },
+    Decoy { rel: ".config/solana/id.json", marker: "TSUBA-DECOY-SOLANA", label: || tr!("Solana wallet"), body: "[\"TSUBA-DECOY-SOLANA\", 0, 0]\n" },
+    // Stand-ins for the browser password store and wallet extension data
+    Decoy { rel: "Library/Application Support/Google/Chrome/Default/Login Data", marker: "TSUBA-DECOY-CHROME", label: || tr!("Chrome password store"), body: "SQLite format 3\x00 TSUBA-DECOY-CHROME\n" },
+    Decoy { rel: "Library/Application Support/Exodus/exodus.wallet/seed.seco", marker: "TSUBA-DECOY-WALLET", label: || tr!("Exodus wallet"), body: "TSUBA-DECOY-WALLET not-a-real-wallet\n" },
 ];
 
-/// 环境变量里的诱饵密钥：格式和真的一样（有的窃密程序先校验格式再外传），中间嵌着唯一标记。
-/// 偷环境变量是投毒包最常见的手法之一，文件诱饵抓不到它。
+/// Decoy secrets in environment variables: same format as the real thing (some stealers validate the format before
+/// sending), with a unique marker embedded. Stealing environment variables is one of the most common tricks of poisoned
+/// packages, and file decoys don't catch it.
 struct EnvDecoy {
     name: &'static str,
     value: &'static str,
     marker: &'static str,
-    label: &'static str,
+    label: fn() -> String,
 }
 
 const ENV_DECOYS: &[EnvDecoy] = &[
-    EnvDecoy { name: "OPENAI_API_KEY", value: "sk-proj-TSUBADECOYOPENAI7f3kQ9xLm2Vb8Nc4Rt6Yw1Zp5Hs0Jd", marker: "TSUBADECOYOPENAI", label: "OpenAI API Key（环境变量）" },
-    EnvDecoy { name: "ANTHROPIC_API_KEY", value: "sk-ant-api03-TSUBADECOYANTHROPIC4hG8kL2mN6pQ0rS3tV7wX1yZ5aB9cD", marker: "TSUBADECOYANTHROPIC", label: "Anthropic API Key（环境变量）" },
-    EnvDecoy { name: "AWS_ACCESS_KEY_ID", value: "AKIATSUBADECOYAWSK7Q", marker: "TSUBADECOYAWSK", label: "AWS 访问密钥（环境变量）" },
-    EnvDecoy { name: "AWS_SECRET_ACCESS_KEY", value: "TSUBADECOYAWSSECRET/9xLm2Vb8Nc4Rt6Yw1Zp5Hs0", marker: "TSUBADECOYAWSSECRET", label: "AWS 私密访问密钥（环境变量）" },
-    EnvDecoy { name: "GITHUB_TOKEN", value: "ghp_TSUBADECOYGITHUB4hG8kL2mN6pQ0rS3tV7w", marker: "TSUBADECOYGITHUB", label: "GitHub 令牌（环境变量）" },
-    EnvDecoy { name: "NPM_TOKEN", value: "npm_TSUBADECOYNPM8kL2mN6pQ0rS3tV7wX1yZ5a", marker: "TSUBADECOYNPM", label: "npm 令牌（环境变量）" },
+    EnvDecoy { name: "OPENAI_API_KEY", value: "sk-proj-TSUBADECOYOPENAI7f3kQ9xLm2Vb8Nc4Rt6Yw1Zp5Hs0Jd", marker: "TSUBADECOYOPENAI", label: || tr!("OpenAI API key (environment variable)") },
+    EnvDecoy { name: "ANTHROPIC_API_KEY", value: "sk-ant-api03-TSUBADECOYANTHROPIC4hG8kL2mN6pQ0rS3tV7wX1yZ5aB9cD", marker: "TSUBADECOYANTHROPIC", label: || tr!("Anthropic API key (environment variable)") },
+    EnvDecoy { name: "AWS_ACCESS_KEY_ID", value: "AKIATSUBADECOYAWSK7Q", marker: "TSUBADECOYAWSK", label: || tr!("AWS access key (environment variable)") },
+    EnvDecoy { name: "AWS_SECRET_ACCESS_KEY", value: "TSUBADECOYAWSSECRET/9xLm2Vb8Nc4Rt6Yw1Zp5Hs0", marker: "TSUBADECOYAWSSECRET", label: || tr!("AWS secret access key (environment variable)") },
+    EnvDecoy { name: "GITHUB_TOKEN", value: "ghp_TSUBADECOYGITHUB4hG8kL2mN6pQ0rS3tV7w", marker: "TSUBADECOYGITHUB", label: || tr!("GitHub token (environment variable)") },
+    EnvDecoy { name: "NPM_TOKEN", value: "npm_TSUBADECOYNPM8kL2mN6pQ0rS3tV7wX1yZ5a", marker: "TSUBADECOYNPM", label: || tr!("npm token (environment variable)") },
 ];
 
-/// 诱饵标记对应的说明，给证据里的人看
-pub fn decoy_label(marker: &str) -> &str {
-    DECOYS.iter().find(|d| d.marker == marker).map(|d| d.label).or_else(|| ENV_DECOYS.iter().find(|d| d.marker == marker).map(|d| d.label)).unwrap_or(marker)
+/// What a decoy marker stands for, for people reading the evidence
+pub fn decoy_label(marker: &str) -> String {
+    let label = DECOYS.iter().find(|d| d.marker == marker).map(|d| d.label).or_else(|| ENV_DECOYS.iter().find(|d| d.marker == marker).map(|d| d.label));
+    label.map_or_else(|| marker.to_string(), |label| label())
 }
 
-/// 真实密钥的格式。出站明文里出现它们（又不是我们放的诱饵），说明程序在往外发密钥。
-/// 证据里只记种类、不记值（工程守则：日志和证据不写 API Key）。
+/// Formats of real secrets. If they show up in outgoing plain text (and aren't our decoys), the program is sending secrets out.
+/// Evidence keeps only the kind, never the value (engineering rules: no API keys in logs or evidence).
+/// The kind is a fixed English id because it is stored in check history; `secret_label` localizes it for display.
 fn secret_patterns() -> &'static [(&'static str, regex::Regex)] {
     static PATTERNS: std::sync::OnceLock<Vec<(&'static str, regex::Regex)>> = std::sync::OnceLock::new();
     PATTERNS.get_or_init(|| {
         [
-            ("OpenAI / Anthropic API Key", r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}"),
-            ("AWS 访问密钥", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
-            ("GitHub 令牌", r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b|\bgithub_pat_[A-Za-z0-9_]{60,}"),
-            ("Google API Key", r"\bAIza[0-9A-Za-z_-]{35}\b"),
-            ("Slack 令牌", r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),
-            ("npm 令牌", r"\bnpm_[A-Za-z0-9]{36}\b"),
-            ("私钥", r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
+            ("OpenAI / Anthropic API key", r"\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}"),
+            ("AWS access key", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
+            ("GitHub token", r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b|\bgithub_pat_[A-Za-z0-9_]{60,}"),
+            ("Google API key", r"\bAIza[0-9A-Za-z_-]{35}\b"),
+            ("Slack token", r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),
+            ("npm token", r"\bnpm_[A-Za-z0-9]{36}\b"),
+            ("private key", r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
         ]
         .into_iter()
-        .map(|(kind, re)| (kind, regex::Regex::new(re).expect("密钥格式正则")))
+        .map(|(kind, re)| (kind, regex::Regex::new(re).expect("secret format regex")))
         .collect()
     })
 }
 
-/// 检查一段出站数据：带出了哪些诱饵（标记），以及哪些种类的真实格式密钥。
+/// A secret kind from `NetEvent::secrets` in the user's language. Unknown kinds (Chinese names in old records) are shown as they are.
+pub fn secret_label(kind: &str) -> String {
+    match kind {
+        "OpenAI / Anthropic API key" => tr!("OpenAI / Anthropic API key"),
+        "AWS access key" => tr!("AWS access key"),
+        "GitHub token" => tr!("GitHub token"),
+        "Google API key" => tr!("Google API key"),
+        "Slack token" => tr!("Slack token"),
+        "npm token" => tr!("npm token"),
+        "private key" => tr!("private key"),
+        other => other.to_string(),
+    }
+}
+
+/// Joins labels with the list separator of the user's language
+fn join_labels(labels: impl IntoIterator<Item = String>) -> String {
+    labels.into_iter().collect::<Vec<_>>().join(&tr!(", "))
+}
+
+/// Checks outgoing data: which decoys (markers) it carries, and which kinds of real-looking secrets.
 pub fn scan_outbound(text: &str) -> (Vec<String>, Vec<String>) {
     let leaked: Vec<String> = DECOYS.iter().map(|d| d.marker).chain(ENV_DECOYS.iter().map(|d| d.marker)).filter(|m| text.contains(m)).map(String::from).collect();
-    // 先去掉我们自己的诱饵值，剩下的密钥才是“别的”
+    // Remove our own decoy values first; only what remains counts as "other" secrets
     let mut rest = text.to_string();
     for d in ENV_DECOYS {
         rest = rest.replace(d.value, "");
@@ -163,12 +194,12 @@ pub fn scan_outbound(text: &str) -> (Vec<String>, Vec<String>) {
     (leaked, secrets)
 }
 
-/// 记进证据之前把密钥换成“[种类 已隐去]”
+/// Replaces secrets with "[kind redacted]" before they go into evidence. The result is stored, so it stays in English.
 pub fn redact_secrets(text: &str) -> String {
-    secret_patterns().iter().fold(text.to_string(), |acc, (kind, re)| re.replace_all(&acc, format!("[{kind} 已隐去]")).into_owned())
+    secret_patterns().iter().fold(text.to_string(), |acc, (kind, re)| re.replace_all(&acc, format!("[{kind} redacted]")).into_owned())
 }
 
-/// 运行后这些目录里出现新文件就是可疑的持久化 / 落地痕迹
+/// New files in these folders after a run are suspicious signs of persistence or a dropped payload
 const WATCH_NEW: &[&str] = &["Library/LaunchAgents", ".node_modules", ".task", ".n2", ".npl", ".config/.node"];
 
 fn write_decoys(home: &Path) -> std::io::Result<()> {
@@ -179,20 +210,21 @@ fn write_decoys(home: &Path) -> std::io::Result<()> {
         }
         std::fs::write(&p, d.body)?;
     }
-    // 预建这些目录，方便之后对比“新出现的文件”
+    // Create these folders up front so "new files" can be compared afterwards
     for w in WATCH_NEW {
         let _ = std::fs::create_dir_all(home.join(w));
     }
-    // 几条假的 shell 历史，让环境看起来像有人在用
+    // A few fake shell history lines so the environment looks lived in
     std::fs::write(home.join(".zsh_history"), "ls\ncd ~/code\ngit status\nnpm install\n")?;
     Ok(())
 }
 
-/// 沙箱里的 PATH：真实 PATH + 常见版本管理器的默认位置 + 系统路径，让装在家目录的 node / npm 能被找到。
+/// PATH inside the sandbox: the real PATH + default locations of common version managers + system paths,
+/// so node / npm installed under the home folder can be found.
 ///
-/// 从 Finder / 登录项启动的 App 拿到的 PATH 只有 /usr/bin:/bin:/usr/sbin:/sbin，
-/// fnm / nvm 这类在 ~/.zshrc 里才配置的路径都不在里面。固定位置还找不到 node 时，
-/// 再问一次用户的登录 shell 要 PATH（结果缓存，只问一次）。
+/// An App launched from Finder or as a login item gets only /usr/bin:/bin:/usr/sbin:/sbin as PATH;
+/// paths set up in ~/.zshrc (fnm, nvm) are missing. If node still isn't found in the fixed locations,
+/// ask the user's login shell for its PATH once (the result is cached).
 fn sandbox_path() -> String {
     static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     PATH.get_or_init(|| {
@@ -211,8 +243,9 @@ fn sandbox_path() -> String {
     .clone()
 }
 
-/// 结束我们自己用 process_group(0) 启动的那一组进程（组号就是子进程的 pid）。
-/// 只能用在这种自建的组上。pid 为 0 或 1 时 kill(-pid) 会变成“当前用户的所有进程”，所以先挡掉。
+/// Kills the process group we started ourselves with process_group(0) (the group id is the child's pid).
+/// Only ever use it on such self-created groups. With pid 0 or 1, kill(-pid) would hit every process of the
+/// current user, so those are refused first.
 fn kill_own_group(child_pid: u32) {
     let Ok(pgid) = i32::try_from(child_pid) else { return };
     if pgid > 1 {
@@ -220,7 +253,8 @@ fn kill_own_group(child_pid: u32) {
     }
 }
 
-/// fnm / volta / bun / asdf 的默认 bin 目录（只取存在的）。nvm 的默认版本要解析别名，交给登录 shell。
+/// Default bin folders of fnm / volta / bun / asdf (only those that exist). nvm's default version needs alias
+/// resolution, so that is left to the login shell.
 fn manager_bin_dirs(home: &Path) -> Vec<PathBuf> {
     let mut fnm_roots: Vec<PathBuf> = std::env::var_os("FNM_DIR").map(PathBuf::from).into_iter().collect();
     fnm_roots.extend([home.join(".local/share/fnm"), home.join("Library/Application Support/fnm"), home.join(".fnm")]);
@@ -232,8 +266,8 @@ fn manager_bin_dirs(home: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// 用用户的登录 + 交互 shell 打印 PATH（fnm env 之类通常写在 .zshrc 里，所以要 -i）。
-/// rc 文件可能往 stdout 打印别的东西，用标记把 PATH 截出来；超过 3 秒就放弃。
+/// Prints PATH from the user's login + interactive shell (`fnm env` and the like usually live in .zshrc, hence -i).
+/// rc files may print other things to stdout, so PATH is cut out between markers; give up after 3 seconds.
 fn login_shell_path() -> Option<String> {
     const MARK: &str = "__TSUBA_PATH__";
     let shell = std::env::var("SHELL").ok().filter(|s| s.starts_with('/')).unwrap_or_else(|| "/bin/zsh".into());
@@ -261,52 +295,55 @@ fn login_shell_path() -> Option<String> {
     (!path.is_empty()).then(|| path.to_string())
 }
 
-/// node / python / 包管理器常装在家目录下的这些子目录里。锁死家目录时要放行它们的只读，
-/// 否则沙箱里连 node 本身都读不到。这些目录里没有 .ssh、钱包、浏览器密码这类敏感文件。
+/// node / python / package managers are often installed in these subfolders of the home folder. With the home folder
+/// locked they must stay readable, or the sandbox can't even read node itself. They hold nothing sensitive like .ssh,
+/// wallets or browser passwords.
 const TOOL_SUBDIRS: &[&str] = &[
     ".local", ".nvm", ".fnm", ".volta", ".bun", ".cargo", ".npm-global", ".asdf", ".rbenv", ".pyenv", ".deno",
     "Library/pnpm", "Library/Application Support/fnm", "Library/Caches/fnm", ".yarn",
 ];
 
-/// 沙箱里程序不能直接运行的系统工具：它们会请系统替它启动程序、发 AppleEvents、注册开机任务、
-/// 读钥匙串和剪贴板，绕开 Seatbelt 的文件和网络规则。下面的系统服务规则是同一件事的第二道门。
+/// System tools a sandboxed program may not run directly: they ask the system to launch programs, send AppleEvents,
+/// register background jobs, or read the keychain and clipboard, bypassing Seatbelt's file and network rules.
+/// The system service rules below are a second door for the same thing.
 const BLOCKED_TOOLS: &[&str] = &["/usr/bin/open", "/usr/bin/osascript", "/bin/launchctl", "/usr/bin/security", "/usr/bin/pbcopy", "/usr/bin/pbpaste", "/usr/bin/sudo"];
 
-/// 不让沙箱里的程序找的系统服务（mach 服务名）
+/// System services (mach service names) sandboxed programs may not look up
 const BLOCKED_SERVICES: &[&str] = &[
-    // LaunchServices：open 一个 App 或文档，被打开的程序不在沙箱里
+    // LaunchServices: opening an App or document starts it outside the sandbox
     "com.apple.coreservices.launchservicesd",
-    // AppleEvents：让 Finder、Terminal、System Events 替它执行命令
+    // AppleEvents: making Finder, Terminal or System Events run commands for it
     "com.apple.coreservices.appleevents",
-    // 剪贴板：可能有刚复制的密码、助记词
+    // Clipboard: may hold a freshly copied password or seed phrase
     "com.apple.pasteboard.1",
-    // DNS：直连被挡住后，可以把数据编码进域名查询带出去
+    // DNS: with direct connections blocked, data can still leave encoded in domain lookups
     "com.apple.dnssd.service",
-    // 钥匙串
+    // Keychain
     "com.apple.SecurityServer",
     "com.apple.securityd.xpc",
 ];
 
-/// 每个路径名都用 Seatbelt 的字符串语法转义
+/// Escapes a path in Seatbelt string syntax
 fn esc(p: &Path) -> String {
     p.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Seatbelt 规则。底子是 allow default（程序要能读 /usr、/System 才跑得起来），在上面按最小权限收紧。
+/// The Seatbelt profile. The base is allow default (programs must read /usr and /System to run at all), tightened to least privilege on top.
 ///
-/// 两个坑：
-/// - 后写的规则覆盖先写的，但“具体的操作名”比“通配的操作名”优先：先写了 deny file-read*，
-///   后面的 allow file* 盖不住它，所以放行时要逐类写 file-read* / file-write*。
-/// - 规则匹配的是解析后的真实路径（/private/var/folders/…），所以牢笼路径必须先 canonicalize。
+/// Two pitfalls:
+/// - Later rules override earlier ones, but a specific operation name beats a wildcard one: after deny file-read*,
+///   a later allow file* doesn't override it, so allows must name file-read* / file-write* separately.
+/// - Rules match the resolved real path (/private/var/folders/…), so jail paths must be canonicalized first.
 ///
-/// 每条 deny 都带上本次运行的标记，被拦下时系统日志里会出现这个标记，运行后据此收集越权操作。
+/// Every deny carries this run's tag (ASCII only: it is a matching key, not text for people). When something is denied
+/// the tag appears in the system log, and the denied operations are collected by it after the run.
 fn profile(real_home: &Path, jail: &JailPaths, proxy_port: u16, tag: &str) -> String {
     let mark = format!("(with message \"{tag}\")");
-    // 家目录下的工具目录只读放行：让装在家目录里的 node / python 能运行，但不能往真实家目录写
+    // Tool folders under the home folder are read-only: node / python installed there can run, but nothing can be written to the real home
     let tools: Vec<PathBuf> = TOOL_SUBDIRS.iter().map(|d| real_home.join(d)).filter(|p| p.exists()).collect();
     let tool_allows: String = tools.iter().map(|p| format!("(allow file-read* process-exec (subpath \"{}\"))\n", esc(p))).collect();
-    // node 解析真实路径时会 lstat 每一级父目录（/Users、/Users/xx、~/.local ……），被拒就直接报 EPERM 退出。
-    // 只放行这几级目录本身的元数据：不能列目录、不能读内容。牢笼的各级父目录同理（getcwd 要用）。
+    // node lstats every parent folder when resolving real paths (/Users, /Users/xx, ~/.local …) and exits with EPERM if denied.
+    // Allow only the metadata of those folders themselves: no listing, no reading. Same for the jail's parents (getcwd needs them).
     let mut parents: Vec<PathBuf> = tools.iter().flat_map(|p| p.ancestors().skip(1).take_while(|a| a.starts_with(real_home)).map(Path::to_path_buf).collect::<Vec<_>>()).collect();
     parents.extend(real_home.parent().map(Path::to_path_buf));
     parents.extend(jail.root.ancestors().map(Path::to_path_buf));
@@ -318,31 +355,31 @@ fn profile(real_home: &Path, jail: &JailPaths, proxy_port: u16, tag: &str) -> St
     format!(
         r#"(version 1)
 (allow default)
-; 写：除了假家目录和工作目录，哪里都不能写（/opt/homebrew/bin、/Applications、外接硬盘、/tmp）
+; Writes: nowhere except the fake home and work folders (not /opt/homebrew/bin, /Applications, external drives, /tmp)
 (deny file-write* (subpath "/") {mark})
-; 读：外接硬盘、所有用户目录、共享临时目录都不让看
+; Reads: external drives, all user folders and the shared temp folders are hidden
 (deny file-read* (subpath "/Volumes") (subpath "/Users") (subpath "/private/tmp") (subpath "/private/var/folders") {mark})
-; 真实家目录整个锁死：读不到用户真正的私钥、钱包、密码（家目录不在 /Users 下时也成立）
+; The real home folder is fully locked: no real private keys, wallets or passwords (holds even when home is not under /Users)
 (deny file* (subpath "{real}") {mark})
-; 每个程序都会按真实用户读一次文字编码设置，无害，放行免得日志里全是它
+; Every program reads the real user's text encoding setting once; harmless, allowed so it doesn't flood the log
 (allow file-read* (literal "{real}/.CFUserTextEncoding"))
-; 工具目录只读、可执行
+; Tool folders: read-only, executable
 {tools}(allow file-read-metadata {metadata})
-; 假家目录和工作目录可读可写；牢笼根目录里的规则文件看不到
+; Fake home and work folders are readable and writable; the profile in the jail root stays invisible
 (allow file-read* file-write* (subpath "{fake}") (subpath "{work}"))
 (allow file-write* (literal "/dev/null") (literal "/dev/zero") (literal "/dev/dtracehelper") (regex #"^/dev/fd/") (regex #"^/dev/tty"))
-; 进程：不能直接运行让系统替它干活的工具；只能给自己沙箱里的进程发信号、看它们的信息
+; Processes: no tools that make the system act on its behalf; signals and process info only within this sandbox
 (deny process-exec {tools_exec} {mark})
 (deny signal {mark})
 (allow signal (target same-sandbox))
 (deny process-info* {mark})
 (allow process-info* (target same-sandbox))
-; 系统服务：LaunchServices、AppleEvents、剪贴板、DNS、钥匙串，以及偏好设置
+; System services: LaunchServices, AppleEvents, clipboard, DNS, keychain, and preferences
 (deny mach-lookup {services} (global-name-prefix "com.apple.lsd.") {mark})
 (deny appleevent-send {mark})
 (deny user-preference-write {mark})
 (deny user-preference-read {mark})
-; 网络：默认禁止，只放行到本机的记录代理
+; Network: denied by default; only the local recording proxy is allowed
 (deny network* {mark})
 (allow network-outbound (remote ip "localhost:{port}"))
 (allow network-bind (local ip "localhost:*"))
@@ -355,14 +392,14 @@ fn profile(real_home: &Path, jail: &JailPaths, proxy_port: u16, tag: &str) -> St
     )
 }
 
-/// 试装依赖时唯一真正放行的地址：npm 官方源（只走 HTTPS CONNECT）。
+/// The only addresses really let through when trying an install: the official npm registry (HTTPS CONNECT only).
 const REGISTRY_HOSTS: &[&str] = &["registry.npmjs.org:443", "registry.yarnpkg.com:443"];
 
-/// 极简记录代理：扮演 HTTP 代理，把每个请求的目标和内容记下来，扫描诱饵标记，然后返回一个空的 200。
-/// 不把请求真正转发出去，所以沙箱里的程序连不上真实的攻击服务器。
-/// forward_registry 为 true 时，到 npm 官方源的 CONNECT 会真的接通，其他照旧只记录。
+/// A minimal recording proxy: acts as an HTTP proxy, records each request's target and content, scans for decoy markers,
+/// then answers with an empty 200. Requests are never forwarded, so sandboxed programs can't reach a real attacker server.
+/// With forward_registry, CONNECTs to the official npm registry are really connected; everything else is still only recorded.
 const MAX_PROXY_CONNECTIONS: usize = 32;
-/// 记下的网络请求上限，够看清行为就行
+/// Cap on recorded network requests; enough to see the behaviour
 const MAX_NET_EVENTS: usize = 300;
 
 type ProxyHandle = (u16, Arc<Mutex<Vec<NetEvent>>>, mpsc::Sender<()>);
@@ -381,7 +418,7 @@ fn start_proxy(forward_registry: bool) -> std::io::Result<ProxyHandle> {
                 break;
             }
             match listener.accept() {
-                // 同时处理的连接有上限：沙箱里的程序开几千个连接，也不会在宿主这边开几千个线程
+                // Concurrent connections are capped: thousands of connections in the sandbox don't become thousands of threads on the host
                 Ok((stream, _)) if active.load(Ordering::SeqCst) >= MAX_PROXY_CONNECTIONS => drop(stream),
                 Ok((stream, _)) => {
                     let (ev, active) = (ev.clone(), active.clone());
@@ -402,7 +439,7 @@ fn start_proxy(forward_registry: bool) -> std::io::Result<ProxyHandle> {
 }
 
 fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>, forward_registry: bool) {
-    // macOS 上 accept 出来的连接会继承监听端口的非阻塞模式，读写会直接返回 WouldBlock
+    // On macOS an accepted connection inherits the listener's non-blocking mode, so reads and writes would return WouldBlock
     let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut buf = vec![0u8; 16384];
@@ -415,7 +452,7 @@ fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>, f
         if data.len() > 256 * 1024 {
             break;
         }
-        // 请求头读完后，按 Content-Length 把正文也读进来：外传的数据多半在 POST 正文里
+        // Once the headers are in, read the body by Content-Length too: exfiltrated data is usually in a POST body
         if let Some(end) = data.windows(4).position(|w| w == b"\r\n\r\n") {
             let head = String::from_utf8_lossy(&data[..end]).to_ascii_lowercase();
             let body_len = head.lines().find_map(|l| l.strip_prefix("content-length:")).and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(0);
@@ -429,10 +466,10 @@ fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>, f
     let mut target = String::new();
     let mut request = String::new();
     if let Some(rest) = first.strip_prefix("CONNECT ") {
-        // CONNECT host:443 HTTP/1.1 —— HTTPS，只能看到目标
+        // CONNECT host:443 HTTP/1.1: HTTPS, only the target is visible
         target = rest.split_whitespace().next().unwrap_or("").to_string();
         if forward_registry && REGISTRY_HOSTS.contains(&target.to_lowercase().as_str()) {
-            // 连上就记，不等隧道关闭：npm 用长连接，结束时隧道可能还没断
+            // Record on connect rather than when the tunnel closes: npm keeps connections alive, so the tunnel may still be open at the end
             let upstream = connect_upstream(&target);
             events.lock().unwrap().push(NetEvent { target, request, leaked: vec![], secrets: vec![], forwarded: upstream.is_some() });
             match upstream {
@@ -445,7 +482,7 @@ fn handle_proxy_conn(mut stream: TcpStream, events: Arc<Mutex<Vec<NetEvent>>>, f
         }
         let _ = stream.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n");
     } else if let Some((method, rest)) = first.split_once(' ') {
-        // GET http://host/path HTTP/1.1 —— 明文，能看到完整请求
+        // GET http://host/path HTTP/1.1: plain text, the whole request is visible
         let url = rest.split_whitespace().next().unwrap_or("");
         target = url.strip_prefix("http://").and_then(|u| u.split('/').next()).unwrap_or(url).to_string();
         request = redact_secrets(&format!("{method} {url}"));
@@ -464,7 +501,7 @@ fn connect_upstream(target: &str) -> Option<TcpStream> {
     TcpStream::connect_timeout(&addr, Duration::from_secs(10)).ok()
 }
 
-/// 把客户端和上游接通，双向转发，直到任一边关闭。只用于 npm 官方源。
+/// Connects the client to upstream and relays both ways until either side closes. Only used for the official npm registry.
 fn tunnel(mut client: TcpStream, mut upstream: TcpStream) {
     let _ = client.set_read_timeout(None);
     if client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").is_err() {
@@ -480,7 +517,7 @@ fn tunnel(mut client: TcpStream, mut upstream: TcpStream) {
     let _ = up.join();
 }
 
-/// 运行后对比假家目录，列出新出现的文件。
+/// Compares the fake home folder after the run and lists the new files.
 fn new_files(home: &Path) -> Vec<String> {
     let mut out = Vec::new();
     for w in WATCH_NEW {
@@ -491,20 +528,19 @@ fn new_files(home: &Path) -> Vec<String> {
             }
         }
     }
-    // 工作目录（脚本被放这里运行）里新下载的可执行文件
     out.sort();
     out.dedup();
     out
 }
 
-/// 牢笼里的几个目录（都是解析后的真实路径，Seatbelt 按真实路径匹配）
+/// The jail's folders (all resolved real paths, since Seatbelt matches real paths)
 struct JailPaths {
     root: PathBuf,
     fake_home: PathBuf,
     work: PathBuf,
 }
 
-/// 准备好的沙箱：目录 + 诱饵、记录代理、规则文件，以及本次运行的两个随机标记。
+/// A prepared sandbox: folders + decoys, the recording proxy, the profile, and this run's random tag.
 struct Jail {
     _dir: tempfile::TempDir,
     paths: JailPaths,
@@ -512,11 +548,11 @@ struct Jail {
     proxy_url: String,
     events: Arc<Mutex<Vec<NetEvent>>>,
     stop_tx: mpsc::Sender<()>,
-    /// 写进每条 deny 规则，系统日志里据此找出这次运行被拦下的操作
+    /// Written into every deny rule; this run's denials are found in the system log by it
     tag: String,
 }
 
-/// 一个随机十六进制串。只用来区分每次运行，不需要密码学强度。
+/// A random hex string. Only tells runs apart, so it needs no cryptographic strength.
 fn random_hex() -> String {
     use std::hash::{BuildHasher, RandomState};
     let state = RandomState::new();
@@ -533,14 +569,15 @@ fn prepare_jail(forward_registry: bool) -> std::io::Result<Jail> {
     write_decoys(&paths.fake_home)?;
     let (port, events, stop_tx) = start_proxy(forward_registry)?;
     let tag = format!("tsuba-{}", random_hex());
-    // 规则文件放在牢笼根目录：沙箱里只能读写 home 和 work，看不到规则和标记
+    // The profile lives in the jail root: the sandbox can only use home and work, so it can't see the profile or the tag
     let profile = paths.root.join("profile.sb");
     std::fs::write(&profile, self::profile(&real_home, &paths, port, &tag))?;
     Ok(Jail { _dir: dir, paths, profile, proxy_url: format!("http://127.0.0.1:{port}"), events, stop_tx, tag })
 }
 
-/// 资源上限。单个文件 1 GiB、每个进程的 CPU 时间、整个用户的进程数（在当前数量上多给 256 个）。
-/// 进程数是按用户算的，所以不能设一个固定的小数，否则用户自己开的程序多一点就什么都跑不起来。
+/// Resource limits: 1 GiB per file, CPU time per process, and the user's process count (256 more than now).
+/// The process limit counts all of the user's processes, so it can't be a small fixed number, or nothing would start
+/// once the user has a few more programs open.
 struct Limits {
     file_size: libc::rlim_t,
     cpu_seconds: libc::rlim_t,
@@ -553,7 +590,7 @@ impl Limits {
         Limits { file_size: 1 << 30, cpu_seconds: timeout.as_secs() as libc::rlim_t * 2 + 30, processes: own }
     }
 
-    /// 在 fork 之后、exec 之前调用：只用 setrlimit，满足 async-signal-safe 的要求
+    /// Called after fork and before exec: only setrlimit, to stay async-signal-safe
     fn apply(&self) -> std::io::Result<()> {
         let set = |resource, value: libc::rlim_t| {
             let lim = libc::rlimit { rlim_cur: value, rlim_max: value };
@@ -573,7 +610,7 @@ fn own_process_count() -> Option<usize> {
     out.status.success().then(|| out.stdout.split(|b| *b == b'\n').filter(|l| !l.is_empty()).count())
 }
 
-/// 在准备好的牢笼里运行一条命令（argv 的第一个是程序），限时、收尸、收集行为。
+/// Runs a command (argv[0] is the program) in a prepared jail with a time limit, reaps it, and collects its behaviour.
 fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> std::io::Result<Behavior> {
     let limits = Limits::for_timeout(timeout);
     let mut command = Command::new("/usr/bin/sandbox-exec");
@@ -584,7 +621,7 @@ fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> s
         .current_dir(cwd)
         .env_clear()
         .env("HOME", &jail.paths.fake_home)
-        // 补全后的 PATH，node / npm（常装在家目录，已在规则里放行只读）才能被找到
+        // The completed PATH, so node / npm (often under the home folder, read-only in the profile) can be found
         .env("PATH", sandbox_path())
         .env("TMPDIR", &jail.paths.work)
         .env("USER", "user")
@@ -599,7 +636,7 @@ fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> s
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        // 单独的进程组，结束时能把它启动的所有子进程一起杀掉
+        // Its own process group, so every child it starts can be killed together at the end
         .process_group(0);
     unsafe { command.pre_exec(move || limits.apply()) };
     let mut child = command.spawn()?;
@@ -629,12 +666,12 @@ fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> s
         }
     };
     let seconds = start.elapsed().as_secs_f64();
-    // 不论是否超时，都把整个进程组杀掉：主进程退出了，它放到后台的子进程还会接着跑，
-    // 而且会一直占着输出管道，下面读输出就永远等不到头
+    // Kill the whole process group whether or not it timed out: after the main process exits, children it put in the
+    // background keep running and hold the output pipes open, so reading the output below would never finish
     kill_own_group(child.id());
     let _ = child.wait();
-    // 只杀本次运行自己的进程组，不扫描全机进程去追“逃逸”的进程：认错一次就会杀掉用户自己的程序
-    // （真实发生过，结束了 Slack、VS Code、Docker 和多个系统服务）。
+    // Only this run's own process group is killed. Never scan all processes to chase "escaped" ones: one misidentification
+    // kills the user's own programs (it really happened: Slack, VS Code, Docker and several system services were killed).
     std::thread::sleep(Duration::from_millis(100));
     let _ = jail.stop_tx.send(());
 
@@ -649,8 +686,8 @@ fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> s
 }
 
 
-/// 从系统日志里读出这次运行被沙箱拦下的操作。日志可能晚一点落盘，读之前稍等。
-/// 剪贴板、DNS 这类系统服务被拒时不一定写日志，所以这里只是证据的补充，规则本身照样生效。
+/// Reads this run's denied operations from the system log. The log may land a little late, so wait briefly first.
+/// Denied system services such as the clipboard or DNS aren't always logged, so this only adds evidence; the rules apply regardless.
 fn read_denials(tag: &str, seconds: f64) -> Vec<Denied> {
     std::thread::sleep(Duration::from_millis(300));
     let window = format!("{}s", seconds.ceil() as u64 + 10);
@@ -667,7 +704,7 @@ fn read_denials(tag: &str, seconds: f64) -> Vec<Denied> {
     denied
 }
 
-/// 解析一行内核日志：`Sandbox: touch(97285) deny(1) file-write-create /opt/homebrew/bin/x`
+/// Parses one kernel log line: `Sandbox: touch(97285) deny(1) file-write-create /opt/homebrew/bin/x`
 fn parse_denial(line: &str) -> Option<Denied> {
     let rest = &line[line.find("Sandbox: ")? + "Sandbox: ".len()..];
     let (process, rest) = rest.split_once('(')?;
@@ -676,14 +713,14 @@ fn parse_denial(line: &str) -> Option<Denied> {
     parts.next()?;
     let operation = parts.next()?.to_string();
     let target = parts.next().unwrap_or("").trim().to_string();
-    // 程序查全局偏好设置是常规动作，不算越权
+    // Programs routinely look up global preferences; that's not an overreach
     if target == "kcfpreferencesanyapplication" {
         return None;
     }
     Some(Denied { process: process.to_string(), operation, target })
 }
 
-/// 在沙箱里运行一段脚本。`interpreter` 通常是 "/bin/bash"。不联网执行任何真实地址。
+/// Runs a script in the sandbox. `interpreter` is usually "/bin/bash". No real address is ever contacted.
 pub fn run_script(script: &str, interpreter: &str, timeout: Duration) -> std::io::Result<Behavior> {
     let jail = prepare_jail(false)?;
     let script_path = jail.paths.work.join("script.sh");
@@ -692,20 +729,20 @@ pub fn run_script(script: &str, interpreter: &str, timeout: Duration) -> std::io
     exec_jailed(&jail, &argv, &jail.paths.work.clone(), timeout)
 }
 
-/// 在沙箱里运行一个项目的启动命令（例如 npm start、node server.js）。
+/// Runs a project's start command in the sandbox (e.g. npm start, node server.js).
 ///
-/// 把项目拷进牢笼里运行，面试项目“打开/启动就执行”的恶意代码会在这里暴露：
-/// 读诱饵钱包和密钥、往隐藏目录或开机自启写东西、把数据发往外部。
-/// 用 ditto 在 APFS 上做写时复制，几乎不额外占磁盘；跳过 .git。
-/// 注意：直连 C2 的原始套接字会被系统挡住（看不到内容，但也到不了攻击者）；
-/// 走 HTTP 代理的客户端才能看到外传内容。
+/// The project is copied into the jail and run there, which exposes interview projects whose malicious code runs on
+/// open or start: reading decoy wallets and keys, writing to hidden folders or login items, sending data out.
+/// ditto does copy-on-write on APFS, so it costs almost no disk space; .git is skipped.
+/// Note: raw sockets straight to a C2 are blocked by the system (no content visible, but the attacker isn't reached either);
+/// exfiltrated content is visible only for clients that use the HTTP proxy.
 pub fn run_project(project_dir: &Path, argv: &[String], timeout: Duration) -> std::io::Result<Behavior> {
     run_in_copy(project_dir, argv, timeout, false)
 }
 
-/// 在沙箱里试装一个项目的依赖（npm install），让依赖的 preinstall / postinstall 脚本真的跑一遍。
-/// 投毒的包多半在安装脚本里动手：读密钥、往隐藏目录写东西、把数据发出去。
-/// 只放行到 npm 官方源的下载，安装脚本连别的地址照样被记录、被挡住。
+/// Tries installing a project's dependencies (npm install) in the sandbox so their preinstall / postinstall scripts really run.
+/// Poisoned packages mostly strike in install scripts: reading keys, writing to hidden folders, sending data out.
+/// Only downloads from the official npm registry are let through; other addresses install scripts contact are recorded and blocked.
 pub fn run_install(project_dir: &Path, timeout: Duration) -> std::io::Result<Behavior> {
     run_in_copy(project_dir, &install_argv(), timeout, true)
 }
@@ -717,10 +754,10 @@ pub fn install_argv() -> Vec<String> {
 fn run_in_copy(project_dir: &Path, argv: &[String], timeout: Duration, forward_registry: bool) -> std::io::Result<Behavior> {
     let jail = prepare_jail(forward_registry)?;
     let dest = jail.paths.work.join("project");
-    // ditto 保留结构、跟随 APFS clonefile；比 cp -R 快且省盘
+    // ditto keeps the structure and uses APFS clonefile; faster than cp -R and saves disk space
     let status = Command::new("/usr/bin/ditto").arg(project_dir).arg(&dest).arg("--norsrc").status();
     if !matches!(status, Ok(s) if s.success()) {
-        // ditto 不在就退回普通递归复制
+        // Without ditto, fall back to a plain recursive copy
         copy_dir(project_dir, &dest)?;
     }
     let _ = std::fs::remove_dir_all(dest.join(".git"));
@@ -742,86 +779,90 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// 把观察到的行为翻译成证据。靠行为判断，但正常安装脚本的联网、下载、写文件本身不算坏。
+/// Turns observed behaviour into evidence. Judged by behaviour, but going online, downloading and writing files are
+/// normal for install scripts and don't count as bad on their own.
 pub fn findings(b: &Behavior) -> Vec<Finding> {
     let mut out = Vec::new();
-    let loc = "沙箱运行";
+    let loc = tr!("Sandbox run");
 
     for ev in &b.network {
         if !ev.leaked.is_empty() {
+            let decoys = join_labels(ev.leaked.iter().map(|m| decoy_label(m)));
             out.push(Finding::new(
                 Severity::High,
-                format!("程序把诱饵敏感数据（{}）发往 {}，这是窃取数据的铁证", ev.leaked.iter().map(|m| decoy_label(m)).collect::<Vec<_>>().join("、"), ev.target),
-                loc,
+                tr!("The program sent decoy secrets ({decoys}) to {target}. Tsuba planted these fakes, so this is proof it steals data", decoys = decoys, target = ev.target),
+                &loc,
             ));
         }
         if !ev.secrets.is_empty() {
-            out.push(Finding::new(Severity::High, format!("程序发往 {} 的明文请求里带着疑似 {}，可能在外传密钥", ev.target, ev.secrets.join("、")), loc));
+            let kinds = join_labels(ev.secrets.iter().map(|k| secret_label(k)));
+            out.push(Finding::new(Severity::High, tr!("A plain-text request to {target} appears to contain secrets ({kinds}); the program may be sending them out", target = ev.target, kinds = kinds), &loc));
         }
     }
-    // 连接裸 IP 作为证据交给上层判断（正常安装脚本一般连域名）
+    // Connecting to a bare IP is evidence for the layer above (normal install scripts usually use domain names)
     for ev in &b.network {
         let host = ev.target.split(':').next().unwrap_or("");
         if crate::net::is_ip(host) && !host.starts_with("127.") {
-            out.push(Finding::new(Severity::Medium, format!("程序运行时直接连接 IP 地址 {}", ev.target), loc));
+            out.push(Finding::new(Severity::Medium, tr!("The program connected straight to the IP address {target} while running", target = ev.target), &loc));
         }
     }
     for f in &b.new_files {
         if f.starts_with("Library/LaunchAgents") {
-            out.push(Finding::new(Severity::High, format!("程序往开机自启目录写入了 {f}（想在重启后继续运行）"), loc));
+            out.push(Finding::new(Severity::High, tr!("The program wrote {file}, a launch agent that starts at login, to keep running after a restart", file = f), &loc));
         } else if f.contains(".node_modules") || f.starts_with(".task") || f.contains(".config/.node") {
-            out.push(Finding::new(Severity::High, format!("程序往隐藏目录写入了 {f}（攻击者常用的藏身位置）"), loc));
+            out.push(Finding::new(Severity::High, tr!("The program wrote {file} into a hidden folder, a common hiding place for attackers", file = f), &loc));
         }
     }
     for d in &b.denied {
         if let Some((severity, message)) = classify_denial(d) {
-            out.push(Finding::new(severity, message, loc));
+            out.push(Finding::new(severity, message, &loc));
         }
     }
     out
 }
 
-/// 真实家目录里的这些位置放着私钥、云凭证、钱包和浏览器密码。程序无视 $HOME、按真实路径去读它们，
-/// 说明是冲着用户的真实数据来的。
+/// These places in the real home folder hold private keys, cloud credentials, wallets and browser passwords. A program that
+/// ignores $HOME and reads them by their real path is going after the user's real data.
 const SENSITIVE_HOME_PATHS: &[&str] = &[
     "/.ssh/", "/.aws/", "/.gnupg/", "/.kube/", "/.docker/config.json", "/.netrc", "/.config/solana/",
     "/Library/Keychains/", "/Library/Application Support/Google/Chrome/", "/Library/Application Support/BraveSoftware/",
     "/Library/Application Support/Firefox/", "/Library/Application Support/Exodus/", "/Library/Cookies/",
 ];
 
-/// 把一次被拦下的越权操作翻译成证据。正常安装脚本也会做的事（往 /usr/local/bin 装命令、
-/// 打开浏览器、直连 443）只作为证据交给 AI，不单独定罪；只有明确的恶意信号才是高危。
+/// Turns one denied operation into evidence. Things normal install scripts also do (installing a command in /usr/local/bin,
+/// opening a browser, connecting straight to 443) are only evidence for the AI, never a verdict on their own; only clear
+/// malicious signals are high risk.
 fn classify_denial(d: &Denied) -> Option<(Severity, String)> {
     let (op, target, who) = (d.operation.as_str(), d.target.as_str(), d.process.as_str());
     let persistence = target.contains("/LaunchAgents/") || target.contains("/LaunchDaemons/") || target.ends_with("/LaunchAgents") || target.contains("/Library/StartupItems");
     if op.starts_with("file-write") && persistence {
-        return Some((Severity::High, format!("{who} 想在沙箱外的 {target} 写入开机自启项，被沙箱挡住了")));
+        return Some((Severity::High, tr!("{process} tried to add a launch agent at {target} outside the sandbox, so it would start at login. The sandbox blocked it.", process = who, target = target)));
     }
     if op.starts_with("file-write") && ["/opt/homebrew/", "/usr/local/", "/Applications/"].iter().any(|p| target.starts_with(p)) {
-        // 正常安装脚本也常把命令装进 /usr/local/bin，只作为证据交给 AI，不参与判断
-        return Some((Severity::Low, format!("{who} 想往沙箱外的 {target} 写文件（装命令或程序的位置），被沙箱挡住了")));
+        // Normal install scripts often put commands in /usr/local/bin too, so this is only evidence for the AI and takes no part in the verdict
+        return Some((Severity::Low, tr!("{process} tried to write {target} outside the sandbox, where commands and apps are installed. The sandbox blocked it.", process = who, target = target)));
     }
-    // ssh、git 本来就按真实用户找 ~/.ssh，不算
+    // ssh and git look up ~/.ssh by the real user anyway; that doesn't count
     if op.starts_with("file-read") && !matches!(who, "ssh" | "git" | "git-remote-https") && target.starts_with("/Users/") && SENSITIVE_HOME_PATHS.iter().any(|p| target.contains(p)) {
-        return Some((Severity::High, format!("{who} 绕过假家目录、直接读取真实的 {target}，被沙箱挡住了")));
+        return Some((Severity::High, tr!("{process} bypassed the fake home folder and tried to read the real {target}. The sandbox blocked it.", process = who, target = target)));
     }
     if op.starts_with("process-exec") {
         return match target {
-            "/usr/bin/security" => Some((Severity::High, format!("{who} 想运行 security 读取钥匙串，被沙箱挡住了"))),
-            "/usr/bin/osascript" => Some((Severity::Medium, format!("{who} 想运行 osascript（假冒系统密码框是 macOS 窃密木马的常见手法），被沙箱挡住了"))),
-            "/bin/launchctl" => Some((Severity::Medium, format!("{who} 想用 launchctl 注册后台任务，被沙箱挡住了"))),
-            "/usr/bin/pbpaste" | "/usr/bin/pbcopy" => Some((Severity::Medium, format!("{who} 想读写剪贴板，被沙箱挡住了"))),
+            "/usr/bin/security" => Some((Severity::High, tr!("{process} tried to run security to read the keychain. The sandbox blocked it.", process = who))),
+            "/usr/bin/osascript" => Some((Severity::Medium, tr!("{process} tried to run osascript (fake system password prompts are a common trick of macOS stealers). The sandbox blocked it.", process = who))),
+            "/bin/launchctl" => Some((Severity::Medium, tr!("{process} tried to register a background job with launchctl. The sandbox blocked it.", process = who))),
+            "/usr/bin/pbpaste" | "/usr/bin/pbcopy" => Some((Severity::Medium, tr!("{process} tried to read or write the clipboard. The sandbox blocked it.", process = who))),
             _ => None,
         };
     }
     if op == "user-preference-write" {
-        return Some((Severity::Medium, format!("{who} 想修改 {target} 的设置，被沙箱挡住了")));
+        return Some((Severity::Medium, tr!("{process} tried to change the settings of {target}. The sandbox blocked it.", process = who, target = target)));
     }
-    // 绕过代理直连：443 / 80 很多正常程序也会（不认代理的 HTTP 客户端），只看少见的端口
+    // Bypassing the proxy: many normal programs do it on 443 / 80 (HTTP clients that ignore proxies), so only unusual ports count
     if op == "network-outbound" {
         let port = target.rsplit(':').next().unwrap_or("");
         if !port.is_empty() && !matches!(port, "80" | "443" | "53") && port.chars().all(|c| c.is_ascii_digit()) {
-            return Some((Severity::Medium, format!("{who} 绕过代理直接连接端口 {port}，被沙箱挡住了（木马的控制端常用不常见的端口）")));
+            return Some((Severity::Medium, tr!("{process} bypassed the proxy to connect straight to port {port}. The sandbox blocked it (trojan control servers often use unusual ports).", process = who, port = port)));
         }
     }
     None
@@ -836,9 +877,9 @@ mod tests {
         let d = parse_denial("2026-10-28 06:42:46.282 E  kernel[0:1a96468] (Sandbox) Sandbox: touch(97102) deny(1) file-write-create /opt/homebrew/bin/x").unwrap();
         assert_eq!(d, Denied { process: "touch".into(), operation: "file-write-create".into(), target: "/opt/homebrew/bin/x".into() });
         let d = parse_denial("Sandbox: node(1) deny(1) file-read-data /Users/a/Library/Application Support/Google/Chrome/Default/Login Data").unwrap();
-        assert_eq!(d.target, "/Users/a/Library/Application Support/Google/Chrome/Default/Login Data", "路径里的空格要保留");
+        assert_eq!(d.target, "/Users/a/Library/Application Support/Google/Chrome/Default/Login Data", "spaces in the path must be kept");
         assert_eq!(parse_denial("Sandbox: curl(1) deny(1) network-outbound remote:*:1224").unwrap().target, "remote:*:1224");
-        assert!(parse_denial("Sandbox: curl(1) deny(1) user-preference-read kcfpreferencesanyapplication").is_none(), "查全局设置是噪音");
+        assert!(parse_denial("Sandbox: curl(1) deny(1) user-preference-read kcfpreferencesanyapplication").is_none(), "looking up global preferences is noise");
         assert!(parse_denial("log run noninteractively").is_none());
     }
 
@@ -856,14 +897,14 @@ mod tests {
             "(allow signal (target same-sandbox))",
             "(with message \"tag\")",
         ] {
-            assert!(p.contains(must), "规则里缺少 {must}:\n{p}");
+            assert!(p.contains(must), "profile is missing {must}:\n{p}");
         }
-        // 牢笼根目录（放规则文件的地方）不在可读范围内，只有 home 和 work
+        // The jail root (where the profile lives) is not readable, only home and work
         assert!(p.contains("(subpath \"/tmp/jail/home\") (subpath \"/tmp/jail/work\")") && !p.contains("(subpath \"/tmp/jail\")"));
     }
 }
 
-/// 一个项目的启动命令：有 package.json 就用 `npm start`，否则按常见入口猜。
+/// A project's start command: `npm start` when there is a package.json, otherwise a guess from common entry points.
 pub fn project_start_argv(dir: &Path) -> Vec<String> {
     if dir.join("package.json").is_file() {
         return vec!["npm".into(), "start".into()];
@@ -876,7 +917,7 @@ pub fn project_start_argv(dir: &Path) -> Vec<String> {
     vec!["npm".into(), "start".into()]
 }
 
-/// 在沙箱里跑一个项目的启动命令，返回证据和命中。
+/// Runs a project's start command in the sandbox and returns the evidence and findings.
 pub fn analyze_project(dir: &Path, timeout: Duration) -> (Value, Vec<Finding>) {
     let argv = project_start_argv(dir);
     match run_project(dir, &argv, timeout) {
@@ -888,7 +929,7 @@ pub fn analyze_project(dir: &Path, timeout: Duration) -> (Value, Vec<Finding>) {
     }
 }
 
-/// 一次沙箱运行的完整结果：行为 + 证据，可放进证据里交给模型。
+/// The full result of one sandbox run: behaviour + findings, ready to go into the evidence for the model.
 pub fn analyze_script(script: &str, timeout: Duration) -> (Value, Vec<Finding>) {
     match run_script(script, "/bin/bash", timeout) {
         Ok(b) => {

@@ -206,7 +206,7 @@ mod tests {
         assert!(content[0]["text"].as_str().unwrap().contains("不可信"), "先声明是不可信数据");
         let text = content[1]["text"].as_str().unwrap();
         assert!(text.contains("\"id\": \"1\"") && !text.contains("left-pad"), "默认只列提醒和拦截：{text}");
-        assert!(!text.contains("ghp_a1B2") && text.contains("已隐去"), "命令里的令牌要隐去：{text}");
+        assert!(!text.contains("ghp_a1B2") && text.contains("redacted]"), "命令里的令牌要隐去：{text}");
 
         let r = call_tool("explain_check", json!({ "id": "1" }));
         let text = r["result"]["content"][1]["text"].as_str().unwrap();

@@ -1,6 +1,6 @@
-//! 检查 macOS 安装包（.dmg / .pkg / .app）：签名、公证、下载来源、隐藏的可执行文件、安装脚本。
+//! Checks macOS installers (.dmg / .pkg / .app): signature, notarization, download source, hidden executables, install scripts.
 //!
-//! 只读挂载、只读展开，不运行其中任何程序。
+//! Mounted and expanded read-only; nothing inside is ever run.
 
 use crate::rules::{self, Finding, Severity};
 use serde_json::{Map, Value, json};
@@ -10,13 +10,13 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// 运行一个系统命令，超时就杀掉。返回（退出码，stdout + stderr）。
+/// Runs a system command and kills it on timeout. Returns (exit code, stdout + stderr).
 pub fn run(args: &[&str], timeout_secs: u64) -> (i32, String) {
     let mut child = match Command::new(args[0]).args(&args[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
         Ok(c) => c,
         Err(e) => return (-1, e.to_string()),
     };
-    // 输出可能很大（strings），必须边跑边读，否则管道写满会卡死
+    // Output can be large (strings), so read while it runs, or a full pipe would hang it
     let mut so = child.stdout.take().unwrap();
     let mut se = child.stderr.take().unwrap();
     let t1 = thread::spawn(move || {
@@ -51,7 +51,7 @@ fn tail(s: &str, n: usize) -> String {
     c[c.len().saturating_sub(n)..].iter().collect()
 }
 
-/// macOS 会记录文件是从哪个网址下载的（kMDItemWhereFroms）。
+/// macOS records which URL a file was downloaded from (kMDItemWhereFroms).
 pub fn where_from(path: &str) -> Vec<String> {
     let (code, out) = run(&["mdls", "-raw", "-name", "kMDItemWhereFroms", path], 10);
     if code != 0 || out == "(null)" || out.is_empty() {
@@ -77,9 +77,9 @@ pub fn inspect_app(app: &Path, findings: &mut Vec<Finding>) -> Value {
     let (code, out) = run(&["codesign", "-dv", "--verbose=2", &app_s], 30);
     info.insert("codesign".into(), json!(tail(&out, 800)));
     if code != 0 || out.contains("code object is not signed") {
-        findings.push(Finding::new(Severity::High, "应用没有代码签名", &name));
+        findings.push(Finding::new(Severity::High, tr!("The app has no code signature"), &name));
     } else if out.contains("Signature=adhoc") {
-        findings.push(Finding::new(Severity::High, "应用只有临时签名（adhoc），没有开发者身份", &name));
+        findings.push(Finding::new(Severity::High, tr!("The app has only an ad-hoc signature, with no developer identity"), &name));
     }
     if let Some(dev) = out.lines().find_map(|l| l.strip_prefix("Authority=Developer ID Application:")) {
         info.insert("developer".into(), json!(dev.trim()));
@@ -87,7 +87,7 @@ pub fn inspect_app(app: &Path, findings: &mut Vec<Finding>) -> Value {
     let (code, out) = run(&["spctl", "--assess", "--type", "execute", "-vv", &app_s], 30);
     info.insert("gatekeeper".into(), json!(tail(&out, 400)));
     if code != 0 {
-        findings.push(Finding::new(Severity::Medium, "Gatekeeper 评估不通过（未公证或被拒绝）", &name).with_snippet(tail(&out, 200)));
+        findings.push(Finding::new(Severity::Medium, tr!("Gatekeeper rejects the app (not notarized, or refused)"), &name).with_snippet(tail(&out, 200)));
     }
 
     if let Ok(plist) = plist::Value::from_file(app.join("Contents/Info.plist"))
@@ -97,7 +97,7 @@ pub fn inspect_app(app: &Path, findings: &mut Vec<Finding>) -> Value {
             info.insert("executable".into(), json!(exe));
             info.insert("sha256".into(), json!(crate::sha256_file(&app.join("Contents/MacOS").join(exe))));
             if exe.starts_with('.') {
-                findings.push(Finding::new(Severity::High, format!("主程序被替换成隐藏文件 {exe}（Jamf 披露的 Contagious Interview 手法）"), &name));
+                findings.push(Finding::new(Severity::High, tr!("The main executable is the hidden file {exe} (the Contagious Interview technique reported by Jamf)", exe = exe), &name));
             }
         }
 
@@ -107,7 +107,7 @@ pub fn inspect_app(app: &Path, findings: &mut Vec<Finding>) -> Value {
         let names: Vec<String> = entries.iter().filter_map(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).collect();
         let hidden: Vec<&String> = names.iter().filter(|n| n.starts_with('.')).collect();
         if !hidden.is_empty() {
-            findings.push(Finding::new(Severity::High, format!("可执行目录里有隐藏文件：{}", hidden.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")), &name));
+            findings.push(Finding::new(Severity::High, tr!("Hidden files in the executable folder: {files}", files = hidden.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")), &name));
         }
         info.insert("macos_dir".into(), json!(names.iter().take(20).collect::<Vec<_>>()));
         for p in entries.iter().take(5) {
@@ -120,7 +120,7 @@ pub fn inspect_app(app: &Path, findings: &mut Vec<Finding>) -> Value {
             let (code, out) = run(&["strings", "-n", "8", &p.to_string_lossy()], 20);
             if code == 0 {
                 let text: String = out.chars().take(3_000_000).collect();
-                // 二进制里的字符串噪声大（系统库也会带这些路径），统一降为中等，交给模型结合上下文判断
+                // Strings from binaries are noisy (system libraries carry these paths too), so cap them at medium and let the model judge in context
                 for mut f in rules::scan_text(&text, &loc) {
                     if f.severity == Severity::High {
                         f.severity = Severity::Medium;
@@ -142,13 +142,13 @@ pub fn inspect_app(app: &Path, findings: &mut Vec<Finding>) -> Value {
 pub fn inspect_dmg(path: &str, findings: &mut Vec<Finding>) -> Map<String, Value> {
     let mut info = Map::new();
     let Ok(mnt) = tempfile::Builder::new().prefix("tsuba-").tempdir() else {
-        info.insert("error".into(), json!("无法创建临时目录"));
+        info.insert("error".into(), json!(tr!("Couldn't create a temporary folder")));
         return info;
     };
     let mnt_s = mnt.path().to_string_lossy().to_string();
     let (code, out) = run(&["hdiutil", "attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", &mnt_s, path], 60);
     if code != 0 {
-        info.insert("error".into(), json!(format!("无法挂载：{}", tail(&out, 200))));
+        info.insert("error".into(), json!(tr!("Couldn't mount the disk image: {error}", error = tail(&out, 200))));
         return info;
     }
     let dmg_name = Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -157,12 +157,12 @@ pub fn inspect_dmg(path: &str, findings: &mut Vec<Finding>) -> Map<String, Value
     info
 }
 
-/// 镜像挂载后的系统文件，不算可疑
+/// System files on a mounted image; not suspicious
 const VOLUME_SYSTEM_FILES: &[&str] = &[
     ".DS_Store", ".fseventsd", ".background", ".VolumeIcon.icns", ".Trashes", ".TemporaryItems", ".Spotlight-V100", ".DocumentRevisions-V100", ".apdisk",
 ];
 
-/// 文件开头是不是 Mach-O 可执行文件（含 universal binary）
+/// Whether the file starts like a Mach-O executable (universal binaries included)
 fn is_macho(p: &Path) -> bool {
     let mut magic = [0u8; 4];
     std::fs::File::open(p).and_then(|mut f| f.read_exact(&mut magic)).is_ok()
@@ -173,8 +173,9 @@ fn is_script(p: &Path) -> bool {
     crate::read_limited(p, 2).starts_with("#!")
 }
 
-/// 目录像不像一个安装镜像的内容：挂在 /Volumes 下，或者根目录里有 .app / .pkg、指向“应用程序”或“终端”的快捷方式。
-/// 用户扫描 /Volumes/Zeff 或从镜像里拷出来的文件夹时，要按安装镜像检查，而不是当成代码项目。
+/// Whether a folder looks like the contents of an installer image: mounted under /Volumes, or with an .app / .pkg, or a
+/// shortcut to Applications or Terminal at the top. When the user scans /Volumes/Zeff or a folder copied out of an image,
+/// it must be checked as an installer image, not as a code project.
 pub fn looks_like_volume(dir: &Path) -> bool {
     if !dir.is_dir() || dir.join("package.json").is_file() {
         return false;
@@ -190,7 +191,7 @@ pub fn looks_like_volume(dir: &Path) -> bool {
     })).unwrap_or(false)
 }
 
-/// 检查一个已挂载的安装镜像（自己只读挂载的，或用户刚打开的 /Volumes/xxx）。
+/// Checks a mounted installer image (one we mounted read-only, or a /Volumes/xxx the user just opened).
 pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> Map<String, Value> {
     let mut info = Map::new();
     let entries: Vec<PathBuf> = std::fs::read_dir(root).map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default();
@@ -200,34 +201,34 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
     let apps: Vec<Value> = entries.iter().filter(|p| ext(p) == "app").take(3).map(|a| inspect_app(a, findings)).collect();
     let pkgs: Vec<Value> = entries.iter().filter(|p| ext(p) == "pkg").take(2).map(|p| Value::Object(inspect_pkg(&p.to_string_lossy(), findings))).collect();
 
-    // 指向“终端”的快捷方式：引导用户把镜像里的文件拖进终端运行，从终端运行的脚本不经过 Gatekeeper
+    // A shortcut to Terminal: lures the user into dragging a file from the image into Terminal, and scripts run from Terminal skip Gatekeeper
     for p in &entries {
         if let Ok(target) = std::fs::read_link(p) {
             let t = target.to_string_lossy();
             if t.contains("Terminal.app") || t.contains("iTerm.app") {
                 findings.push(Finding::new(
                     Severity::High,
-                    format!("安装镜像里放了一个指向“终端”的快捷方式（{}），这是引导你把文件拖进终端运行、绕过 Gatekeeper 的骗局", name_of(p)),
+                    tr!("The installer image contains a shortcut to Terminal ({name}). This is a scam to get you to drag a file into Terminal and run it, bypassing Gatekeeper.", name = name_of(p)),
                     label,
                 ));
             }
         }
     }
 
-    // 根目录里可以直接运行的脚本，不管扩展名是什么（Zeff 用的是 Installer.file）
+    // Runnable scripts at the top level, whatever the extension (Zeff used Installer.file)
     let mut scripts = Map::new();
     for f in entries.iter().filter(|p| p.is_file() && !p.is_symlink() && (is_script(p) || matches!(ext(p).as_str(), "command" | "sh" | "tool"))) {
         let fname = name_of(f);
         let text = crate::read_limited(f, 200_000);
-        findings.push(Finding::new(Severity::Medium, format!("安装镜像里带了一个可以直接运行的脚本 {fname}"), label));
+        findings.push(Finding::new(Severity::Medium, tr!("The installer image contains a script that can be run directly: {file}", file = fname), label));
         findings.extend(rules::scan_text(&text, &fname));
         findings.extend(crate::intel::yara::scan_file(f, &fname));
         scripts.insert(fname, json!(text.chars().take(6000).collect::<String>()));
     }
 
-    // 资源派生（文件的 com.apple.ResourceFork 扩展属性）：Bundlore 把加密载荷藏在这里，
-    // 镜像里只看得到一个 203 字节的 .command，它运行时从自己的资源派生里截出载荷、解压执行。
-    // 只读文件内容的扫描器看不到它。正常文件的资源派生只放自定义图标。
+    // Resource forks (a file's com.apple.ResourceFork extended attribute): Bundlore hides an encrypted payload there.
+    // The image shows only a 203-byte .command, which at run time cuts the payload out of its own resource fork, unpacks and runs it.
+    // Scanners that only read file contents don't see it. Normal files only keep a custom icon in their resource fork.
     let mut forks = Vec::new();
     for f in entries.iter().filter(|p| p.is_file() && !p.is_symlink()) {
         let Some((size, embedded)) = resource_fork(f) else { continue };
@@ -235,16 +236,16 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
         if let Some(kind) = embedded {
             findings.push(Finding::new(
                 Severity::High,
-                format!("{fname} 的资源派生里藏着一个{kind}（{size} 字节）。正常文件的资源派生只放图标，这是把载荷藏在扫描器看不到的地方"),
+                tr!("The resource fork of {file} hides {kind} ({size} bytes). Normal files keep only an icon there; this hides a payload where scanners don't look.", file = fname, kind = fork_content_label(kind), size = size),
                 label,
             ));
         } else if is_script(f) && size > SCRIPT_FORK_LIMIT {
-            findings.push(Finding::new(Severity::Medium, format!("可以直接运行的脚本 {fname} 带着 {size} 字节的资源派生，正常脚本没有"), label));
+            findings.push(Finding::new(Severity::Medium, tr!("The runnable script {file} carries a {size}-byte resource fork, which normal scripts don't have", file = fname, size = size), label));
         }
         forks.push(json!({ "file": fname, "size": size, "embedded": embedded }));
     }
 
-    // 隐藏目录里的可执行程序：正常的安装镜像不会把程序藏起来
+    // Executables in hidden folders: normal installer images don't hide programs
     let mut hidden = Vec::new();
     for p in entries.iter().filter(|p| name_of(p).starts_with('.') && !VOLUME_SYSTEM_FILES.contains(&name_of(p).as_str())) {
         let files = if p.is_dir() { crate::walk_files(p, 200) } else { vec![p.clone()] };
@@ -255,7 +256,7 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
             let signed = code == 0 && !out.contains("Signature=adhoc");
             findings.push(Finding::new(
                 Severity::High,
-                format!("安装镜像的隐藏目录里藏着一个可执行程序 {rel}{}", if signed { "" } else { "，而且没有开发者签名" }),
+                if signed { tr!("An executable is hidden in a hidden folder of the installer image: {path}", path = rel) } else { tr!("An executable is hidden in a hidden folder of the installer image: {path}, and it has no developer signature", path = rel) },
                 label,
             ));
             hidden.push(json!({ "path": rel, "macho": is_macho(f), "codesign": tail(&out, 300), "sha256": crate::sha256_file(f) }));
@@ -263,7 +264,7 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
     }
 
     if apps.is_empty() && pkgs.is_empty() && (!scripts.is_empty() || !hidden.is_empty()) {
-        findings.push(Finding::new(Severity::Medium, "安装镜像里没有正常的应用程序或安装包，只有脚本和程序文件", label));
+        findings.push(Finding::new(Severity::Medium, tr!("The installer image has no regular app or installer package, only scripts and program files"), label));
     }
     info.insert("apps".into(), json!(apps));
     if !pkgs.is_empty() {
@@ -281,11 +282,11 @@ pub fn inspect_volume(root: &Path, label: &str, findings: &mut Vec<Finding>) -> 
     info
 }
 
-/// 脚本的资源派生超过这个大小才算异常：给脚本设个自定义图标也就几十 KB
+/// A script's resource fork is only unusual above this size: a custom icon is a few dozen KB
 const SCRIPT_FORK_LIMIT: u64 = 64 * 1024;
 
-/// 文件的资源派生：大小，以及里面有没有藏着压缩包或可执行程序（只看文件头标记，不解压、不执行）。
-/// 没有资源派生时返回 None。
+/// A file's resource fork: its size, and whether it hides an archive or executable (by magic bytes only; never unpacked or run).
+/// None when there is no resource fork. The kind is an English id because it also goes into the evidence.
 fn resource_fork(p: &Path) -> Option<(u64, Option<&'static str>)> {
     let fork = p.join("..namedfork/rsrc");
     let size = std::fs::metadata(&fork).ok()?.len();
@@ -295,18 +296,30 @@ fn resource_fork(p: &Path) -> Option<(u64, Option<&'static str>)> {
     let mut data = Vec::new();
     std::fs::File::open(&fork).ok()?.take(4 << 20).read_to_end(&mut data).ok()?;
     const MAGICS: &[(&[u8], &str)] = &[
-        (b"PK\x03\x04", "压缩包"),
-        (b"\x1f\x8b\x08", "gzip 压缩数据"),
-        (b"7z\xbc\xaf\x27\x1c", "7z 压缩包"),
-        (b"\xcf\xfa\xed\xfe", "可执行程序（Mach-O）"),
-        (b"\xca\xfe\xba\xbe", "可执行程序（Mach-O）"),
-        (b"#!/bin/", "脚本"),
+        (b"PK\x03\x04", "zip archive"),
+        (b"\x1f\x8b\x08", "gzip data"),
+        (b"7z\xbc\xaf\x27\x1c", "7z archive"),
+        (b"\xcf\xfa\xed\xfe", "Mach-O executable"),
+        (b"\xca\xfe\xba\xbe", "Mach-O executable"),
+        (b"#!/bin/", "script"),
     ];
     let embedded = MAGICS.iter().find(|(m, _)| data.windows(m.len()).any(|w| w == *m)).map(|(_, k)| *k);
     Some((size, embedded))
 }
 
-/// 当前挂载的磁盘镜像：挂载点 → 镜像文件路径。
+/// What a resource fork hides, in the user's language
+fn fork_content_label(kind: &str) -> String {
+    match kind {
+        "zip archive" => tr!("a zip archive"),
+        "gzip data" => tr!("gzip data"),
+        "7z archive" => tr!("a 7z archive"),
+        "Mach-O executable" => tr!("a Mach-O executable"),
+        "script" => tr!("a script"),
+        other => other.to_string(),
+    }
+}
+
+/// Currently mounted disk images: mount point → image file path.
 pub fn mounted_images() -> Vec<(PathBuf, PathBuf)> {
     let (code, out) = run(&["hdiutil", "info", "-plist"], 10);
     if code != 0 {
@@ -334,7 +347,7 @@ pub fn inspect_pkg(path: &str, findings: &mut Vec<Finding>) -> Map<String, Value
     let (code, out) = run(&["pkgutil", "--check-signature", path], 30);
     info.insert("signature".into(), json!(tail(&out, 600)));
     if code != 0 || out.to_lowercase().contains("no signature") {
-        findings.push(Finding::new(Severity::High, "安装包没有签名", &pkg_name));
+        findings.push(Finding::new(Severity::High, tr!("The installer package is not signed"), &pkg_name));
     }
     let Ok(tmp) = tempfile::Builder::new().prefix("tsuba-pkg-").tempdir() else { return info };
     let dest = tmp.path().join("x");
@@ -362,7 +375,7 @@ pub fn inspect_path(path: &str) -> (Value, Vec<Finding>) {
     let mut info = Map::new();
     info.insert("path".into(), json!(path));
     if !Path::new(path).exists() {
-        info.insert("error".into(), json!("文件不存在"));
+        info.insert("error".into(), json!(tr!("The file doesn't exist")));
         return (Value::Object(info), findings);
     }
     let from = where_from(path);

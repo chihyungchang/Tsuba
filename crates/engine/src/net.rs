@@ -1,4 +1,4 @@
-//! 联网取证：下载远程脚本（只读不执行）、查域名注册时间、查 npm 包信息。
+//! Online evidence: downloads remote scripts (read, never run), looks up domain registration dates and npm package info.
 
 use chrono::{DateTime, Utc};
 use serde_json::{Map, Value, json};
@@ -16,7 +16,7 @@ pub fn days_since(iso: &str) -> Option<i64> {
     DateTime::parse_from_rfc3339(iso).ok().map(|t| (Utc::now() - t.with_timezone(&Utc)).num_days())
 }
 
-/// GET 一个 URL，最多读 max_bytes。绝不执行内容。
+/// GETs a URL, reading at most max_bytes. The content is never run.
 pub fn fetch(url: &str, max_bytes: usize, timeout: f64) -> Map<String, Value> {
     let mut info = Map::new();
     info.insert("url".into(), json!(url));
@@ -51,7 +51,7 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// 十六进制解码，格式不对返回 None。
+/// Hex decoding; None when the format is wrong.
 pub fn unhex(s: &str) -> Option<Vec<u8>> {
     let s = s.trim();
     if !s.len().is_multiple_of(2) {
@@ -80,14 +80,14 @@ pub fn registered_domain(host: &str) -> String {
     parts[n.saturating_sub(2)..].join(".")
 }
 
-/// 常见的官方安装脚本来源（名单在规则包 tsuba.toml 里）
+/// Common official sources of install scripts (the list is in the rule pack's tsuba.toml)
 pub fn is_well_known(host: &str) -> bool {
     let list = &crate::intel::tsuba::lists().well_known_hosts;
     let reg = registered_domain(host);
     list.iter().any(|h| h == host || *h == reg)
 }
 
-/// 通过 RDAP 查域名注册了多少天，查不到返回 None。
+/// How many days ago the domain was registered, via RDAP; None when unknown.
 pub fn domain_age_days(host: &str) -> Option<i64> {
     if host.is_empty() || is_ip(host) {
         return None;
@@ -106,7 +106,7 @@ pub fn domain_age_days(host: &str) -> Option<i64> {
     })
 }
 
-/// 把 `pkg@1.2.3`、`@scope/pkg@^1` 拆成包名和版本。
+/// Splits `pkg@1.2.3` or `@scope/pkg@^1` into package name and version.
 pub fn split_spec(spec: &str) -> (String, Option<String>) {
     let at = if let Some(rest) = spec.strip_prefix('@') { rest.find('@').map(|i| i + 1) } else { spec.find('@') };
     match at {
@@ -131,7 +131,13 @@ fn trunc(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
-/// 查询 npm registry：创建时间、要安装的版本的发布时间、安装脚本、维护者数量。
+/// Whether `npm_package_info` found that the package doesn't exist on npm (a typo, dependency confusion or a squatted name).
+/// A structured flag, so callers never compare the localized error text.
+pub fn is_missing_package(info: &Map<String, Value>) -> bool {
+    info.get("not_found").and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// Queries the npm registry: creation date, publish date of the version to install, install scripts, maintainer count.
 pub fn npm_package_info(spec: &str) -> Map<String, Value> {
     let (name, version) = split_spec(spec);
     let mut info = Map::new();
@@ -143,7 +149,7 @@ pub fn npm_package_info(spec: &str) -> Map<String, Value> {
         || name.starts_with("http")
         || (name.contains('/') && !name.starts_with('@'))
     {
-        info.insert("note".into(), json!("本地路径、Git 或 URL 依赖，无法从 registry 查询"));
+        info.insert("note".into(), json!(tr!("A local path, Git or URL dependency, which can't be looked up in the registry")));
         return info;
     }
     let url = format!("https://registry.npmjs.org/{}", name.replace('/', "%2F"));
@@ -154,7 +160,8 @@ pub fn npm_package_info(spec: &str) -> Map<String, Value> {
             buf
         }
         Err(ureq::Error::Status(404, _)) => {
-            info.insert("error".into(), json!("npm 上不存在这个包"));
+            info.insert("not_found".into(), json!(true));
+            info.insert("error".into(), json!(tr!("This package doesn't exist on npm")));
             return info;
         }
         Err(ureq::Error::Status(code, _)) => {
@@ -167,12 +174,12 @@ pub fn npm_package_info(spec: &str) -> Map<String, Value> {
         }
     };
     if raw.len() > 1_500_000 {
-        // 元数据超过 1.5MB 说明版本非常多，是成熟的大包；只取最新版本的信息
+        // Metadata over 1.5 MB means a great many versions, an established package; only read the latest version
         info.insert("established".into(), json!(true));
         let ver: Value = match agent(8.0).get(&format!("{url}/latest")).set("User-Agent", UA).call().map(|r| r.into_json()) {
             Ok(Ok(v)) => v,
             _ => {
-                info.insert("error".into(), json!("无法读取最新版本信息"));
+                info.insert("error".into(), json!(tr!("Couldn't read the latest version's info")));
                 return info;
             }
         };
@@ -184,12 +191,12 @@ pub fn npm_package_info(spec: &str) -> Map<String, Value> {
     let data: Value = match serde_json::from_slice(&raw) {
         Ok(v) => v,
         Err(_) => {
-            info.insert("error".into(), json!("registry 返回的数据无法解析"));
+            info.insert("error".into(), json!(tr!("Couldn't parse the registry's response")));
             return info;
         }
     };
     let latest = data["dist-tags"]["latest"].as_str().unwrap_or("").to_string();
-    // 指定了确切版本就看那个版本，否则看 latest
+    // Look at the exact version when one is given, otherwise at latest
     let target = version.filter(|v| data["versions"].get(v).is_some()).unwrap_or_else(|| latest.clone());
     let ver = &data["versions"][&target];
     let times = &data["time"];

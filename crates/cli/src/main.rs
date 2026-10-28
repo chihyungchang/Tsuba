@@ -390,7 +390,7 @@ fn cmd_doctor() -> i32 {
         let extra = if f.snippet.is_empty() { String::new() } else { format!("（{}）", f.snippet) };
         eprintln!("  • {}：{}{extra}", f.message, f.location);
     }
-    eprintln!("建议：{}", doctor::ADVICE);
+    eprintln!("建议：{}", doctor::advice());
     2
 }
 
