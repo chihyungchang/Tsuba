@@ -186,6 +186,12 @@ jobs:
           pattern: sha256-*
           merge-multiple: true
 
+      # tauri-action also uploads each Tsuba.app as a .tar.gz; only the DMGs are for people to download
+      - name: Keep only the DMGs
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.assets[] | select(.name | endswith(".app.tar.gz")) | .id' |
+            while read -r asset; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset"; done
+
       # Checksums so anyone can confirm the DMG they downloaded is the one this workflow built from the public source
       - name: Checksums
         run: |
@@ -224,7 +230,8 @@ jobs:
             )
             notes=$(printf '%s\n\n%s' "$notice" "$notes")
           fi
-          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -f body="$notes" > /dev/null
+          # Uploads leave the draft showing "untagged-…": set the tag again so publishing uses the pushed tag
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -f body="$notes" -f tag_name="$GITHUB_REF_NAME" > /dev/null
 
   # A failed test or build leaves no draft behind: re-pushing the tag (or fixing and tagging a new version) starts clean
   discard:
