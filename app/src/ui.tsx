@@ -38,8 +38,12 @@ export function formatCompact(n: number): string {
   return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
-/** Times like "3 min ago" or "yesterday at 2:20 PM": quicker to scan in a list than full timestamps */
-export function relativeTime(iso: string): string {
+/**
+ * Times like "3 min ago" or "yesterday at 2:20 PM": quicker to scan in a list than full timestamps.
+ * `short` is for narrow fixed columns (the terminal log): English drops "today at" and the clock on older days,
+ * since "today at 9:02 AM" is twice as wide as "今天 09:02".
+ */
+export function relativeTime(iso: string, { short = false } = {}): string {
   const time = new Date(iso.replace(" ", "T"));
   if (Number.isNaN(time.getTime())) return iso;
   const isChinese = lang() === "zh-Hans";
@@ -52,9 +56,12 @@ export function relativeTime(iso: string): string {
   if (diff < 3600) return t("{n} min ago", { n: Math.floor(diff / 60) });
   const today = new Date();
   const yesterday = new Date(today.getTime() - 86400_000);
-  if (time.toDateString() === today.toDateString()) return t("today at {time}", { time: clock });
-  if (time.toDateString() === yesterday.toDateString()) return t("yesterday at {time}", { time: clock });
+  const isToday = time.toDateString() === today.toDateString();
+  const isYesterday = time.toDateString() === yesterday.toDateString();
   const date = isChinese ? `${time.getMonth() + 1}月${time.getDate()}日` : time.toLocaleDateString("en", { month: "short", day: "numeric" });
+  if (short && !isChinese) return isToday ? clock : isYesterday ? "Yesterday" : date;
+  if (isToday) return t("today at {time}", { time: clock });
+  if (isYesterday) return t("yesterday at {time}", { time: clock });
   return t("{date} at {time}", { date, time: clock });
 }
 

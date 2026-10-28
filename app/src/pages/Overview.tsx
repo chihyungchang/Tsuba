@@ -64,7 +64,7 @@ function TermLog({ entries, status, openEntry, go }: { entries: LogEntry[]; stat
             const tag = logTag(e);
             return (
               <button type="button" key={e.id} className="term-line" onClick={() => openEntry(e.id)}>
-                <span className="term-time">{relativeTime(e.time)}</span>
+                <span className="term-time">{relativeTime(e.time, { short: true })}</span>
                 <span className={`term-tag tag-${tag.tone}`}>{tag.text}</span>
                 <span className="term-title">{entryName(e, 80)}</span>
                 {e.report.summary && <span className="term-summary">· {e.report.summary}</span>}

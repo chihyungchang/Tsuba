@@ -279,7 +279,7 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
                     <div className="list-item-meta">
                       <span>{sourceLabel(e.source)}</span>
                       {actionLabel(e.action) && <span>{actionLabel(e.action)}</span>}
-                      <span className="list-item-time">{relativeTime(e.time)}</span>
+                      <span className="list-item-time">{relativeTime(e.time, { short: true })}</span>
                     </div>
                   </div>
                 </button>
