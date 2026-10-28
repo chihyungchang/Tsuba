@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { Icon, type IconName } from "../icons";
 import { loadThemePreference, setThemePreference, type ThemePreference } from "../theme";
 import { Config, IntelManifest, Overview, Provider } from "../types";
-import { Banner, Group, PageHeader, Row, Section, Spinner, Toggle, errText, relativeTime, shortPath, toastDone } from "../ui";
+import { Banner, Group, PageHeader, Row, Section, Spinner, Toggle, errText, relativeTime, shortPath, toast, toastDone } from "../ui";
 
 // 都走 OpenAI 兼容接口。前沿模型默认信任，其他默认只能给“提醒”
 const PRESETS = [
@@ -98,6 +98,26 @@ function DefenseSection({ overview, reload }: { overview: Overview; reload: () =
           trailing={<Toggle label="AI 编程工具" on={overview.watch_ai_tools} onChange={(v) => setWatch("watch_ai_tools", v)} />}
         />
       </Group>
+    </Section>
+  );
+}
+
+/** 把检查记录开给 Claude Code 等查询（tsuba mcp）。只读，所以这里只给命令、不替用户改他的 AI 工具配置。 */
+function McpSection({ cliPath }: { cliPath: string }) {
+  const command = `claude mcp add tsuba -- ${cliPath.includes(" ") ? `"${cliPath}"` : cliPath} mcp`;
+  const copy = () => navigator.clipboard.writeText(command).then(() => toast("命令已复制，粘贴到终端运行"));
+  return (
+    <Section title="让 AI 编程工具查询 Tsuba">
+      <div className="panel prose">
+        <p>
+          在 Claude Code 里直接问“这个为什么被拦了”“隔离区里有什么”。在终端运行下面这条命令接入；Cursor 等工具在 MCP 设置里填 <code>{cliPath} mcp</code>。
+        </p>
+        <div className="copy-line">
+          <code className="mono">{command}</code>
+          <button onClick={copy}>复制</button>
+        </div>
+        <p className="muted">只读：只能查检查记录和隔离区，不能隔离、删除或放行任何东西。返回的命令和摘要会标明是不可信数据，密钥一律隐去。</p>
+      </div>
     </Section>
   );
 }
@@ -463,6 +483,8 @@ export function SettingsPage({ overview, reload }: { overview: Overview | null; 
           />
         </Group>
       </Section>
+
+      {overview?.shell_hook.cli_found && <McpSection cliPath={overview.shell_hook.cli_path} />}
 
       <Section title="隐私">
         <div className="panel prose">
