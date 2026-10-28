@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ENSO_PATH, Icon, type IconName } from "../icons";
+import { Icon, KatanaGlyph, type IconName } from "../icons";
 import { IntelManifest, LogEntry, Overview } from "../types";
 import { Banner, Spinner, baseName, errText, relativeTime } from "../ui";
 
@@ -33,15 +33,16 @@ function HeroArt({ paused }: { paused: boolean }) {
         <text x="34" y="96">$ curl -fsSL get.sh | bash</text>
       </g>
       <circle cx="105" cy="60" r="34" fill="url(#hero-glow)" />
-      {/* 屏幕中央是品牌的圆相：守护中圈里打勾，暂停时打叉 */}
-      <g transform="translate(83 38) scale(0.6875)">
-        <path d={ENSO_PATH} fill="#eef7f8" opacity=".95" />
-        {paused ? (
-          <path d="M23 23l14 14M37 23L23 37" stroke="#ff8a7a" strokeWidth="4.2" strokeLinecap="round" />
-        ) : (
-          <path d="M21.5 31l6.5 6.5 11.5-13" stroke="#9fe3d6" strokeWidth="4.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        )}
+      {/* 屏幕中央是品牌的刀：守护中旁边一枚勾，暂停时一枚叉 */}
+      <g transform="translate(80 34) scale(0.78)">
+        <KatanaGlyph fill="#eef7f8" />
       </g>
+      <circle cx="128" cy="78" r="11" fill={paused ? "#d0392b" : "#2f9e6e"} stroke="#0d0e12" strokeWidth="2" />
+      {paused ? (
+        <path d="M124 74l8 8M132 74l-8 8" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
+      ) : (
+        <path d="M123 78l3.5 3.5 6.5-7" stroke="#fff" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      )}
       <path d="M8 114h194l-6 8H14z" fill="#3a3c44" />
       <rect x="88" y="114" width="34" height="3" rx="1.5" fill="#24252b" />
     </svg>
