@@ -470,6 +470,27 @@ fn mcp_server_checks() {
     assert!(messages(&normal).contains("没有固定") && messages(&normal).contains("GITHUB_TOKEN"));
 }
 
+/// 工具投毒（Invariant Labs 2025 公开的手法）：工具描述和 skill 里藏着写给 AI 的指令。
+/// 样本是惰性的：只有描述文字，不实现外传；地址用文档保留网段。
+#[test]
+fn tool_poisoning_samples_blocked() {
+    let cfg = Config::default().offline_only();
+    for name in ["poisoned_mcp_project", "poisoned_skill"] {
+        let (kind, _, report) = tsuba_engine::evaluate_path_untrusted(&cfg, &fix(name));
+        let msgs = messages(&report.findings);
+        assert!(msgs.contains("工具投毒"), "{name} 应认出工具投毒：{msgs}");
+        assert!(msgs.contains("对用户隐瞒"), "{name} 应认出要求隐瞒：{msgs}");
+        assert_eq!(report.verdict, Verdict::Block, "{name}");
+        if name == "poisoned_skill" {
+            assert_eq!(kind, "skill", "skill 文件夹要按 AI 工具检查");
+        }
+    }
+    // 正常文字不误报：提到 IMPORTANT、提到用户，但没有藏指令
+    let benign = "## IMPORTANT\nRead the README before using this tool. Tell the user what changed.\n<IMPORTANT>Keep answers short.</IMPORTANT>";
+    let hits: Vec<_> = rules::scan_text(benign, "SKILL.md").into_iter().filter(|f| f.severity != rules::Severity::Low).map(|f| f.message).collect();
+    assert!(hits.is_empty(), "正常说明不应命中：{hits:?}");
+}
+
 #[test]
 fn project_ai_config() {
     let dir = tempfile::tempdir().unwrap();

@@ -216,6 +216,11 @@ pub fn evaluate_path_untrusted(cfg: &Config, path: &Path) -> (&'static str, Valu
     } else if path.is_dir() && extension::looks_like_extension(path) {
         let (ev, r) = evaluate_extension(cfg, path);
         ("extension", ev, r)
+    } else if path.is_dir() && path.join("SKILL.md").is_file() {
+        // AI 编程工具的 skill：SKILL.md 和附带的脚本会被 AI 当成指令执行，按 AI 工具的规则检查（文档里的命中也算数）
+        let (info, findings) = agents::scan_unit(path);
+        let ev = json!({ "command": title, "targets": [{ "kind": "skill", "skill": info }], "findings": findings });
+        ("skill", ev.clone(), judge_evidence(cfg, &ev, findings))
     } else if macos::looks_like_volume(path) {
         let label = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let mut findings = Vec::new();

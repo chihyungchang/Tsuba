@@ -74,7 +74,7 @@ fn evaluation_on_fixtures_meets_targets() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let set = tempfile::tempdir().unwrap();
     for (sub, names) in [
-        ("malicious", &["fake_interview_project", "malicious_extension", "vscode_autorun_project", "fake_meeting_volume"][..]),
+        ("malicious", &["fake_interview_project", "malicious_extension", "vscode_autorun_project", "fake_meeting_volume", "poisoned_mcp_project", "poisoned_skill"][..]),
         ("benign", &["normal_extension", "normal_project"][..]),
     ] {
         std::fs::create_dir_all(set.path().join(sub)).unwrap();

@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "calculator": { "command": "node", "args": ["server.js"] }
+  }
+}

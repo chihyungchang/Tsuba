@@ -213,12 +213,38 @@ rule tsuba_hide_from_user
     $a = /\b(do not|don't|never)\s+(tell|inform|mention|reveal|disclose)\s+(this\s+|it\s+)?(to\s+)?the\s+user\s+(about|that|what|you|we)\b/ nocase
     $b = /without\s+(telling|notifying|informing|alerting)\s+the\s+user/ nocase
     $c = /(hide|conceal)\s+(this|it|these|them)\s+from\s+the\s+user/ nocase
+    // 工具投毒的写法：“Do not mention this to the user, it is …”“Do not mention that you first need to …”
+    $d = /\b(do not|don't|never)\s+(tell|inform|mention|reveal|disclose)\s+(this|it|that)\s+(to\s+)?(the\s+)?user\b/ nocase
+    $e = /\b(do not|don't|never)\s+mention\s+that\s+you\s+(first\s+)?(need|have|must)\s+to\b/ nocase
     $cn1 = "不要告诉用户"
     $cn2 = "不要告知用户"
     $cn3 = "不要让用户知道"
     $cn4 = "对用户隐瞒"
   condition:
     any of them
+}
+
+rule tsuba_tool_poisoning
+{
+  meta:
+    severity = "high"
+    message = "工具描述或 skill 里藏着写给 AI 的指令：让它先读取密钥文件、塞进隐藏参数，或改写别的工具的行为（工具投毒）"
+    // 投毒指令就写在工具描述字符串里，不能跳过引号里的内容
+    doc_keep = true
+  strings:
+    $tag = /<\/?(IMPORTANT|SYSTEM|INSTRUCTIONS?|HIDDEN)>/
+    $before = /before (using|calling|running|you use) this tool/ nocase
+    $param = /pass (its|their|the) (contents?|values?) (as|in|into|to)\b/ nocase
+    $broken = /otherwise the tool (will not|won't|cannot|can't) work/ nocase
+    $read_home = /\bread\s+[`'"]?~\/\.[\w.\/-]+/ nocase
+    $shadow = /(must|should|always)\s+(send|forward|bcc|cc|route)\s+(all\s+)?(e-?mails?|messages?|requests?|data)\s+to\s+\S+@/ nocase
+    $other_tool = /when this tool is (available|present|loaded)/ nocase
+  condition:
+    // “before using this tool”本身很常见（“用之前先看 README”），只能和读密钥、塞参数一起算
+    ($tag and any of ($param, $broken, $read_home, $shadow, $other_tool))
+    or ($before and ($read_home or $param))
+    or ($param and $read_home)
+    or ($other_tool and $shadow)
 }
 
 rule tsuba_exfil_endpoint
