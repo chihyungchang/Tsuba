@@ -7,7 +7,7 @@ export type ThemePreference = "system" | "light" | "dark";
 
 const STORAGE_KEY = "tsuba-theme";
 const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
-// 在 Tauri 窗口里才有原生毛玻璃；浏览器里预览时用 CSS 渐变代替
+// 浏览器里预览时没有 Tauri 窗口，不去设置窗口外观
 const isNativeWindow = "__TAURI_INTERNALS__" in window;
 
 export function loadThemePreference(): ThemePreference {
@@ -23,7 +23,7 @@ export function loadThemePreference(): ThemePreference {
 function apply(pref: ThemePreference) {
   const dark = pref === "dark" || (pref === "system" && systemDark.matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
-  // 原生毛玻璃的明暗跟着窗口外观走：用户固定了深色而系统是浅色时，要把窗口也切过去，否则玻璃是亮的、文字是白的
+  // 窗口外观（标题栏、红绿灯、系统弹窗）跟着一起切，否则固定深色时系统控件还是浅色的
   if (isNativeWindow) getCurrentWindow().setTheme(pref === "system" ? null : pref).catch(() => {});
 }
 
@@ -38,7 +38,6 @@ export function setThemePreference(pref: ThemePreference) {
 }
 
 export function initTheme() {
-  if (isNativeWindow) document.documentElement.dataset.vibrancy = "";
   apply(loadThemePreference());
   systemDark.addEventListener("change", () => apply(loadThemePreference()));
 }

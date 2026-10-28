@@ -14,30 +14,22 @@
       {
         "label": "main",
         "title": "Tsuba",
-        "width": 980,
-        "height": 680,
-        "minWidth": 860,
-        "minHeight": 560,
+        "width": 1000,
+        "height": 720,
+        "minWidth": 880,
+        "minHeight": 600,
         "visible": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "trafficLightPosition": {
-          "x": 24,
-          "y": 26
-        },
-        "transparent": true,
-        "windowEffects": {
-          "effects": [
-            "sidebar"
-          ],
-          "state": "followsWindowActiveState"
+          "x": 16,
+          "y": 20
         }
       }
     ],
     "security": {
       "csp": null
-    },
-    "macOSPrivateApi": true
+    }
   },
   "bundle": {
     "active": true,

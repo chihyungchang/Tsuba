@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon, type IconName } from "../icons";
 import { AiScanItem, ExtensionScan, Finding } from "../types";
@@ -80,6 +80,15 @@ export function DoctorPage({ reload }: { reload: () => void }) {
   };
   // 已经在跑的不重复启动，其余的一起开始
   const runAll = () => (Object.keys(CHECKS) as Check[]).filter((c) => !running.has(c)).forEach(run);
+
+  // 仪表盘上的“全面体检”：跳到这一页并开始全部检查
+  const runAllRef = useRef(runAll);
+  runAllRef.current = runAll;
+  useEffect(() => {
+    const onRun = () => runAllRef.current();
+    window.addEventListener("tsuba-run-doctor", onRun);
+    return () => window.removeEventListener("tsuba-run-doctor", onRun);
+  }, []);
   const act = async (cmd: string, args: Record<string, unknown>) => {
     setError("");
     try {

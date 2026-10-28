@@ -3,8 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Icon, type IconName } from "../icons";
 import { loadThemePreference, setThemePreference, type ThemePreference } from "../theme";
-import { Config, IntelManifest, Provider } from "../types";
-import { Banner, Group, PageHeader, Row, Section, Spinner, Toggle, errText, relativeTime } from "../ui";
+import { Config, IntelManifest, Overview, Provider } from "../types";
+import { Banner, Group, PageHeader, Row, Section, Spinner, Toggle, errText, relativeTime, shortPath, toastDone } from "../ui";
 
 // 都走 OpenAI 兼容接口。前沿模型默认信任，其他默认只能给“提醒”
 const PRESETS = [
@@ -23,6 +23,84 @@ const PROVIDERS: { id: Provider; icon: IconName; label: string; desc: string }[]
   { id: "openai_compatible", icon: "globe", label: "其他模型", desc: "OpenAI、Gemini、DeepSeek、本地模型" },
   { id: "offline", icon: "lock", label: "仅离线规则", desc: "不联网，不调用任何模型" },
 ];
+
+type WatchKey = "watch_downloads" | "watch_extensions" | "watch_ai_tools";
+
+/** 四道防线：接入终端、监控下载目录、扩展目录和 AI 工具。仪表盘只显示状态，开关都在这里。 */
+function DefenseSection({ overview, reload }: { overview: Overview; reload: () => void }) {
+  const [error, setError] = useState("");
+  const act = async (cmd: string, args?: Record<string, unknown>) => {
+    setError("");
+    try {
+      await invoke(cmd, args);
+      toastDone(cmd);
+      reload();
+    } catch (e) {
+      setError(errText(e));
+    }
+  };
+  const setWatch = async (key: WatchKey, on: boolean) => {
+    const cfg = await invoke<Config>("get_config");
+    await act("save_config", { config: { ...cfg, [key]: on } });
+  };
+  const hook = overview.shell_hook;
+  const editors = overview.extension_dirs
+    .map((d) => d.split("/").slice(-2, -1)[0].replace(/^\./, ""))
+    .map((n) => ({ vscode: "VS Code", cursor: "Cursor", windsurf: "Windsurf", "vscode-oss": "VSCodium" })[n] ?? n);
+  return (
+    <Section title="防线">
+      {error && <Banner onClose={() => setError("")}>{error}</Banner>}
+      <Group>
+        <Row
+          icon="terminal"
+          title="终端命令"
+          detail={
+            hook.cli_found ? (
+              <>
+                运行 <code>curl | bash</code>、<code>npm install</code>、<code>git clone</code> 之前检查，粘贴命令时先提醒
+              </>
+            ) : (
+              <span className="tone-block">找不到 Tsuba 检查程序，请重新安装 Tsuba</span>
+            )
+          }
+          trailing={
+            hook.installed ? (
+              <span className="trailing-status">
+                <span className="status-dot" />
+                已接入
+                <button className="link" onClick={() => act("uninstall_shell_hook")}>
+                  移除
+                </button>
+              </span>
+            ) : (
+              <button className="primary" disabled={!hook.cli_found} onClick={() => act("install_shell_hook")}>
+                接入 zsh
+              </button>
+            )
+          }
+        />
+        <Row
+          icon="package"
+          title="安装包"
+          detail={`${shortPath(overview.downloads_dir)} 里新出现的 .dmg、.pkg、.vsix；打开安装镜像时高危的直接弹出`}
+          trailing={<Toggle label="安装包" on={overview.watch_downloads} onChange={(v) => setWatch("watch_downloads", v)} />}
+        />
+        <Row
+          icon="extension"
+          title="编辑器扩展"
+          detail={editors.length > 0 ? `${editors.join("、")} 新装或更新的扩展，高危的移入隔离区` : "没有找到 VS Code、Cursor、Windsurf"}
+          trailing={<Toggle label="编辑器扩展" on={overview.watch_extensions} onChange={(v) => setWatch("watch_extensions", v)} />}
+        />
+        <Row
+          icon="plug"
+          title="AI 编程工具"
+          detail="新增的 MCP server、skill、插件 hooks，以及项目自带的 .mcp.json 和 CLAUDE.md"
+          trailing={<Toggle label="AI 编程工具" on={overview.watch_ai_tools} onChange={(v) => setWatch("watch_ai_tools", v)} />}
+        />
+      </Group>
+    </Section>
+  );
+}
 
 const THEMES: { id: ThemePreference; label: string }[] = [
   { id: "system", label: "跟随系统" },
@@ -150,7 +228,7 @@ function IntelSection({ cfg, onChange }: { cfg: Config; onChange: (c: Config) =>
   );
 }
 
-export function SettingsPage({ reload }: { reload: () => void }) {
+export function SettingsPage({ overview, reload }: { overview: Overview | null; reload: () => void }) {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [testing, setTesting] = useState(false);
@@ -221,6 +299,8 @@ export function SettingsPage({ reload }: { reload: () => void }) {
   return (
     <div className="page">
       <PageHeader title="设置" subtitle="离线规则总是先跑。AI 结合上下文判断，减少误报、补上规则漏掉的情况。" />
+
+      {overview && <DefenseSection overview={overview} reload={reload} />}
 
       <Section title="判断方式">
         <div className="choice-grid" role="radiogroup">

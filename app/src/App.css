@@ -1,67 +1,70 @@
 /*
-  Tsuba 界面样式：液态玻璃。标准见 app/DESIGN.md。
+  Tsuba 界面样式：实色石墨灰（参考 Protectstar 一类安全软件的仪表盘）。标准见 app/DESIGN.md。
 
-  - 一层环境背景、一层玻璃、一层浮起；组件只引用这里的 token，不写裸色值。
+  - 一屏仪表盘 + 从磁贴进入的详情页；面板是不透明的实色，层次靠明暗和细线，不靠透明和阴影。
   - 浅色是 :root，深色是 :root[data-theme="dark"]，由 src/theme.ts 切换；两套只换 token，不换结构。
-  - 证据、命令、输入放在“实体”底上：玻璃好看，但安全结论必须先读得清。
+  - 颜色只表达意思：青色是主操作，绿 / 琥珀 / 红是放行 / 提醒 / 拦截，朱色只用在品牌标志。
+  - 组件只引用这里的 token。--glass 一类名字是上一版留下的，现在都指向实色面板。
 */
 
 :root {
-  /* 环境：玻璃要有东西可透，才看得出是玻璃 */
-  --ambient-base: #f1f0f3;
-  --ambient-1: rgba(255, 186, 156, 0.5);
-  --ambient-2: rgba(158, 192, 255, 0.45);
-  --ambient-3: rgba(206, 186, 255, 0.4);
+  --window: #f4f4f6;
+  --bar: #ececef;
+  --band: #ebebef;
+  --panel: #ffffff;
+  --raised: #ffffff;
+  --well: #f7f7f9;
+  --fill: rgba(20, 20, 30, 0.055);
 
-  --glass: rgba(255, 255, 255, 0.56);
-  --glass-thin: rgba(255, 255, 255, 0.55);
-  --glass-thick: rgba(252, 252, 254, 0.78);
-  --solid: rgba(255, 255, 255, 0.86);
-  --fill: rgba(24, 22, 40, 0.055);
-  --blur: blur(28px) saturate(180%);
+  --glass: var(--panel);
+  --glass-thin: var(--raised);
+  --glass-thick: var(--raised);
+  --solid: var(--well);
+  --blur: none;
+  --sheen: none;
+  --glass-highlight: inset 0 0 0 0 transparent;
+  --glass-rim: 0 0 0 1px rgba(20, 20, 30, 0.08);
+  --glass-shadow: var(--glass-rim), 0 1px 2px rgba(20, 20, 30, 0.04);
+  --float-shadow: 0 0 0 1px rgba(20, 20, 30, 0.08), 0 12px 32px rgba(20, 20, 30, 0.14);
+  --control-shadow: 0 0 0 1px rgba(20, 20, 30, 0.1), 0 1px 1px rgba(20, 20, 30, 0.04);
 
-  --glass-highlight: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 0.5px rgba(255, 255, 255, 0.7);
-  --glass-rim: 0 0 0 0.5px rgba(20, 16, 40, 0.1);
-  --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 45%);
-  --sidebar-glass: var(--glass);
-  --window-tint: transparent;
-  --glass-shadow: var(--glass-highlight), var(--glass-rim), 0 8px 28px rgba(40, 28, 70, 0.07);
-  --float-shadow: var(--glass-highlight), var(--glass-rim), 0 14px 40px rgba(40, 28, 70, 0.16);
-  --control-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 0 0 0.5px rgba(20, 16, 40, 0.12), 0 1px 3px rgba(20, 16, 40, 0.08);
+  --text: #1b1b1f;
+  --text-2: #4b4b52;
+  --text-3: #75757d;
+  --line: rgba(20, 20, 30, 0.08);
+  --line-strong: rgba(20, 20, 30, 0.14);
+  --dash: rgba(31, 128, 120, 0.4);
+  --hover: rgba(20, 20, 30, 0.045);
 
-  --text: #16151a;
-  --text-2: #4a4952;
-  --text-3: #7e7c86;
-  --line: rgba(20, 18, 36, 0.07);
-  --line-strong: rgba(20, 18, 36, 0.13);
-  --hover: rgba(20, 18, 36, 0.045);
-
-  --ink: #1b1a20;
-  --ink-2: #33313b;
-  --ink-text: #fbfbfd;
+  /* 主操作：青色。和红色的“拦截”、朱色的品牌都分得开 */
+  --cta: #2f8fa6;
+  --cta-hover: #287c90;
+  --cta-text: #ffffff;
+  --ink: var(--cta);
+  --ink-2: var(--cta);
+  --ink-text: var(--cta-text);
   --brand: #c2412a;
   --brand-ink: #fff4ec;
-  --brand-soft: rgba(194, 65, 42, 0.11);
-  --focus: rgba(194, 65, 42, 0.34);
+  --brand-soft: rgba(194, 65, 42, 0.1);
+  --focus: rgba(47, 143, 166, 0.4);
 
   --allow: #1f8a50;
-  --allow-soft: rgba(31, 138, 80, 0.12);
-  --warn: #b26a00;
-  --warn-soft: rgba(204, 128, 10, 0.14);
+  --allow-soft: rgba(31, 138, 80, 0.1);
+  --warn: #a96400;
+  --warn-soft: rgba(204, 128, 10, 0.13);
   --block: #c62f22;
-  --block-soft: rgba(198, 47, 34, 0.11);
-  /* 红底白字的按钮：深色模式的 --block 太浅，白字读不清，所以单独一个更深的红 */
+  --block-soft: rgba(198, 47, 34, 0.1);
+  /* 红底白字的按钮单独一个更深的红，深色模式的 --block 太浅、白字读不清 */
   --alarm: #c62f22;
+  --intel: linear-gradient(180deg, #68b844, #4f9a33);
 
-  --r-xl: 22px;
-  --r-lg: 18px;
-  --r-md: 12px;
-  --r-sm: 9px;
+  --r-xl: 14px;
+  --r-lg: 12px;
+  --r-md: 10px;
+  --r-sm: 8px;
   --r-pill: 999px;
 
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --sidebar-width: 218px;
-  --sidebar-inset: 10px;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", sans-serif;
@@ -73,102 +76,46 @@
 }
 
 :root[data-theme="dark"] {
-  --ambient-base: #0f0e12;
-  --ambient-1: rgba(122, 44, 28, 0.55);
-  --ambient-2: rgba(30, 58, 128, 0.5);
-  --ambient-3: rgba(78, 44, 130, 0.45);
+  --window: #2b2c30;
+  --bar: #25262a;
+  --band: #323338;
+  --panel: #36373c;
+  --raised: #3e3f45;
+  --well: #222327;
+  --fill: rgba(0, 0, 0, 0.22);
 
-  --glass: rgba(36, 35, 42, 0.56);
-  --glass-thin: rgba(255, 255, 255, 0.075);
-  --glass-thick: rgba(44, 43, 51, 0.82);
-  --solid: rgba(14, 13, 18, 0.62);
-  --fill: rgba(0, 0, 0, 0.26);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --glass-rim: 0 0 0 1px rgba(0, 0, 0, 0.28);
+  --glass-shadow: var(--glass-highlight), var(--glass-rim);
+  --float-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.4), 0 14px 36px rgba(0, 0, 0, 0.45);
+  --control-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.3);
 
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(255, 255, 255, 0.03), inset 0 0 0 0.5px rgba(255, 255, 255, 0.07);
-  --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 45%);
-  --glass-rim: 0 0 0 0.5px rgba(0, 0, 0, 0.55);
-  --glass-shadow: var(--glass-highlight), var(--glass-rim), 0 10px 30px rgba(0, 0, 0, 0.32);
-  --float-shadow: var(--glass-highlight), var(--glass-rim), 0 16px 44px rgba(0, 0, 0, 0.5);
-  --control-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --text: #f2f2f4;
+  --text-2: #c6c6cc;
+  --text-3: #9c9ca4;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.13);
+  --dash: rgba(124, 196, 214, 0.42);
+  --hover: rgba(255, 255, 255, 0.05);
 
-  --text: #f5f4f7;
-  --text-2: #b8b6c0;
-  --text-3: #85838d;
-  --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.14);
-  --hover: rgba(255, 255, 255, 0.06);
-
-  --ink: #f5f4f7;
-  --ink-2: #dddce2;
-  --ink-text: #16151a;
-  --brand: #ff6a4f;
+  --cta: #7cc4d6;
+  --cta-hover: #92d0df;
+  --cta-text: #10313a;
+  --brand: #e0563c;
   --brand-ink: #2a0d06;
-  --brand-soft: rgba(255, 106, 79, 0.16);
-  --focus: rgba(255, 106, 79, 0.45);
+  --brand-soft: rgba(224, 86, 60, 0.16);
+  --focus: rgba(124, 196, 214, 0.45);
 
-  --allow: #5fd08e;
-  --allow-soft: rgba(95, 208, 142, 0.15);
-  --warn: #f2b24c;
-  --warn-soft: rgba(242, 178, 76, 0.16);
+  --allow: #6fd18f;
+  --allow-soft: rgba(111, 209, 143, 0.13);
+  --warn: #f0b44c;
+  --warn-soft: rgba(240, 180, 76, 0.14);
   --block: #ff7a6b;
-  --block-soft: rgba(255, 122, 107, 0.16);
+  --block-soft: rgba(255, 122, 107, 0.14);
   --alarm: #d0392b;
+  --intel: linear-gradient(180deg, #7cc456, #5ea83c);
 
   color-scheme: dark;
-}
-
-/*
-  在 Tauri 窗口里：整个窗口是 macOS 原生毛玻璃（tauri.conf.json 的 windowEffects），桌面真的透进来。
-  这时不画环境渐变，只铺一层很淡的底色压住桌面花纹，玻璃层也调得更透。
-*/
-:root[data-vibrancy] {
-  --window-tint: rgba(246, 245, 249, 0.38);
-  --sidebar-glass: rgba(255, 255, 255, 0.3);
-  --glass: rgba(255, 255, 255, 0.46);
-  --glass-thick: rgba(255, 255, 255, 0.7);
-}
-
-:root[data-vibrancy][data-theme="dark"] {
-  --window-tint: rgba(20, 19, 24, 0.34);
-  --sidebar-glass: rgba(255, 255, 255, 0.045);
-  --glass: rgba(48, 47, 56, 0.44);
-  --glass-thick: rgba(56, 55, 64, 0.74);
-}
-
-/* 暂停：环境色褪成灰、顶部压一层红光，在哪一页都能感觉到“现在没有保护” */
-:root[data-paused] {
-  --ambient-1: rgba(198, 47, 34, 0.26);
-  --ambient-2: rgba(150, 150, 160, 0.3);
-  --ambient-3: rgba(150, 150, 160, 0.26);
-}
-
-:root[data-paused][data-theme="dark"] {
-  --ambient-1: rgba(150, 30, 22, 0.45);
-  --ambient-2: rgba(70, 70, 80, 0.4);
-  --ambient-3: rgba(70, 70, 80, 0.35);
-}
-
-/* 系统“降低透明度”：玻璃退成实色 */
-@media (prefers-reduced-transparency: reduce) {
-  :root,
-  :root[data-vibrancy] {
-    --glass: #fbfbfc;
-    --glass-thick: #ffffff;
-    --sidebar-glass: #f4f4f6;
-    --solid: #ffffff;
-    --window-tint: #f1f0f3;
-    --sheen: none;
-    --blur: none;
-  }
-
-  :root[data-theme="dark"],
-  :root[data-vibrancy][data-theme="dark"] {
-    --glass: #222127;
-    --glass-thick: #2a2930;
-    --sidebar-glass: #1c1b20;
-    --solid: #18171c;
-    --window-tint: #141318;
-  }
 }
 
 * {
@@ -187,16 +134,7 @@ body {
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
-  background:
-    radial-gradient(55% 70% at 8% 0%, var(--ambient-1), transparent 70%),
-    radial-gradient(50% 60% at 100% 8%, var(--ambient-2), transparent 70%),
-    radial-gradient(70% 60% at 65% 108%, var(--ambient-3), transparent 70%),
-    var(--ambient-base);
-  background-attachment: fixed;
-}
-
-:root[data-vibrancy] body {
-  background: var(--window-tint);
+  background: var(--window);
 }
 
 /* 内容可以选中复制：命令、路径、证据 */
@@ -301,7 +239,7 @@ button {
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
   border: none;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-sm);
   height: 30px;
   padding: 0 14px;
   display: inline-flex;
@@ -340,18 +278,14 @@ select:focus-visible {
 }
 
 button.primary {
-  background: linear-gradient(180deg, var(--ink-2), var(--ink));
-  color: var(--ink-text);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 0 0 0.5px rgba(0, 0, 0, 0.2),
-    0 2px 8px rgba(0, 0, 0, 0.16);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  background: var(--cta);
+  color: var(--cta-text);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 button.primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--ink-2) 88%, var(--ink-text)), var(--ink-2));
+  background: var(--cta-hover);
 }
 
 button.large {
@@ -437,7 +371,7 @@ input:focus,
 select:focus {
   outline: none;
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--brand) 70%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--cta) 70%, transparent),
     0 0 0 3px var(--focus);
 }
 
@@ -463,120 +397,12 @@ select:focus {
 
 .shell {
   display: flex;
+  flex-direction: column;
   height: 100vh;
-}
-
-/* 浮起的玻璃侧边栏：四周留出 10px，让环境色从边上透出来 */
-.sidebar {
-  width: var(--sidebar-width);
-  flex-shrink: 0;
-  margin: var(--sidebar-inset) 0 var(--sidebar-inset) var(--sidebar-inset);
-  border-radius: var(--r-xl);
-  background: var(--sheen), var(--sidebar-glass);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
-  box-shadow: var(--glass-shadow);
-  display: flex;
-  flex-direction: column;
-  padding: 0 10px 14px;
+  background: var(--window);
+  /* 自成一层，暂停时的红光（z-index: -1）才会落在背景之上、内容之下 */
   position: relative;
-  z-index: 2;
-}
-
-/* 系统的红绿灯按钮压在这块上面 */
-.sidebar-top {
-  height: 42px;
-  flex-shrink: 0;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 8px 18px;
-}
-
-.brand-name {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.005em;
-}
-
-.nav-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.nav {
-  height: 34px;
-  background: none;
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 0 10px;
-  border-radius: var(--r-md);
-  color: var(--text-2);
-}
-
-.nav svg {
-  color: var(--text-3);
-  transition: color 0.16s var(--ease);
-}
-
-.nav:hover:not(:disabled) {
-  background: var(--hover);
-}
-
-.nav:active:not(:disabled) {
-  transform: none;
-}
-
-.nav.on,
-.nav.on:hover:not(:disabled) {
-  background: var(--glass-thin);
-  color: var(--text);
-  box-shadow: var(--control-shadow);
-}
-
-.nav.on svg {
-  color: var(--brand);
-}
-
-.nav-label {
-  flex: 1;
-  text-align: left;
-}
-
-.nav-count {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--r-pill);
-  background: var(--block);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  display: inline-grid;
-  place-items: center;
-  font-variant-numeric: tabular-nums;
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--block) 40%, transparent);
-}
-
-.sidebar-status {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: var(--r-md);
-  background: var(--fill);
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 500;
+  isolation: isolate;
 }
 
 .status-dot {
@@ -588,42 +414,9 @@ select:focus {
   flex-shrink: 0;
 }
 
-/* 暂停时这里变成一个醒目的红色按钮，点一下就恢复 */
-.sidebar-status.is-paused,
-.sidebar-status.is-paused:hover:not(:disabled) {
-  height: auto;
-  padding: 9px 12px;
-  justify-content: flex-start;
-  gap: 10px;
-  text-align: left;
-  white-space: normal;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--alarm) 88%, #fff), var(--alarm));
-  color: #fff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.3),
-    0 4px 14px color-mix(in srgb, var(--block) 40%, transparent);
-  animation: alarm-pulse 2.4s ease-in-out infinite;
-}
-
-.sidebar-status-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-  font-weight: 600;
-}
-
-.sidebar-status-action {
-  font-size: 11px;
-  font-weight: 500;
-  opacity: 0.85;
-}
-
 @keyframes alarm-pulse {
   50% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.3),
-      0 4px 14px color-mix(in srgb, var(--block) 40%, transparent),
-      0 0 0 4px var(--block-soft);
+    box-shadow: 0 0 0 4px var(--block-soft);
   }
 }
 
@@ -631,20 +424,22 @@ select:focus {
   content: "";
   position: fixed;
   inset: 0;
+  z-index: -1;
   pointer-events: none;
   background: radial-gradient(80% 45% at 60% 0%, color-mix(in srgb, var(--block) 14%, transparent), transparent 70%);
-}
-
-.shell.is-paused .brand svg {
-  filter: grayscale(1);
-  opacity: 0.55;
 }
 
 .content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow: auto;
   position: relative;
+}
+
+/* 检查记录自己分栏、各自滚动 */
+.content-history {
+  overflow: hidden;
 }
 
 .page {
@@ -669,7 +464,7 @@ select:focus {
   justify-content: space-between;
   align-items: flex-end;
   gap: 24px;
-  padding-top: 52px;
+  padding-top: 26px;
 }
 
 .page-header h1 {
@@ -728,7 +523,6 @@ select:focus {
 
 .group,
 .panel,
-.metrics,
 .findings,
 .sandbox,
 .progress-card,
@@ -1071,184 +865,381 @@ select:focus {
   color: var(--block);
 }
 
-/* ---------- 概览 ---------- */
+/* ---------- 标题栏和底栏 ---------- */
 
-.page-overview {
-  gap: 28px;
-}
-
-.hero {
+/* 系统的红绿灯压在左边 78px 里（tauri.conf.json 的 trafficLightPosition） */
+.titlebar {
+  height: 40px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 56px 0 4px;
+  gap: 10px;
+  padding: 0 14px 0 82px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--line);
+}
+
+button.back {
+  height: 24px;
+  padding: 0 10px 0 6px;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.back-chevron {
+  transform: rotate(180deg);
+}
+
+.titlebar-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.titlebar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-2);
+}
+
+/* 暂停时标题栏右上角变成红色的恢复按钮，在任何一页都看得见、点得到 */
+button.titlebar-status.is-paused,
+button.titlebar-status.is-paused:hover:not(:disabled) {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  background: var(--alarm);
+  color: #fff;
+  box-shadow: none;
+  animation: alarm-pulse 2.4s ease-in-out infinite;
+}
+
+.footbar {
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 14px 0 18px;
+  background: var(--bar);
+  border-top: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.footbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.footbar-meta {
+  flex: 1;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.footbar-settings {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: none;
+  box-shadow: none;
+  color: var(--text-2);
+}
+
+button.footbar-settings:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* ---------- 概览（仪表盘） ---------- */
+
+.content-overview {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard {
+  width: 100%;
+  max-width: 920px;
+  margin: auto;
+  padding: 8px 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: page-in 0.24s var(--ease);
+}
+
+.dash-hero {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  gap: 32px;
+  align-items: center;
+  padding: 28px 18px 8px;
   --hero-tone: var(--allow);
   --hero-soft: var(--allow-soft);
 }
 
-.hero.is-partial {
+.dash-hero.is-partial {
   --hero-tone: var(--warn);
   --hero-soft: var(--warn-soft);
 }
 
-/* 暂停时守护状态变成红色警示卡片，和“守护中”一眼就能分开 */
-.hero.is-paused {
+.dash-hero.is-paused {
   --hero-tone: var(--block);
   --hero-soft: var(--block-soft);
-  margin-top: 44px;
-  padding: 22px 24px;
-  border-radius: var(--r-lg);
-  background: var(--sheen), color-mix(in srgb, var(--block) 10%, var(--glass));
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
-  box-shadow:
-    var(--glass-highlight),
-    0 0 0 1px color-mix(in srgb, var(--block) 32%, transparent),
-    0 12px 32px color-mix(in srgb, var(--block) 16%, transparent);
 }
 
-.hero.is-paused h1 {
+.hero-art {
+  width: 230px;
+  height: auto;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 11px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--hero-tone);
+  background: var(--hero-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hero-tone) 45%, transparent);
+}
+
+.status-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hero-tone);
+  box-shadow: 0 0 6px var(--hero-tone);
+}
+
+.dash-hero h1 {
+  margin: 12px 0 8px;
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.dash-hero.is-paused h1 {
   color: var(--block);
 }
 
-.group.is-suspended .row-wrap {
-  opacity: 0.5;
-  filter: grayscale(1);
-  transition: opacity 0.24s var(--ease);
+.dash-hero-warning {
+  color: var(--text-2);
+  max-width: 460px;
+  line-height: 1.6;
 }
 
-/* 守护状态的徽章：玻璃圆片 + 状态色光晕 */
-.hero-emblem {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--glass-thick);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
-  color: var(--hero-tone);
-  box-shadow:
-    var(--glass-highlight),
-    var(--glass-rim),
-    0 0 0 7px var(--hero-soft),
-    0 10px 30px color-mix(in srgb, var(--hero-tone) 28%, transparent);
-  flex-shrink: 0;
-  transition:
-    box-shadow 0.3s var(--ease),
-    color 0.3s var(--ease);
+button.layer-checks {
+  height: auto;
+  padding: 2px 0;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  background: none;
+  box-shadow: none;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-3);
 }
 
-.hero-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.eyebrow {
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--hero-tone);
-}
-
-.hero h1 {
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  margin-top: 2px;
-}
-
-.hero p {
-  margin-top: 4px;
+button.layer-checks:hover:not(:disabled) {
+  background: none;
   color: var(--text-2);
 }
 
-.metrics {
+button.layer-checks:active:not(:disabled) {
+  transform: none;
+}
+
+.layer-checks span::before {
+  margin-right: 5px;
+  font-weight: 700;
+}
+
+.layer-checks .is-on::before {
+  content: "✓";
+  color: var(--allow);
+}
+
+.layer-checks .is-off::before {
+  content: "○";
+  color: var(--warn);
+}
+
+.layer-checks .is-off {
+  color: var(--warn);
+}
+
+.dash-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+button.cta {
+  height: 38px;
+  padding: 0 24px;
+  font-size: 13.5px;
+  font-weight: 650;
+  background: var(--cta);
+  color: var(--cta-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 14px color-mix(in srgb, var(--cta) 30%, transparent);
+}
+
+button.cta:hover:not(:disabled) {
+  background: var(--cta-hover);
+}
+
+button.cta.cta-alarm,
+button.cta.cta-alarm:hover:not(:disabled) {
+  background: var(--alarm);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 16px color-mix(in srgb, var(--alarm) 40%, transparent);
+}
+
+.dash-hero-meta {
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+/* 拖着文件经过窗口时，主区域给出明确的落点 */
+.dashboard.is-dragging .dash-hero {
+  border-radius: var(--r-xl);
+  outline: 2px dashed var(--cta);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--cta) 8%, transparent);
+}
+
+/* 快速操作：虚线框住的一排按钮，标签压在框线上 */
+.quick {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 20px 16px 16px;
+  border: 1px dashed var(--dash);
+  border-radius: var(--r-lg);
+  background: var(--band);
+}
+
+.quick-label {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 10px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.16em;
+  color: var(--text-3);
+  background: var(--window);
+}
+
+button.quick-button {
+  height: 36px;
+  gap: 8px;
+  font-weight: 650;
+  font-size: 12.5px;
+}
+
+.tiles {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
 }
 
-.metric {
-  padding: 16px 20px 14px;
-  display: flex;
+button.tile {
+  height: auto;
+  min-height: 84px;
+  padding: 13px 14px;
   flex-direction: column;
-  gap: 2px;
-  position: relative;
-}
-
-.metric + .metric::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 16px;
-  bottom: 16px;
-  width: 1px;
-  background: var(--line);
-}
-
-.metric-value {
-  font-size: 26px;
-  font-weight: 650;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-}
-
-.metric-label {
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-.dropzone {
-  border: 1.5px dashed var(--line-strong);
-  border-radius: var(--r-lg);
-  padding: 30px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-3);
-  background: color-mix(in srgb, var(--glass) 45%, transparent);
-  transition:
-    border-color 0.2s var(--ease),
-    background 0.2s var(--ease),
-    color 0.2s var(--ease),
-    transform 0.2s var(--ease);
-}
-
-.dropzone svg,
-.dropzone .spinner {
-  margin-bottom: 6px;
-}
-
-.dropzone-title {
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.dropzone-detail {
-  font-size: 12px;
-}
-
-.dropzone.is-active {
-  border-color: var(--brand);
-  border-style: solid;
-  background: var(--brand-soft);
-  color: var(--brand);
-  transform: scale(1.01);
-}
-
-.dropzone.is-active .dropzone-title {
-  color: var(--brand);
-}
-
-.dropzone.is-busy {
-  border-style: solid;
-  border-color: transparent;
-  background: var(--glass);
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 5px;
+  text-align: left;
+  white-space: normal;
+  border-radius: var(--r-md);
+  background: var(--panel);
   box-shadow: var(--glass-shadow);
 }
+
+button.tile:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.tile-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.tile-detail {
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.tile-alert .tile-title {
+  color: var(--block);
+}
+
+button.tile.tile-intel,
+button.tile.tile-intel:hover:not(:disabled) {
+  background: var(--intel);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.tile-intel .tile-detail {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.tile-badge {
+  margin-top: 2px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+@media (max-width: 960px) {
+  .tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dash-hero {
+    grid-template-columns: 180px 1fr;
+    gap: 22px;
+  }
+
+  .hero-art {
+    width: 180px;
+  }
+}
+
 
 /* ---------- 检查记录 ---------- */
 
@@ -1257,16 +1248,12 @@ select:focus {
   height: 100%;
 }
 
-/* 列表栏是第二块浮起的玻璃，和侧边栏同高同圆角 */
+/* 列表栏：比内容区暗一档的整列，和标题栏、底栏同色 */
 .list-pane {
   width: 320px;
   flex-shrink: 0;
-  margin: var(--sidebar-inset) 0 var(--sidebar-inset) var(--sidebar-inset);
-  border-radius: var(--r-xl);
-  background: var(--sheen), var(--glass);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
-  box-shadow: var(--glass-shadow);
+  background: var(--bar);
+  border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1274,7 +1261,7 @@ select:focus {
 }
 
 .list-head {
-  padding: 34px 16px 12px;
+  padding: 18px 16px 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1927,12 +1914,12 @@ select:focus {
   background: var(--glass-thick);
   box-shadow:
     var(--glass-highlight),
-    0 0 0 1.5px var(--brand),
-    0 8px 24px color-mix(in srgb, var(--brand) 16%, transparent);
+    0 0 0 1.5px var(--cta),
+    0 6px 18px color-mix(in srgb, var(--cta) 16%, transparent);
 }
 
 .choice.on svg {
-  color: var(--brand);
+  color: var(--cta);
 }
 
 .form {
@@ -2054,8 +2041,8 @@ select:focus {
 .toaster {
   position: fixed;
   /* 居中在内容区，而不是整个窗口（避开侧边栏） */
-  left: calc(50% + (var(--sidebar-width) + var(--sidebar-inset)) / 2);
-  bottom: 24px;
+  left: 50%;
+  bottom: 58px;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;

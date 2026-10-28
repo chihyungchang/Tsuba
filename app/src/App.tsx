@@ -82,66 +82,59 @@ export default function App() {
   );
   const onScanned = useCallback((e: LogEntry) => openEntry(e.id), [openEntry]);
 
-  const blocked = overview?.recent.blocked ?? 0;
   const paused = overview?.paused ?? false;
   const resume = () => invoke("set_paused", { paused: false }).then(reload);
+  const current = PAGES.find((p) => p.id === page);
 
-  // 暂停时整个界面褪色、换成警示色：用户在哪一页都该感觉到“现在没有保护”
+  // 暂停时整个界面换成警示色：用户在哪一页都该感觉到“现在没有保护”
   useEffect(() => {
     document.documentElement.toggleAttribute("data-paused", paused);
   }, [paused]);
 
   return (
     <div className={`shell ${paused ? "is-paused" : ""}`}>
-      <nav className="sidebar" aria-label="主导航">
-        <div className="sidebar-top" data-tauri-drag-region />
-        <div className="brand" data-tauri-drag-region>
-          <TsubaMark size={26} />
-          <span className="brand-name">Tsuba</span>
-        </div>
-        <div className="nav-list">
-          {PAGES.map((p) => {
-            const I = Icon[p.icon];
-            return (
-              <button
-                key={p.id}
-                className={`nav ${page === p.id ? "on" : ""}`}
-                aria-current={page === p.id ? "page" : undefined}
-                title={`${p.label}  ⌘${p.key}`}
-                onClick={() => setPage(p.id)}
-              >
-                <I size={17} />
-                <span className="nav-label">{p.label}</span>
-                {p.id === "history" && blocked > 0 && <span className="nav-count">{blocked}</span>}
-              </button>
-            );
-          })}
-        </div>
+      {/* 标题栏：系统的红绿灯压在左边；不在首页时显示“返回”和页面名 */}
+      <header className="titlebar" data-tauri-drag-region>
+        {page !== "overview" && (
+          <button className="back" onClick={() => setPage("overview")} title={`从${current?.label ?? ""}回到首页  ⌘1`}>
+            <Icon.chevron size={13} className="back-chevron" />
+            返回
+          </button>
+        )}
+        <span className="titlebar-title" data-tauri-drag-region />
         {paused ? (
-          <button className="sidebar-status is-paused" title="终端检查和后台监控都停了，点一下恢复" onClick={resume}>
-            <Icon.shieldOff size={15} />
-            <span className="sidebar-status-text">
-              守护已暂停
-              <span className="sidebar-status-action">点击恢复守护</span>
-            </span>
+          <button className="titlebar-status is-paused" onClick={resume} title="终端检查和后台监控都停了，点一下恢复">
+            <Icon.shieldOff size={13} />
+            守护已暂停 · 点击恢复
           </button>
         ) : (
-          <div className="sidebar-status">
-            <span className="status-dot" />
-            {overview ? "守护中" : "连接中"}
-          </div>
+          <span className="titlebar-status" data-tauri-drag-region>
+            <TsubaMark size={16} />
+            Tsuba
+          </span>
         )}
-      </nav>
-      <div className="content">
-        {page === "overview" && <OverviewPage overview={overview} reload={reload} onScanned={onScanned} openEntry={openEntry} goSettings={() => setPage("settings")} />}
+      </header>
+      <main className={`content content-${page}`}>
+        {page === "overview" && <OverviewPage overview={overview} reload={reload} onScanned={onScanned} openEntry={openEntry} go={setPage} />}
         {page === "history" && <HistoryPage focusId={focusId} quarantine={quarantine} reload={reload} />}
         {page === "scan" && <ScanPage quarantine={quarantine} reload={reload} onScanned={onScanned} />}
         {/* 体检可能要跑几十秒：切到别的页面时不卸载，回来进度和结果都还在 */}
         <div className="page-host" hidden={page !== "doctor"}>
           <DoctorPage reload={reload} />
         </div>
-        {page === "settings" && <SettingsPage reload={reload} />}
-      </div>
+        {page === "settings" && <SettingsPage overview={overview} reload={reload} />}
+      </main>
+      <footer className="footbar">
+        <span className="footbar-brand">
+          <TsubaMark size={15} />
+          TSUBA
+        </span>
+        <span className="footbar-meta">{overview ? (overview.provider === "offline" ? "只用离线规则" : overview.ai_available ? `离线规则 + ${overview.provider_label}` : "离线规则（AI 还没配置好）") : "连接中"}</span>
+        <button className="footbar-settings" onClick={() => setPage("settings")} title="设置  ⌘,">
+          <Icon.settings size={14} />
+          设置
+        </button>
+      </footer>
       <Toaster />
     </div>
   );
