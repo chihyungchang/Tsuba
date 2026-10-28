@@ -1,14 +1,17 @@
-# Builds a universal macOS DMG and attaches it to a draft GitHub Release when a version tag is pushed.
+# Builds macOS DMGs and attaches them to a draft GitHub Release when a version tag is pushed.
 #
-#   1. scripts/release.sh 0.2.0   (bumps the version in the root Cargo.toml, runs the checks, commits, tags, pushes)
-#   2. Review the draft release this workflow creates, with notes generated from the commits, then publish it.
+#   1. scripts/release.sh 0.2.0   (sets the version in the root Cargo.toml, runs the checks, commits, tags, pushes)
+#   2. Review the draft release, with notes generated from the commits, then publish it.
 #
-# Running it by hand (Actions → Release → Run workflow) is a dry run: it builds the DMG and keeps it as a workflow
-# artifact, without creating a release.
+# The tests and the two architectures run on separate runners at the same time: a universal build compiled both
+# architectures one after the other on one 3-core runner and took over 40 minutes. If any job fails, the draft is
+# deleted (the tag stays), so a release is never left half built or built from code that failed its tests.
 #
-# Signing and notarization run only when the Apple secrets below are set. Without them the DMG is unsigned and
-# Gatekeeper blocks it on download, which a security app shouldn't ask its users to bypass, so set them before
-# publishing a release for anyone else.
+# Running it by hand (Actions → Release → Run workflow) is a dry run: it tests and builds, keeping the DMGs as workflow
+# artifacts, without creating a release.
+#
+# Signing and notarization run only when the Apple secrets below are set. Without them the DMG is unsigned and the
+# release notes say so, with how to open and verify it.
 
 name: Release
 
@@ -26,13 +29,14 @@ concurrency:
 
 jobs:
   release:
-    runs-on: macos-latest
-    timeout-minutes: 90
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.create.outputs.id }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Check the tag matches the version
-        if: github.event_name == 'push'
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
@@ -40,36 +44,85 @@ jobs:
             exit 1
           fi
 
+      # Created up front so both build jobs upload to the same draft instead of racing to create it.
+      # Drafts can't be looked up by tag, so everything after this goes by the release ID.
+      - name: Create the draft release
+        id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" -f tag_name="$GITHUB_REF_NAME" -f name="Tsuba $GITHUB_REF_NAME" \
+            -f body="Building…" -F draft=true --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  # The same gate as before every commit: a release must not ship failing tests, warnings or untranslated text
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
           version: 10
-
       - uses: actions/setup-node@v4
         with:
           node-version: lts/*
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
-
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
           components: clippy
-
       - uses: Swatinem/rust-cache@v2
-
+        with:
+          cache-on-failure: true
       - name: Install front-end dependencies
         working-directory: app
         run: pnpm install --frozen-lockfile
-
-      # The same gate as before every commit: a release must not ship failing tests, warnings or untranslated text
-      # Skipped here only: on GitHub's runners setup-node's npm lives under the home folder, which the sandbox denies,
-      # so npm falls back to Homebrew's node, which then crashes inside the sandbox. The test is meant for fnm / nvm
-      # installs and passes on a developer Mac. TODO: find why Homebrew's node segfaults in the sandbox.
+      # sandbox_runs_npm_installed_in_home is skipped here only: on GitHub's runners setup-node's npm lives under the
+      # home folder, which the sandbox denies, so npm falls back to Homebrew's node, which then crashes inside the
+      # sandbox. The test is meant for fnm / nvm installs and passes on a developer Mac.
+      # TODO: find why Homebrew's node segfaults in the sandbox.
       - name: Test
         run: |
           cargo test --workspace --locked -- --skip sandbox_runs_npm_installed_in_home
           cargo clippy --workspace --locked -- -D warnings
           cd app && pnpm exec tsc --noEmit && pnpm -s check:i18n
+
+  build:
+    needs: release
+    # Also runs on a dry run, when the release job is skipped
+    if: ${{ !failure() && !cancelled() }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            name: Apple silicon
+          - target: x86_64-apple-darwin
+            name: Intel
+    name: build (${{ matrix.name }})
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          cache-on-failure: true
+      - name: Install front-end dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
 
       # GitHub sets missing secrets to empty strings, and Tauri treats an empty APPLE_CERTIFICATE as a certificate
       # to import, so only export the signing variables when they are really there.
@@ -93,42 +146,71 @@ jobs:
           fi
 
       - uses: tauri-apps/tauri-action@v0
-        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: app
           tauriScript: pnpm tauri
-          args: --target universal-apple-darwin --config src-tauri/tauri.release.conf.json
-          # Empty on a dry run, so nothing is released
-          tagName: ${{ github.event_name == 'push' && github.ref_name || '' }}
-          releaseName: Tsuba ${{ github.ref_name }}
-          releaseBody: Generating release notes…
-          releaseDraft: true
-          prerelease: false
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json
+          # Empty on a dry run, so nothing is uploaded to a release
+          releaseId: ${{ needs.release.outputs.id }}
+
+      - name: Checksum
+        run: |
+          cd target/${{ matrix.target }}/release/bundle/dmg
+          shasum -a 256 *.dmg | tee "$RUNNER_TEMP/sha256-${{ matrix.target }}.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sha256-${{ matrix.target }}
+          path: ${{ runner.temp }}/sha256-${{ matrix.target }}.txt
+
+      - name: Keep the dry-run DMG
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tsuba-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          retention-days: 7
+
+  finish:
+    needs: [release, test, build]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_ID: ${{ needs.release.outputs.id }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sha256-*
+          merge-multiple: true
 
       # Checksums so anyone can confirm the DMG they downloaded is the one this workflow built from the public source
       - name: Checksums
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd target/universal-apple-darwin/release/bundle/dmg
-          shasum -a 256 *.dmg > SHA256SUMS.txt
+          cat sha256-*.txt | sort -k2 > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+          gh api --method POST -H "Content-Type: text/plain" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=SHA256SUMS.txt" \
+            --input SHA256SUMS.txt > /dev/null
 
       # GitHub writes the notes from the commits and pull requests since the previous release. An unsigned build says so
       # first, and says how to open it without removing the quarantine flag: Tsuba itself warns about installers that
       # ask for that, so its own release must not.
       - name: Release notes
-        if: github.event_name == 'push'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
+          IS_SIGNED: ${{ secrets.APPLE_CERTIFICATE != '' }}
         run: |
           notes=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$GITHUB_REF_NAME" --jq .body)
-          if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+          download=$(cat <<'DOWNLOAD'
+          **Download:** `Tsuba_*_aarch64.dmg` for Apple silicon Macs (M1 and later), `Tsuba_*_x64.dmg` for Intel Macs. Not sure? Apple menu → About This Mac → Chip.
+
+          **下载：**Apple 芯片的 Mac（M1 及以后）选 `aarch64`，Intel 芯片选 `x64`。不确定的话：苹果菜单 → 关于本机 → 芯片。
+          DOWNLOAD
+          )
+          notes=$(printf '%s\n\n%s' "$download" "$notes")
+          if [ "$IS_SIGNED" != true ]; then
             notice=$(cat <<'NOTICE'
           > [!WARNING]
           > **This build is not signed or notarized by Apple yet.** macOS blocks it the first time you open it: go to **System Settings → Privacy & Security** and click **Open Anyway**.
@@ -144,10 +226,13 @@ jobs:
           fi
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -f body="$notes" > /dev/null
 
-      - name: Keep the dry-run DMG
-        if: github.event_name != 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Tsuba-dmg
-          path: target/universal-apple-darwin/release/bundle/dmg/*.dmg
-          retention-days: 7
+  # A failed test or build leaves no draft behind: re-pushing the tag (or fixing and tagging a new version) starts clean
+  discard:
+    needs: [release, test, build, finish]
+    if: ${{ failure() && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/${{ needs.release.outputs.id }}"

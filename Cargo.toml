@@ -12,9 +12,11 @@ tsuba-engine = { path = "crates/engine" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Thin LTO: about 2.5x faster to build than full LTO (codegen-units = 1), for ~1 ms more per terminal check
+# (17.6 → 18.5 ms median) and a ~20% larger binary. Measured on the CLI, which runs before every command.
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units = 16
+lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = true

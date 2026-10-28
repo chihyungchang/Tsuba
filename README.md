@@ -6,7 +6,7 @@ Tsuba (鍔, the hand guard of a Japanese sword) is a macOS menu bar app. Fake in
 
 ## Install
 
-Download the DMG from [Releases](https://github.com/chihyungchang/Tsuba/releases) (macOS 13 or later, Apple silicon and Intel). It needs no account; for AI review it can use the Claude Code or Codex already signed in on your Mac.
+Download the DMG from [Releases](https://github.com/chihyungchang/Tsuba/releases) (macOS 13 or later): `Tsuba_*_aarch64.dmg` for Apple silicon Macs (M1 and later), `Tsuba_*_x64.dmg` for Intel Macs. It needs no account; for AI review it can use the Claude Code or Codex already signed in on your Mac.
 
 > [!WARNING]
 > **Builds are not yet signed or notarized by Apple.** macOS blocks the App the first time you open it: go to **System Settings → Privacy & Security** and click **Open Anyway**.
@@ -110,7 +110,7 @@ cd app && pnpm release --bundles app   # local release build for this Mac, termi
 
 A release bundle carries the terminal checker as `Tsuba.app/Contents/MacOS/tsuba`. `tauri.release.conf.json` adds it and runs `app/scripts/build-cli-sidecar.sh`; it stays out of `tauri.conf.json` because Tauri refuses to build without the file, which would break `cargo test`.
 
-To publish, run `scripts/release.sh X.Y.Z` on a clean `main`: it sets the version in the root `Cargo.toml` (the single source for the App, CLI and DMG), runs the pre-commit checks, commits, tags `vX.Y.Z` and asks before pushing. The tag starts `.github/workflows/release.yml`, which runs the checks again, builds a universal DMG and attaches it to a draft GitHub Release with notes generated from the commits; review it and publish. Running the workflow by hand (Actions → Release → Run workflow, or `gh workflow run release.yml`) is a dry run that keeps the DMG as a workflow artifact instead.
+To publish, run `scripts/release.sh X.Y.Z` on a clean `main`: it sets the version in the root `Cargo.toml` (the single source for the App, CLI and DMG), runs the pre-commit checks, commits, tags `vX.Y.Z` and asks before pushing. The tag starts `.github/workflows/release.yml`, which runs the tests and builds the Apple silicon and Intel DMGs on three runners at once, attaching them and `SHA256SUMS.txt` to a draft GitHub Release with notes generated from the commits; review it and publish. If any job fails, the draft is deleted and the tag stays. Running the workflow by hand (Actions → Release → Run workflow, or `gh workflow run release.yml`) is a dry run that keeps the DMGs as workflow artifacts instead.
 
 It signs and notarizes when these repository secrets are set: `APPLE_CERTIFICATE` (base64 .p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`. Without them the DMG is unsigned and Gatekeeper blocks it on download.
 
