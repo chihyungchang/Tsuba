@@ -134,3 +134,7 @@ export TSUBA_DISABLE=1     # turn it off for the current terminal window
 ```
 
 Cancelled commands stay in your shell history; once you've verified them, press the up arrow to get them back.
+
+## License
+
+Tsuba is licensed under the [Apache License 2.0](LICENSE). Threat intel it downloads at runtime keeps its own license, listed in [Threat intel](#threat-intel) and shown next to every finding that uses it.
