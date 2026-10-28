@@ -1,6 +1,6 @@
 //! 主动扫描一个文件夹：下载目录、外接硬盘、代码目录。
 //!
-//! 不是全盘杀毒：只挑陌生代码会藏身的东西——安装包、脚本、扩展、带自动执行入口的项目，
+//! 不是全盘杀毒：只挑陌生代码会藏身的东西——安装包、脚本、扩展、AI 工具的 skill、带自动执行入口的项目，
 //! 照片视频这类文件直接跳过。批量扫描只用本机的离线规则和名单（不联网、不调模型），
 //! 可疑的再由用户单独做一次带 AI 的检查。扫过且没变的不重复扫。
 
@@ -28,7 +28,7 @@ const MAX_ITEMS: usize = 3000;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ScanHit {
     pub path: String,
-    /// installer / extension / project / file
+    /// installer / extension / skill / project / file
     pub kind: String,
     pub verdict: Verdict,
     pub summary: String,
@@ -67,7 +67,9 @@ pub fn candidates(root: &Path) -> (Vec<PathBuf>, bool) {
     }
     let mut stack = vec![(root.to_path_buf(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
-        let is_unit = extension::looks_like_extension(&dir) || is_project(&dir) || crate::macos::looks_like_volume(&dir) || dir.extension().is_some_and(|e| e == "app");
+        // skill 要整体检查：它的 SKILL.md 不在单个文件的扩展名名单里，往下走就会被整个跳过
+        let is_skill = dir.join("SKILL.md").is_file();
+        let is_unit = extension::looks_like_extension(&dir) || is_skill || is_project(&dir) || crate::macos::looks_like_volume(&dir) || dir.extension().is_some_and(|e| e == "app");
         if dir != root && is_unit {
             out.push(dir);
         } else if let Ok(rd) = std::fs::read_dir(&dir) {

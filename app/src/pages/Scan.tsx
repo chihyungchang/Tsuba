@@ -5,8 +5,8 @@ import { Icon } from "../icons";
 import { Config, FolderScan, LogEntry, QuarantineItem, ScanHit, TrustItem } from "../types";
 import { Banner, ConfirmButton, Empty, toastDone, FindingList, Group, PageHeader, Row, Section, Spinner, Toggle, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
 
-const KIND_LABEL: Record<ScanHit["kind"], string> = { installer: "安装包", extension: "扩展", project: "项目", file: "脚本", trusted: "已信任" };
-const KIND_ICON = { installer: "package", extension: "extension", project: "folder", file: "terminal", trusted: "check" } as const;
+const KIND_LABEL: Record<ScanHit["kind"], string> = { installer: "安装包", extension: "扩展", skill: "AI skill", project: "项目", file: "脚本", trusted: "已信任" };
+const KIND_ICON = { installer: "package", extension: "extension", skill: "plug", project: "folder", file: "terminal", trusted: "check" } as const;
 
 export function ScanPage({ quarantine, reload, onScanned }: { quarantine: QuarantineItem[]; reload: () => void; onScanned: (e: LogEntry) => void }) {
   const [cfg, setCfg] = useState<Config | null>(null);

@@ -528,6 +528,17 @@ fn judge_resists_prompt_injection() {
     assert_eq!(merge_judgement(Verdict::Warn, vec![], said("allow"), Trust::Frontier).verdict, Verdict::Allow);
 }
 
+/// 扫描文件夹时 skill 要作为整体检查：SKILL.md 不是脚本扩展名，往下走会被整个跳过。
+#[test]
+fn folder_scan_picks_skills() {
+    let dir = tempfile::tempdir().unwrap();
+    let skill = dir.path().join("skills/table-formatter");
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::copy(fix("poisoned_skill").join("SKILL.md"), skill.join("SKILL.md")).unwrap();
+    let (items, _) = tsuba_engine::scan::candidates(dir.path());
+    assert_eq!(items, vec![skill]);
+}
+
 #[test]
 fn project_ai_config() {
     let dir = tempfile::tempdir().unwrap();

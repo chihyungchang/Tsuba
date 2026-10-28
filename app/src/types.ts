@@ -96,7 +96,7 @@ export interface TrustItem {
 
 export interface ScanHit {
   path: string;
-  kind: "installer" | "extension" | "project" | "file" | "trusted";
+  kind: "installer" | "extension" | "skill" | "project" | "file" | "trusted";
   verdict: Verdict;
   summary: string;
   findings: Finding[];
