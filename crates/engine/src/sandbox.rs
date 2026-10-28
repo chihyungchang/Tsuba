@@ -689,16 +689,24 @@ fn exec_jailed(jail: &Jail, argv: &[String], cwd: &Path, timeout: Duration) -> s
 /// Reads this run's denied operations from the system log. The log may land a little late, so wait briefly first.
 /// Denied system services such as the clipboard or DNS aren't always logged, so this only adds evidence; the rules apply regardless.
 fn read_denials(tag: &str, seconds: f64) -> Vec<Denied> {
-    std::thread::sleep(Duration::from_millis(300));
-    let window = format!("{}s", seconds.ceil() as u64 + 10);
-    let predicate = format!("sender == \"Sandbox\" AND eventMessage CONTAINS \"{tag}\"");
-    let Ok(out) = Command::new("/usr/bin/log").args(["show", "--last", &window, "--style", "compact", "--predicate", &predicate]).output() else {
-        return vec![];
-    };
+    // The kernel's denials reach the unified log with a delay that grows with load: one read after 300 ms came back
+    // empty on a busy CI runner, which would also drop this evidence on a busy Mac. Read again a little later while
+    // empty; a run with no denials pays the wait (about 2.5 s), one with denials returns as soon as they show up.
     let mut denied = Vec::new();
-    for d in String::from_utf8_lossy(&out.stdout).lines().filter_map(parse_denial) {
-        if !denied.contains(&d) && denied.len() < 100 {
-            denied.push(d);
+    for wait in [300, 700, 1500] {
+        std::thread::sleep(Duration::from_millis(wait));
+        let window = format!("{}s", seconds.ceil() as u64 + 10);
+        let predicate = format!("sender == \"Sandbox\" AND eventMessage CONTAINS \"{tag}\"");
+        let Ok(out) = Command::new("/usr/bin/log").args(["show", "--last", &window, "--style", "compact", "--predicate", &predicate]).output() else {
+            return vec![];
+        };
+        for d in String::from_utf8_lossy(&out.stdout).lines().filter_map(parse_denial) {
+            if !denied.contains(&d) && denied.len() < 100 {
+                denied.push(d);
+            }
+        }
+        if !denied.is_empty() {
+            break;
         }
     }
     denied
