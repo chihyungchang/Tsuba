@@ -1,6 +1,6 @@
-//! 隔离区：把可疑的文件、目录或扩展挪进 ~/.tsuba/quarantine，可以恢复或彻底删除。
+//! Quarantine: moves suspicious files, folders or extensions into ~/.tsuba/quarantine, from where they can be restored or deleted.
 //!
-//! 只是挪走，不改内容：用户确认是误报时能原样放回。
+//! Items are only moved, never changed, so a false positive can be put back exactly as it was.
 
 use crate::store;
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ pub fn list() -> Vec<QuarantineItem> {
     load()
 }
 
-/// 挪动；跨磁盘（外接硬盘上的文件）不能直接改名，退回到复制后删除。
+/// Moves a path. Across disks (files on an external drive) a rename fails, so fall back to copy and delete.
 fn move_path(from: &Path, to: &Path) -> std::io::Result<()> {
     match std::fs::rename(from, to) {
         Ok(()) => Ok(()),
@@ -59,7 +59,7 @@ fn remove(p: &Path) -> std::io::Result<()> {
     if std::fs::symlink_metadata(p)?.is_dir() { std::fs::remove_dir_all(p) } else { std::fs::remove_file(p) }
 }
 
-/// 把一个文件或目录挪进隔离区。
+/// Moves a file or folder into quarantine.
 pub fn quarantine(path: &Path, reason: &str) -> std::io::Result<QuarantineItem> {
     let qdir = store::home().join("quarantine");
     std::fs::create_dir_all(&qdir)?;
@@ -80,14 +80,14 @@ pub fn quarantine(path: &Path, reason: &str) -> std::io::Result<QuarantineItem> 
     Ok(item)
 }
 
-/// 放回原处。原位置已经有同名文件时拒绝，避免覆盖。
+/// Puts an item back. Refuses when something already exists at the original path, to avoid overwriting it.
 pub fn restore(id: &str) -> Result<(), String> {
     let mut list = load();
-    let i = list.iter().position(|q| q.id == id).ok_or("隔离区里没有这一项")?;
+    let i = list.iter().position(|q| q.id == id).ok_or_else(|| tr!("This item is no longer in quarantine"))?;
     let item = &list[i];
     let original = Path::new(&item.original);
     if original.exists() {
-        return Err(format!("{} 已经存在，没有覆盖", item.original));
+        return Err(tr!("{path} already exists, so it wasn't overwritten", path = item.original));
     }
     if let Some(parent) = original.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -98,10 +98,10 @@ pub fn restore(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 彻底删除隔离区里的一项。
+/// Permanently deletes an item from quarantine.
 pub fn delete(id: &str) -> Result<(), String> {
     let mut list = load();
-    let i = list.iter().position(|q| q.id == id).ok_or("隔离区里没有这一项")?;
+    let i = list.iter().position(|q| q.id == id).ok_or_else(|| tr!("This item is no longer in quarantine"))?;
     let stored = Path::new(&list[i].stored);
     if stored.exists() {
         remove(stored).map_err(|e| e.to_string())?;
@@ -111,18 +111,18 @@ pub fn delete(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 用户在检查记录里点了“删除文件”：不进隔离区，直接删掉。
+/// The user clicked "Delete File" on a check record: delete it directly, without quarantine.
 ///
-/// 删除来自记录标题里的路径，而记录可能是扫描整个文件夹留下的（比如 ~/Downloads）。
-/// 所以只允许删具体的文件或项目，家目录本身、家目录下的一级目录和系统目录一律拒绝。
+/// The path comes from the record title, and a record may come from scanning a whole folder (like ~/Downloads).
+/// So only concrete files or projects may be deleted; the home folder itself, its top-level folders and system folders are always refused.
 pub fn delete_path(path: &Path) -> Result<(), String> {
     if !is_safe_to_delete(path, &crate::home_dir()) {
-        return Err(format!("{} 是系统或个人的顶层目录，Tsuba 不会删除它。请在 Finder 里自己处理。", path.display()));
+        return Err(tr!("{path} is a top-level system or personal folder, so Tsuba won't delete it. Handle it yourself in Finder.", path = path.display()));
     }
     if std::fs::symlink_metadata(path).is_err() {
-        return Err("文件已经不在了，可能已被移动或删除".into());
+        return Err(tr!("The file is no longer there; it may have been moved or deleted"));
     }
-    remove(path).map_err(|e| format!("删除失败：{e}"))
+    remove(path).map_err(|e| tr!("Couldn't delete it: {error}", error = e))
 }
 
 fn is_safe_to_delete(path: &Path, home: &Path) -> bool {
@@ -133,11 +133,11 @@ fn is_safe_to_delete(path: &Path, home: &Path) -> bool {
     if SYSTEM_ROOTS.iter().any(|r| path.starts_with(r)) || home.starts_with(path) {
         return false;
     }
-    // ~/Downloads、~/code 这类一级目录是用户自己的地盘，误点一下的代价太大
+    // Top-level folders like ~/Downloads and ~/code are the user's own space; one misclick would cost too much
     if path.parent() == Some(home) {
         return false;
     }
-    // /Applications、/Volumes 这样的顶层目录也不行，但里面的 Zeff.app 可以
+    // Top-level folders like /Applications and /Volumes are refused too, but a Zeff.app inside them is fine
     path.components().count() >= 3
 }
 
@@ -149,7 +149,7 @@ mod tests {
     fn refuses_top_level_and_system_paths() {
         let home = Path::new("/Users/alice");
         for p in ["/", "/Users", "/Users/alice", "/Users/alice/Downloads", "/Applications", "/System/Library/x", "/usr/local/bin/node", "relative/x", "/Users/alice/Downloads/../.ssh"] {
-            assert!(!is_safe_to_delete(Path::new(p), home), "{p} 不应该允许删除");
+            assert!(!is_safe_to_delete(Path::new(p), home), "{p} must not be deletable");
         }
     }
 
@@ -157,7 +157,7 @@ mod tests {
     fn allows_concrete_files_and_projects() {
         let home = Path::new("/Users/alice");
         for p in ["/Users/alice/Downloads/Zeff.dmg", "/Users/alice/code/interview-task", "/Applications/Zeff.app", "/Users/alice/.vscode/extensions/evil-1.0.0"] {
-            assert!(is_safe_to_delete(Path::new(p), home), "{p} 应该允许删除");
+            assert!(is_safe_to_delete(Path::new(p), home), "{p} should be deletable");
         }
     }
 }

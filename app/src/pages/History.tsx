@@ -12,6 +12,20 @@ const PATH_SOURCES: LogEntry["source"][] = ["download", "extension", "scan"];
 const FILE_SOURCES: LogEntry["source"][] = [...PATH_SOURCES, "mount"];
 const isCommand = (e: LogEntry) => e.source === "terminal" || e.source === "paste";
 
+/** Secret kinds are stored as English IDs (see sandbox::secret_label); old records hold Chinese names, shown as they are */
+function secretLabel(kind: string): string {
+  const labels: Record<string, string> = {
+    "OpenAI / Anthropic API key": t("OpenAI / Anthropic API key"),
+    "AWS access key": t("AWS access key"),
+    "GitHub token": t("GitHub token"),
+    "Google API key": t("Google API key"),
+    "Slack token": t("Slack token"),
+    "npm token": t("npm token"),
+    "private key": t("private key"),
+  };
+  return labels[kind] ?? kind;
+}
+
 // Built at render time so the labels follow the current language
 function sourceLabel(source: LogEntry["source"]): string {
   switch (source) {
@@ -88,7 +102,7 @@ function SandboxPanel({ r }: { r: SandboxResult }) {
                 <span className="mono">{e.target}</span>
                 {e.forwarded && <span className="muted small"> {t("official npm registry, allowed")}</span>}
                 {e.leaked && e.leaked.length > 0 && <span className="tone-block small"> {t("sent decoy data: {items}", { items: e.leaked.join(listSeparator()) })}</span>}
-                {e.secrets && e.secrets.length > 0 && <span className="tone-block small"> {t("request appears to carry {items}", { items: e.secrets.join(listSeparator()) })}</span>}
+                {e.secrets && e.secrets.length > 0 && <span className="tone-block small"> {t("request appears to carry {items}", { items: e.secrets.map(secretLabel).join(listSeparator()) })}</span>}
               </li>
             ))}
           </ul>

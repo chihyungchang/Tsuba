@@ -364,7 +364,7 @@ fn fake_meeting_dmg_volume_blocked() {
     let mut findings = Vec::new();
     let info = tsuba_engine::macos::inspect_volume(&fix("fake_meeting_volume"), "Zeff.dmg", &mut findings);
     let msgs = messages(&findings);
-    for want in ["终端", "Installer.file", "隐藏目录", "quarantine flag", "没有正常的应用程序"] {
+    for want in ["Terminal", "Installer.file", "hidden folder", "quarantine flag", "no regular app"] {
         assert!(msgs.contains(want), "缺少 {want}: {msgs}");
     }
     assert_eq!(rules::offline_verdict(&findings), Verdict::Block);
@@ -390,7 +390,7 @@ fn resource_fork_dropper_blocked() {
     let mut findings = Vec::new();
     let info = tsuba_engine::macos::inspect_volume(dir.path(), "Office365.dmg", &mut findings);
     let msgs = messages(&findings);
-    assert!(msgs.contains("资源派生里藏着一个压缩包"), "应发现资源派生里的压缩包: {msgs}");
+    assert!(msgs.contains("hides a zip archive"), "应发现资源派生里的压缩包: {msgs}");
     assert!(msgs.contains("cuts data out of a file's resource fork"), "应命中投放器脚本规则: {msgs}");
     assert_eq!(rules::offline_verdict(&findings), Verdict::Block);
     assert_eq!(info["resource_forks"][0]["size"], fork.len());
@@ -410,7 +410,7 @@ fn resource_fork_icon_is_not_flagged() {
     std::fs::write(readme.join("..namedfork/rsrc"), &icon).unwrap();
     let mut findings = Vec::new();
     tsuba_engine::macos::inspect_volume(dir.path(), "Tool.dmg", &mut findings);
-    assert!(!messages(&findings).contains("资源派生"), "只有图标的资源派生不该报: {}", messages(&findings));
+    assert!(!messages(&findings).contains("resource fork"), "只有图标的资源派生不该报: {}", messages(&findings));
     // 只读取、不解压的规则：普通脚本提到 tail -c 不算
     assert!(rules::scan_text("tail -c +100 build.log", "x.sh").is_empty());
 }
@@ -630,10 +630,10 @@ fn sandbox_outbound_secret_scan() {
     let fake_github = format!("ghp_{}", "a1B2".repeat(9));
     let (leaked, secrets) = sandbox::scan_outbound(&format!("GET http://198.51.100.9/x?t={fake_github} HTTP/1.1"));
     assert!(leaked.is_empty());
-    assert_eq!(secrets, vec!["GitHub 令牌"]);
+    assert_eq!(secrets, vec!["GitHub token"]);
     // 证据里不留密钥的值
     let shown = sandbox::redact_secrets(&format!("GET http://198.51.100.9/x?t={fake_github}"));
-    assert!(!shown.contains(&fake_github) && shown.contains("[GitHub 令牌 已隐去]"), "{shown}");
+    assert!(!shown.contains(&fake_github) && shown.contains("[GitHub token redacted]"), "{shown}");
     // 普通请求不误报
     let (leaked, secrets) = sandbox::scan_outbound("GET http://registry.example.org/pkg/-/pkg-1.0.0.tgz HTTP/1.1\r\nUser-Agent: npm/10\r\n\r\n");
     assert!(leaked.is_empty() && secrets.is_empty());
@@ -694,17 +694,17 @@ fn sandbox_findings_classify_behavior() {
     let b = Behavior {
         network: vec![
             NetEvent { target: "203.0.113.7:1224".into(), request: String::new(), leaked: vec!["TSUBA-DECOY-WALLET".into()], secrets: vec![], forwarded: false },
-            NetEvent { target: "198.51.100.9:80".into(), request: String::new(), leaked: vec![], secrets: vec!["GitHub 令牌".into()], forwarded: false },
+            NetEvent { target: "198.51.100.9:80".into(), request: String::new(), leaked: vec![], secrets: vec!["GitHub token".into()], forwarded: false },
         ],
         new_files: vec!["Library/LaunchAgents/com.x.plist".into(), ".node_modules/axios/index.js".into()],
         ..Default::default()
     };
     let msgs = messages(&sandbox::findings(&b));
-    assert!(msgs.contains("Exodus 钱包") && msgs.contains("铁证"), "应判定为窃取，并说明是哪种诱饵: {msgs}");
-    assert!(msgs.contains("疑似 GitHub 令牌"), "外发真实格式的密钥应记录: {msgs}");
-    assert!(msgs.contains("开机自启"), "应判定为持久化: {msgs}");
-    assert!(msgs.contains("隐藏目录"), "应判定为落地痕迹: {msgs}");
-    assert!(msgs.contains("IP 地址"), "连裸 IP 应记录: {msgs}");
+    assert!(msgs.contains("Exodus wallet") && msgs.contains("proof"), "应判定为窃取，并说明是哪种诱饵: {msgs}");
+    assert!(msgs.contains("secrets (GitHub token)"), "外发真实格式的密钥应记录: {msgs}");
+    assert!(msgs.contains("starts at login"), "应判定为持久化: {msgs}");
+    assert!(msgs.contains("hidden folder"), "应判定为落地痕迹: {msgs}");
+    assert!(msgs.contains("IP address"), "连裸 IP 应记录: {msgs}");
 
     // 被拦下的越权操作：恶意信号定高危，正常安装也会做的事只当证据
     use tsuba_engine::sandbox::Denied;
@@ -721,7 +721,7 @@ fn sandbox_findings_classify_behavior() {
     let f = sandbox::findings(&b);
     let high = f.iter().filter(|x| x.severity == rules::Severity::High).count();
     assert_eq!(high, 3, "写开机自启、读真实私钥、读钥匙串都是高危：{:?}", f.iter().map(|x| &x.message).collect::<Vec<_>>());
-    assert!(messages(&f).contains("端口 1224"));
+    assert!(messages(&f).contains("port 1224"));
 
     let benign = Behavior {
         denied: vec![

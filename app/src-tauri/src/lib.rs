@@ -239,7 +239,7 @@ struct DoctorResult {
 #[tauri::command]
 async fn run_doctor() -> DoctorResult {
     let findings = tauri::async_runtime::spawn_blocking(doctor::run).await.unwrap_or_default();
-    DoctorResult { advice: if findings.is_empty() { String::new() } else { doctor::ADVICE.into() }, findings }
+    DoctorResult { advice: if findings.is_empty() { String::new() } else { doctor::advice() }, findings }
 }
 
 #[derive(Serialize)]

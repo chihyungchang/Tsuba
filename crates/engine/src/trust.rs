@@ -1,7 +1,7 @@
-//! 白名单：用户确认安全的文件、项目、扩展、skill、MCP server 不再提醒。
+//! Allowlist: files, projects, extensions, skills and MCP servers the user confirmed as safe no longer raise warnings.
 //!
-//! 按内容指纹记录，而不是按名字：攻击者可以沿用一个被信任过的路径或名字，
-//! 但内容一变指纹就对不上，会重新检查。
+//! Entries are keyed by content fingerprint, not by name: an attacker can reuse a trusted path or name,
+//! but once the content changes the fingerprint no longer matches and it is checked again.
 
 use crate::agents::McpServer;
 use crate::{collect, extension, net, sha256_file, store};
@@ -12,10 +12,10 @@ use std::path::Path;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrustItem {
-    /// path:<绝对路径> 或 mcp:<客户端|配置|名字>
+    /// path:<absolute path> or mcp:<client|config|name>
     pub key: String,
     pub fingerprint: String,
-    /// 给人看的名字
+    /// Name for people to read
     pub label: String,
     pub time: String,
 }
@@ -37,8 +37,8 @@ fn path_key(path: &Path) -> String {
     format!("path:{}", p.display())
 }
 
-/// 内容指纹。项目用 package.json + git 状态（不去哈希 node_modules）；
-/// 其他目录（扩展、skill）把每个文件的相对路径和内容都算进去。
+/// Content fingerprint. Projects use package.json + git state (node_modules is not hashed);
+/// other folders (extensions, skills) include every file's relative path and content.
 pub fn fingerprint(path: &Path) -> Option<String> {
     if path.is_file() {
         return sha256_file(path);
@@ -73,13 +73,13 @@ fn matches(key: &str, fingerprint: impl FnOnce() -> Option<String>) -> bool {
 }
 
 pub fn trust_path(path: &Path) -> Result<TrustItem, String> {
-    let fp = fingerprint(path).ok_or_else(|| format!("读不到 {}", path.display()))?;
+    let fp = fingerprint(path).ok_or_else(|| tr!("Couldn't read {path}", path = path.display()))?;
     let item = TrustItem { key: path_key(path), fingerprint: fp, label: path.display().to_string(), time: store::now() };
     upsert(item.clone());
     Ok(item)
 }
 
-/// 用户标记过安全，而且内容没变。
+/// The user marked it safe and its content hasn't changed.
 pub fn is_trusted_path(path: &Path) -> bool {
     matches(&path_key(path), || fingerprint(path))
 }
@@ -88,7 +88,7 @@ pub fn trust_mcp(server: &McpServer) -> TrustItem {
     let item = TrustItem {
         key: format!("mcp:{}", server.key()),
         fingerprint: server.fingerprint(),
-        label: format!("{} · {}（MCP server）", server.client, server.name),
+        label: format!("{} · {} (MCP server)", server.client, server.name),
         time: store::now(),
     };
     upsert(item.clone());
@@ -105,10 +105,10 @@ pub fn remove(key: &str) {
     save(&list);
 }
 
-/// 把列表里的一项标记为安全：mcp:<key> 是 MCP server，其他（可带 path: 前缀）当作路径。
+/// Marks an item as safe: mcp:<key> is an MCP server, anything else (optionally prefixed with path:) is a path.
 pub fn trust(key: &str) -> Result<TrustItem, String> {
     match key.strip_prefix("mcp:") {
-        Some(k) => crate::agents::user_mcp_servers().iter().find(|s| s.key() == k).map(trust_mcp).ok_or_else(|| "找不到这个 MCP server，可能已经被删掉".into()),
+        Some(k) => crate::agents::user_mcp_servers().iter().find(|s| s.key() == k).map(trust_mcp).ok_or_else(|| tr!("Couldn't find this MCP server; it may have been removed")),
         None => trust_path(Path::new(key.strip_prefix("path:").unwrap_or(key))),
     }
 }

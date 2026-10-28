@@ -397,7 +397,7 @@ fn cmd_doctor() -> i32 {
         let extra = if f.snippet.is_empty() { String::new() } else { tr!(" ({snippet})", snippet = f.snippet) };
         eprintln!("  • {}{extra}", tr!("{message}: {location}", message = f.message, location = f.location));
     }
-    eprintln!("{}", tr!("{bold}What to do:{reset} {advice}", bold = s.bold, reset = s.rst, advice = doctor::ADVICE));
+    eprintln!("{}", tr!("{bold}What to do:{reset} {advice}", bold = s.bold, reset = s.rst, advice = doctor::advice()));
     2
 }
 
@@ -528,7 +528,7 @@ fn print_behavior(s: &Style, b: &tsuba_engine::sandbox::Behavior, title: &str) {
                 format!("  {}{}{}", s.red, tr!("← sent decoy data: {decoys}", decoys = decoys), s.rst)
             };
             if !ev.secrets.is_empty() {
-                leak.push_str(&format!("  {}{}{}", s.red, tr!("← the request seems to carry: {secrets}", secrets = ev.secrets.join(&separator)), s.rst));
+                leak.push_str(&format!("  {}{}{}", s.red, tr!("← the request seems to carry: {secrets}", secrets = ev.secrets.iter().map(|k| tsuba_engine::sandbox::secret_label(k)).collect::<Vec<_>>().join(&separator)), s.rst));
             }
             let note = if ev.forwarded { tr!(" (official npm registry, allowed)") } else { String::new() };
             eprintln!("   • {} {}{}{note}{}{leak}", ev.target, s.dim, ev.request, s.rst);

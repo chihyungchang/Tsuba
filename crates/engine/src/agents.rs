@@ -210,7 +210,7 @@ pub fn scan_mcp_server(s: &McpServer, online: bool) -> Vec<Finding> {
         }
         if online && eco == "npm" {
             let info = net::npm_package_info(&spec);
-            if crate::collect::is_missing_on_npm(&info) {
+            if net::is_missing_package(&info) {
                 findings.push(Finding::new(Severity::High, tr!("{name} doesn't exist on npm (possibly a typo or a squatted name)", name = name), &loc));
             } else if let Some(age) = info.get("created_days_ago").and_then(|v| v.as_i64()).filter(|a| *a < 30) {
                 findings.push(Finding::new(Severity::Medium, tr!("{name} is a new package, created only {age} days ago", name = name, age = age), &loc));

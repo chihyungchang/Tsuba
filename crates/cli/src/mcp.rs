@@ -209,7 +209,7 @@ mod tests {
         assert!(content[0]["text"].as_str().unwrap().contains("untrusted"), "declares the data untrusted first");
         let text = content[1]["text"].as_str().unwrap();
         assert!(text.contains("\"id\": \"1\"") && !text.contains("left-pad"), "only warnings and blocks by default: {text}");
-        assert!(!text.contains("ghp_a1B2") && text.contains("GitHub"), "tokens in commands are redacted: {text}");
+        assert!(!text.contains("ghp_a1B2") && text.contains("GitHub") && text.contains("redacted]"), "tokens in commands are redacted: {text}");
 
         let r = call_tool("explain_check", json!({ "id": "1" }));
         let text = r["result"]["content"][1]["text"].as_str().unwrap();

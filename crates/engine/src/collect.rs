@@ -19,13 +19,6 @@ const MAX_FILE_BYTES: usize = 2_000_000;
 
 const RELEASE_COOLDOWN: &str = "release_cooldown";
 
-/// Whether npm_package_info found no such package on npm.
-// TODO(net.rs): net.rs only reports this as error text; compare a structural field once it has one, so the check
-// survives that text being translated.
-pub fn is_missing_on_npm(info: &Map<String, Value>) -> bool {
-    info.get("error").and_then(|v| v.as_str()) == Some("npm 上不存在这个包")
-}
-
 fn git(root: &Path, args: &[&str]) -> String {
     Command::new("git")
         .arg("-C")
@@ -295,7 +288,7 @@ fn check_packages(specs: &[String], online: bool, findings: &mut Vec<Finding>) -
     });
     for info in &infos {
         let name = info.get("name").and_then(|v| v.as_str()).unwrap_or("");
-        if is_missing_on_npm(info) {
+        if net::is_missing_package(info) {
             findings.push(Finding::new(Severity::High, tr!("{name} doesn't exist on npm (possibly a typo or dependency confusion)", name = name), name));
             continue;
         }
