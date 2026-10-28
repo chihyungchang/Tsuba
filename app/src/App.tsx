@@ -9,7 +9,7 @@ import { OverviewPage } from "./pages/Overview";
 import { ScanPage } from "./pages/Scan";
 import { SettingsPage } from "./pages/Settings";
 import { LogEntry, Overview, QuarantineItem } from "./types";
-import { Toaster } from "./ui";
+import { GoHome, Toaster } from "./ui";
 import "./App.css";
 
 type Page = "overview" | "history" | "scan" | "doctor" | "settings";
@@ -60,9 +60,14 @@ export default function App() {
     };
   }, [reload, setPage]);
 
-  // ⌘1–4 切换页面，⌘, 打开设置：Mac 软件的习惯
+  // ⌘1–4 切换页面，⌘, 打开设置：Mac 软件的习惯；Esc 回首页（输入框里除外）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
+      if (e.key === "Escape" && !typing && !e.metaKey) {
+        setPage("overview");
+        return;
+      }
       if (!e.metaKey || e.altKey || e.ctrlKey) return;
       const p = PAGES.find((x) => x.key === e.key);
       if (p) {
@@ -86,6 +91,7 @@ export default function App() {
   const paused = overview?.paused ?? false;
   const resume = () => invoke("set_paused", { paused: false }).then(reload);
   const current = PAGES.find((p) => p.id === page);
+  const goHome = useCallback(() => setPage("overview"), [setPage]);
 
   // 暂停时整个界面换成警示色：用户在哪一页都该感觉到“现在没有保护”
   useEffect(() => {
@@ -93,16 +99,13 @@ export default function App() {
   }, [paused]);
 
   return (
+    <GoHome.Provider value={goHome}>
     <div className={`shell ${paused ? "is-paused" : ""}`}>
-      {/* 标题栏：系统的红绿灯压在左边；不在首页时显示“返回”和页面名 */}
+      {/* 标题栏：只有红绿灯、居中的页面名和右边的刀标；返回放在内容里的面包屑 */}
       <header className="titlebar" data-tauri-drag-region>
-        {page !== "overview" && (
-          <button className="back" onClick={() => setPage("overview")} title={`从${current?.label ?? ""}回到首页  ⌘1`}>
-            <Icon.chevron size={13} className="back-chevron" />
-            返回
-          </button>
-        )}
-        <span className="titlebar-title" data-tauri-drag-region />
+        <span className="titlebar-title" data-tauri-drag-region>
+          {page === "overview" ? "" : current?.label}
+        </span>
         {paused ? (
           <button className="titlebar-status is-paused" onClick={resume} title="终端检查和后台监控都停了，点一下恢复">
             <Icon.shieldOff size={13} />
@@ -147,5 +150,6 @@ export default function App() {
       <Toaster />
       <Splash status={overview ? (overview.paused ? "已暂停 0/4" : `守护中 ${[overview.shell_hook.installed, overview.watch_downloads, overview.watch_extensions, overview.watch_ai_tools].filter(Boolean).length}/4`) : "启动中"} />
     </div>
+    </GoHome.Provider>
   );
 }

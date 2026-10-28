@@ -172,10 +172,11 @@ export function OverviewPage({
           <TsubaRing defenses={defenses} paused={paused} />
           <div className="dash-hero-text">
             <span className="status-pill">{paused ? "守护已暂停 · 现在没有保护" : active === defenses.length ? "守护中 · 四道防线都在工作" : `守护中 · ${active} / ${defenses.length} 道防线在工作`}</span>
-            <h1>{paused ? "保护已关闭，刀已入鞘。" : "陌生代码，先过这一关。"}</h1>
-            {paused ? (
-              <p className="dash-hero-warning">现在运行的命令、下载的安装包、新装的扩展和 AI 工具都不会被检查。处理完手头的事，马上恢复。</p>
-            ) : (
+            <h1>{paused ? "主动防御已暂停" : "AI 主动防御"}</h1>
+            <p className="dash-hero-lede">
+              {paused ? "刀已入鞘：现在运行的命令、下载的安装包、新装的扩展和 AI 工具都不会被检查。处理完手头的事，马上恢复。" : "陌生代码运行之前，离线规则和 AI 先替你看一眼：假面试项目、假会议软件、投毒的包和扩展、恶意 MCP 与 skill。"}
+            </p>
+            {paused ? null : (
               <button type="button" className="layer-checks" onClick={() => go("settings")} title="在设置里管理防线">
                 {defenses.map((d) => (
                   <span key={d.label} className={d.on ? "is-on" : "is-off"}>

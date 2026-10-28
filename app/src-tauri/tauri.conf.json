@@ -15,16 +15,16 @@
         "label": "main",
         "title": "Tsuba",
         "width": 1000,
-        "height": 720,
-        "minWidth": 880,
-        "minHeight": 600,
+        "height": 700,
         "visible": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "trafficLightPosition": {
           "x": 16,
           "y": 20
-        }
+        },
+        "resizable": false,
+        "maximizable": false
       }
     ],
     "security": {

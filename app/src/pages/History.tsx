@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Icon } from "../icons";
 import { ACTION_LABEL, LogEntry, QuarantineItem, SandboxResult, SOURCE_LABEL } from "../types";
-import { Banner, ConfirmButton, Empty, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
+import { BackLink, Banner, ConfirmButton, Empty, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
 
 /** 记录标题就是磁盘路径的来源：可以隔离、标记安全、在 Finder 里显示 */
 const PATH_SOURCES: LogEntry["source"][] = ["download", "extension", "scan"];
@@ -174,6 +174,7 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
     <div className="split">
       <aside className="list-pane">
         <div className="list-head" data-tauri-drag-region>
+          <BackLink />
           <h1 data-tauri-drag-region>检查记录</h1>
           <div className="segmented" role="tablist">
             <button role="tab" aria-selected={filter === "risky"} className={filter === "risky" ? "on" : ""} onClick={() => setFilter("risky")}>

@@ -1,6 +1,6 @@
 // 各页面共用的界面零件：页头、分组列表、结论标签、证据列表、空状态。
 
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "./icons";
 import { Finding, Report, Verdict, VERDICT_LABEL } from "./types";
 
@@ -32,6 +32,20 @@ export function relativeTime(iso: string): string {
   return `${t.getMonth() + 1}月${t.getDate()}日 ${hm}`;
 }
 
+/** 回到首页。详情页的面包屑用；由 App 提供，页面不用一层层传 */
+export const GoHome = createContext<() => void>(() => {});
+
+/** 详情页左上角的“‹ 首页”：返回放在内容里，不挤在标题栏的红绿灯旁边 */
+export function BackLink() {
+  const goHome = useContext(GoHome);
+  return (
+    <button type="button" className="crumb" onClick={goHome} title="回到首页  Esc / ⌘1">
+      <Icon.chevron size={12} className="crumb-chevron" />
+      首页
+    </button>
+  );
+}
+
 export type HeaderStat = { label: string; value: ReactNode; tone?: "allow" | "warn" | "block" };
 
 /**
@@ -58,6 +72,7 @@ export function PageHeader({
   const I = icon ? Icon[icon] : null;
   return (
     <header className={`page-header ${I ? "page-hero" : ""} hero-tone-${tone}`} data-tauri-drag-region>
+      {I && <BackLink />}
       <div className="page-hero-main" data-tauri-drag-region>
         {I && (
           <span className="page-hero-icon">
