@@ -1249,11 +1249,49 @@ button.tile.tile-intel:hover:not(:disabled) {
   font-weight: 500;
 }
 
-@media (max-width: 960px) {
+/* 窗口最小 880 宽：磁贴保持一排四个，再窄才折成两排 */
+@media (max-width: 760px) {
   .tiles {
     grid-template-columns: repeat(2, 1fr);
   }
+}
 
+/* 窗口矮的时候收紧仪表盘，最小尺寸（880 × 600）下一屏放得下，不用滚动 */
+@media (max-height: 680px) {
+  .dashboard {
+    gap: 14px;
+    padding-bottom: 16px;
+  }
+
+  .dash-hero {
+    padding-top: 12px;
+    grid-template-columns: 170px 1fr;
+    gap: 24px;
+  }
+
+  .hero-art {
+    width: 170px;
+  }
+
+  .dash-hero h1 {
+    margin: 8px 0 6px;
+    font-size: 22px;
+  }
+
+  .dash-hero-actions {
+    margin-top: 12px;
+  }
+
+  .dash-hero-meta {
+    margin-top: 8px;
+  }
+
+  button.tile {
+    min-height: 72px;
+  }
+}
+
+@media (max-width: 960px) {
   .dash-hero {
     grid-template-columns: 180px 1fr;
     gap: 22px;
