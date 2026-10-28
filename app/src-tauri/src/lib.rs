@@ -318,6 +318,22 @@ fn delete_quarantine(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 检查记录里的“删除文件”：按记录 id 找路径，前端不能指定任意路径。
+/// 只有磁盘上的东西（下载、安装镜像、扩展、手动检查）才能删；删完在记录上标明。
+#[tauri::command]
+fn delete_entry_file(app: AppHandle, entry_id: String) -> Result<(), String> {
+    let mut entry = store::read_log(2000).into_iter().find(|e| e.id == entry_id).ok_or("找不到这条检查记录")?;
+    if !["download", "mount", "extension", "scan"].contains(&entry.source.as_str()) {
+        return Err("这条记录不是磁盘上的文件".into());
+    }
+    quarantine::delete_path(std::path::Path::new(&entry.title))?;
+    entry.action = "deleted".into();
+    store::append_log(&entry);
+    let _ = app.emit("history-updated", ());
+    let _ = app.emit("status-changed", ());
+    Ok(())
+}
+
 #[tauri::command]
 fn trusted_list() -> Vec<trust::TrustItem> {
     trust::list()
@@ -547,6 +563,7 @@ pub fn run() {
             quarantine_path,
             restore_quarantine,
             delete_quarantine,
+            delete_entry_file,
             trusted_list,
             trust_item,
             untrust_item,

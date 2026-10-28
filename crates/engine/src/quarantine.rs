@@ -110,3 +110,54 @@ pub fn delete(id: &str) -> Result<(), String> {
     save(&list);
     Ok(())
 }
+
+/// 用户在检查记录里点了“删除文件”：不进隔离区，直接删掉。
+///
+/// 删除来自记录标题里的路径，而记录可能是扫描整个文件夹留下的（比如 ~/Downloads）。
+/// 所以只允许删具体的文件或项目，家目录本身、家目录下的一级目录和系统目录一律拒绝。
+pub fn delete_path(path: &Path) -> Result<(), String> {
+    if !is_safe_to_delete(path, &crate::home_dir()) {
+        return Err(format!("{} 是系统或个人的顶层目录，Tsuba 不会删除它。请在 Finder 里自己处理。", path.display()));
+    }
+    if std::fs::symlink_metadata(path).is_err() {
+        return Err("文件已经不在了，可能已被移动或删除".into());
+    }
+    remove(path).map_err(|e| format!("删除失败：{e}"))
+}
+
+fn is_safe_to_delete(path: &Path, home: &Path) -> bool {
+    const SYSTEM_ROOTS: [&str; 7] = ["/System", "/usr", "/bin", "/sbin", "/private", "/etc", "/Library"];
+    if !path.is_absolute() || path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return false;
+    }
+    if SYSTEM_ROOTS.iter().any(|r| path.starts_with(r)) || home.starts_with(path) {
+        return false;
+    }
+    // ~/Downloads、~/code 这类一级目录是用户自己的地盘，误点一下的代价太大
+    if path.parent() == Some(home) {
+        return false;
+    }
+    // /Applications、/Volumes 这样的顶层目录也不行，但里面的 Zeff.app 可以
+    path.components().count() >= 3
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refuses_top_level_and_system_paths() {
+        let home = Path::new("/Users/alice");
+        for p in ["/", "/Users", "/Users/alice", "/Users/alice/Downloads", "/Applications", "/System/Library/x", "/usr/local/bin/node", "relative/x", "/Users/alice/Downloads/../.ssh"] {
+            assert!(!is_safe_to_delete(Path::new(p), home), "{p} 不应该允许删除");
+        }
+    }
+
+    #[test]
+    fn allows_concrete_files_and_projects() {
+        let home = Path::new("/Users/alice");
+        for p in ["/Users/alice/Downloads/Zeff.dmg", "/Users/alice/code/interview-task", "/Applications/Zeff.app", "/Users/alice/.vscode/extensions/evil-1.0.0"] {
+            assert!(is_safe_to_delete(Path::new(p), home), "{p} 应该允许删除");
+        }
+    }
+}
