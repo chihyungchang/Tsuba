@@ -1,6 +1,7 @@
-// 各页面共用的界面零件：页头、分组列表、结论标签、证据列表、空状态。
+// UI parts shared by every page: page header, grouped lists, verdict badges, evidence lists, empty states.
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Fragment, createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { lang, t } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import { Finding, Report, Verdict, VERDICT_LABEL } from "./types";
 
@@ -8,7 +9,7 @@ export function errText(e: unknown): string {
   return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
 }
 
-/** 家目录换成 ~，路径太长时读起来累 */
+/** Home directory shown as ~: long paths are tiring to read */
 export function shortPath(p: string): string {
   return p.replace(/^\/Users\/[^/]+/, "~");
 }
@@ -17,31 +18,56 @@ export function baseName(p: string): string {
   return p.replace(/\/+$/, "").split("/").pop() || p;
 }
 
-/** “3 分钟前”“昨天 14:20”这样的时间，记录列表里比完整时间好扫 */
-export function relativeTime(iso: string): string {
-  const t = new Date(iso.replace(" ", "T"));
-  if (Number.isNaN(t.getTime())) return iso;
-  const diff = (Date.now() - t.getTime()) / 1000;
-  const hm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
-  if (diff < 60) return "刚刚";
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
-  const today = new Date();
-  const yesterday = new Date(today.getTime() - 86400_000);
-  if (t.toDateString() === today.toDateString()) return `今天 ${hm}`;
-  if (t.toDateString() === yesterday.toDateString()) return `昨天 ${hm}`;
-  return `${t.getMonth() + 1}月${t.getDate()}日 ${hm}`;
+/**
+ * Fills `{name}` placeholders in already-translated text with elements, such as a <code> inside a sentence.
+ * The sentence stays whole in the catalog, so each language can put the element where its grammar wants it.
+ */
+export function interpolate(text: string, nodes: Record<string, ReactNode>): ReactNode {
+  return text.split(/\{(\w+)\}/).map((part, i) => (i % 2 === 1 ? <Fragment key={i}>{nodes[part] ?? `{${part}}`}</Fragment> : part));
 }
 
-/** 回到首页。详情页的面包屑用；由 App 提供，页面不用一层层传 */
+/** A number with the current language's digit grouping: "12,345" */
+export function formatNumber(n: number): string {
+  return n.toLocaleString(lang());
+}
+
+/** A large count kept short: "23.4K" in English, "2.3 万" in Chinese (Chinese groups by ten thousand) */
+export function formatCompact(n: number): string {
+  if (n < 10000) return formatNumber(n);
+  if (lang() === "zh-Hans") return `${(n / 10000).toFixed(1)} 万`;
+  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+/** Times like "3 min ago" or "yesterday at 2:20 PM": quicker to scan in a list than full timestamps */
+export function relativeTime(iso: string): string {
+  const time = new Date(iso.replace(" ", "T"));
+  if (Number.isNaN(time.getTime())) return iso;
+  const isChinese = lang() === "zh-Hans";
+  const diff = (Date.now() - time.getTime()) / 1000;
+  // Chinese keeps the 24-hour clock it always had; English follows the usual "2:20 PM"
+  const clock = isChinese
+    ? `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`
+    : time.toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" });
+  if (diff < 60) return t("just now");
+  if (diff < 3600) return t("{n} min ago", { n: Math.floor(diff / 60) });
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86400_000);
+  if (time.toDateString() === today.toDateString()) return t("today at {time}", { time: clock });
+  if (time.toDateString() === yesterday.toDateString()) return t("yesterday at {time}", { time: clock });
+  const date = isChinese ? `${time.getMonth() + 1}月${time.getDate()}日` : time.toLocaleDateString("en", { month: "short", day: "numeric" });
+  return t("{date} at {time}", { date, time: clock });
+}
+
+/** Go back to the dashboard. Used by the breadcrumb on detail pages; App provides it so pages don't pass it down */
 export const GoHome = createContext<() => void>(() => {});
 
-/** 详情页左上角的“‹ 首页”：返回放在内容里，不挤在标题栏的红绿灯旁边 */
+/** The "‹ Home" at the top left of detail pages: going back lives in the content, not crammed next to the traffic lights */
 export function BackLink() {
   const goHome = useContext(GoHome);
   return (
-    <button type="button" className="crumb" onClick={goHome} title="回到首页  Esc / ⌘1">
+    <button type="button" className="crumb" onClick={goHome} title={`${t("Back to Home")}  Esc / ⌘1`}>
       <Icon.chevron size={12} className="crumb-chevron" />
-      首页
+      {t("Home")}
     </button>
   );
 }
@@ -49,8 +75,8 @@ export function BackLink() {
 export type HeaderStat = { label: string; value: ReactNode; tone?: "allow" | "warn" | "block" };
 
 /**
- * 详情页的头部卡片，和首页仪表盘一个语言：大图标 + 标题 + 状态，右边主操作，下面一排关键数字。
- * tone 决定图标底块和状态胶囊的颜色（有问题时变琥珀或红）。
+ * Header card for detail pages, in the same language as the dashboard: large icon + title + status, main action on the right, a row of key numbers below.
+ * tone sets the color of the icon tile and the status pill (amber or red when something is wrong).
  */
 export function PageHeader({
   title,
@@ -114,7 +140,7 @@ export function Section({ title, aside, children }: { title?: string; aside?: Re
   );
 }
 
-/** 分组列表：圆角容器，行与行之间是内缩的细线（macOS 设置的样子） */
+/** Grouped list: a rounded container with inset hairlines between rows (the macOS Settings look) */
 export function Group({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`group ${className}`}>{children}</div>;
 }
@@ -194,7 +220,7 @@ export function VerdictBadge({ v, large }: { v: Verdict; large?: boolean }) {
 }
 
 export function Spinner() {
-  return <span className="spinner" aria-label="进行中" />;
+  return <span className="spinner" aria-label={t("In progress")} />;
 }
 
 export function Empty({ icon, title, children }: { icon: IconName; title: string; children?: ReactNode }) {
@@ -213,7 +239,7 @@ export function Banner({ tone = "block", children, onClose }: { tone?: "block" |
     <div className={`banner banner-${tone}`} role="alert">
       <span>{children}</span>
       {onClose && (
-        <button type="button" className="banner-close" aria-label="关闭" onClick={onClose}>
+        <button type="button" className="banner-close" aria-label={t("Close")} onClick={onClose}>
           ×
         </button>
       )}
@@ -221,21 +247,25 @@ export function Banner({ tone = "block", children, onClose }: { tone?: "block" |
   );
 }
 
-const SEV_LABEL = { high: "高", medium: "中", low: "低" } as const;
+// The severity tile is a 22px square: one Chinese character fits, so English gets one letter plus the full word as a tooltip
+const severityLabel = (s: Finding["severity"]) => ({ high: t("H"), medium: t("M"), low: t("L") })[s];
+const severityName = (s: Finding["severity"]) => ({ high: t("High severity"), medium: t("Medium severity"), low: t("Low severity") })[s];
 
 export function FindingList({ findings }: { findings: Finding[] }) {
-  if (findings.length === 0) return <p className="muted">离线规则没有命中。</p>;
+  if (findings.length === 0) return <p className="muted">{t("No offline rules matched.")}</p>;
   const order = { high: 0, medium: 1, low: 2 };
   const sorted = [...findings].sort((a, b) => order[a.severity] - order[b.severity]);
   return (
     <ol className="findings">
       {sorted.map((f, i) => (
         <li key={i} className={`finding sev-${f.severity}`}>
-          <span className="sev">{SEV_LABEL[f.severity]}</span>
+          <span className="sev" title={severityName(f.severity)}>
+            {severityLabel(f.severity)}
+          </span>
           <div className="finding-body">
             <div className="finding-message">{f.message}</div>
             {f.where && <div className="finding-where">{f.where}</div>}
-            {f.source && <div className="finding-source">来源：{f.source}</div>}
+            {f.source && <div className="finding-source">{t("Source: {source}", { source: f.source })}</div>}
             {f.snippet && <pre className="snippet">{f.snippet}</pre>}
           </div>
         </li>
@@ -245,14 +275,14 @@ export function FindingList({ findings }: { findings: Finding[] }) {
 }
 
 export function ReportView({ report }: { report: Report }) {
-  const source = report.source === "ai" ? `AI 判断 · ${report.model}` : report.source === "trusted" ? "你标记过安全" : "离线规则";
+  const source = report.source === "ai" ? t("AI judgment · {model}", { model: report.model }) : report.source === "trusted" ? t("You marked this as safe") : t("Offline rules");
   return (
     <div className="report">
       {report.summary && <p className="report-summary">{report.summary}</p>}
       <div className="report-source">{source}</div>
       {report.reasons.length > 0 && (
         <div className="report-block">
-          <h3>依据</h3>
+          <h3>{t("Reasons")}</h3>
           <ul className="reasons">
             {report.reasons.map((r, i) => (
               <li key={i}>{r}</li>
@@ -262,39 +292,43 @@ export function ReportView({ report }: { report: Report }) {
       )}
       {report.advice && report.verdict !== "allow" && (
         <div className="report-block">
-          <h3>建议</h3>
+          <h3>{t("What to Do")}</h3>
           <p className="advice">{report.advice}</p>
         </div>
       )}
       <div className="report-block">
-        <h3>证据{report.findings.length > 0 && <span className="count-inline">{report.findings.length}</span>}</h3>
+        <h3>{t("Evidence")}{report.findings.length > 0 && <span className="count-inline">{report.findings.length}</span>}</h3>
         <FindingList findings={report.findings} />
       </div>
     </div>
   );
 }
 
-/* ---------- 操作反馈 ---------- */
+/* ---------- Action feedback ---------- */
 
-/** 每个操作做完给一句话反馈，让人知道点了有用 */
-const DONE: Record<string, string> = {
-  quarantine_path: "已移入隔离区，随时可以恢复",
-  restore_quarantine: "已放回原来的位置",
-  delete_quarantine: "已彻底删除",
-  delete_entry_file: "文件已删除",
-  trust_item: "已加入白名单，内容不变就不再提醒",
-  untrust_item: "已从白名单移除",
-  clear_history: "检查记录已清空",
-  install_shell_hook: "已接入 zsh，新开的终端窗口生效",
-  uninstall_shell_hook: "已从 zsh 移除",
-};
+/** One line of feedback after each action, so people know the click did something */
+function doneMessage(cmd: string): string | undefined {
+  const messages: Record<string, string> = {
+    quarantine_path: t("Moved to quarantine. You can restore it anytime."),
+    restore_quarantine: t("Restored to its original location"),
+    delete_quarantine: t("Permanently deleted"),
+    delete_entry_file: t("File deleted"),
+    trust_item: t("Added to the allowlist. You won't be warned again unless it changes."),
+    untrust_item: t("Removed from the allowlist"),
+    clear_history: t("History cleared"),
+    install_shell_hook: t("Connected to zsh. Takes effect in new terminal windows."),
+    uninstall_shell_hook: t("Removed from zsh"),
+  };
+  return messages[cmd];
+}
 
 export function toast(text: string, tone: "allow" | "block" = "allow") {
   window.dispatchEvent(new CustomEvent("tsuba-toast", { detail: { text, tone } }));
 }
 
 export function toastDone(cmd: string) {
-  if (DONE[cmd]) toast(DONE[cmd]);
+  const message = doneMessage(cmd);
+  if (message) toast(message);
 }
 
 export function Toaster() {
@@ -312,23 +346,23 @@ export function Toaster() {
   }, []);
   return (
     <div className="toaster" aria-live="polite">
-      {items.map((t) => (
-        <div key={t.id} className={`toast toast-${t.tone}`}>
-          {t.tone === "block" ? <Icon.alert size={14} strokeWidth={2} /> : <Icon.check size={14} strokeWidth={2} />}
-          {t.text}
+      {items.map((item) => (
+        <div key={item.id} className={`toast toast-${item.tone}`}>
+          {item.tone === "block" ? <Icon.alert size={14} strokeWidth={2} /> : <Icon.check size={14} strokeWidth={2} />}
+          {item.text}
         </div>
       ))}
     </div>
   );
 }
 
-/** 删不回来的操作点两下：第一下变成“确认…”，三秒内再点才执行 */
+/** Actions that can't be undone take two clicks: the first turns the button into "Confirm…", and only a second click within three seconds runs it */
 export function ConfirmButton({ children, confirm, onConfirm, className = "danger" }: { children: ReactNode; confirm: string; onConfirm: () => void; className?: string }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return;
-    const t = setTimeout(() => setArmed(false), 3000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setArmed(false), 3000);
+    return () => clearTimeout(timer);
   }, [armed]);
   return (
     <button

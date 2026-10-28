@@ -1,17 +1,18 @@
-// 品牌图形：和 App 图标同一把刀、首页的守护刀、打开 App 时的开场。
-// 都是纯 SVG，颜色固定（它们是“器物”，不随主题换色），状态用光晕和刀鞘表达。
+// Brand graphics: the sword from the App icon, the guardian sword on the dashboard, and the opening splash.
+// All plain SVG with fixed colors (they are objects, so they don't follow the theme); state is shown with the halo and the scabbard.
 
 import { useEffect, useId, useRef, useState } from "react";
+import { t } from "./i18n";
 
-/** SVG 里 url(#id) 用的 id：React 的 useId 带冒号等字符，去掉 */
+/** An id usable in SVG url(#id): React's useId contains colons and similar characters, so strip them */
 function useSvgId() {
   return useId().replace(/[^a-zA-Z0-9_-]/g, "");
 }
 
 /**
- * 一把竖直的日本刀（1024 坐标系，刀尖朝上）：有弧度的钢刃、铜套（鎺）、黑漆圆盘护手（鍔）配金边、缠绳刀柄。
- * sheathed 时刀刃收进黑漆刀鞘：暂停守护 = 刀入鞘（刀鞘滑下来，到底一顿）；恢复时刀鞘慢慢滑走（拔刀）。
- * glint 时刀刃上不停流过一道光、刃纹一明一暗。
+ * An upright katana (1024 coordinate space, tip up): curved steel blade, brass collar (habaki), black lacquer round guard (tsuba) with a gold rim, wrapped handle.
+ * When sheathed the blade goes into a black lacquer scabbard: pausing protection = sheathing the sword (the scabbard slides down and settles with a jolt); resuming slides it slowly away (drawing the sword).
+ * With glint, light keeps running along the blade and the temper line pulses.
  */
 export function KatanaArt({ sheathed = false, glint = false }: { sheathed?: boolean; glint?: boolean }) {
   const id = useSvgId();
@@ -64,8 +65,8 @@ export function KatanaArt({ sheathed = false, glint = false }: { sheathed?: bool
           <rect className="katana-glint" x="430" y="520" width="160" height="150" fill={`url(#${id}glint)`} />
         </g>
       )}
-      {/* 刀鞘常驻：守护中藏在刀尖外、看不见；暂停时沿刀身滑下来套住刀刃。
-          外层负责滑进滑出，内层负责到底那一顿：两个都动 transform，放在同一层会让拔刀的过渡失效 */}
+      {/* The scabbard is always rendered: while protecting it hides beyond the tip; when paused it slides down over the blade.
+          The outer group slides in and out, the inner one does the final jolt: both animate transform, and putting them on one element breaks the drawing transition */}
       <g className={`katana-sheath ${sheathed ? "is-on" : ""}`}>
         <g className="katana-sheath-body">
           <path d="M466 566 Q448 320 518 132 L566 104 Q546 330 552 566Z" fill={`url(#${id}saya)`} />
@@ -86,7 +87,7 @@ export function KatanaArt({ sheathed = false, glint = false }: { sheathed?: bool
   );
 }
 
-/** 金尘：护手附近往上飘的小光点。位置用可复现的伪随机算好，每次渲染一样 */
+/** Gold dust: small specks drifting up from around the guard. Positions come from a reproducible pseudo-random sequence, so every render matches */
 const DUST = (() => {
   let x = 7;
   const r = () => (x = (x * 16807) % 2147483647) / 2147483647;
@@ -102,16 +103,16 @@ const DUST = (() => {
 })();
 
 /**
- * 首页的守护图：一把活着的刀，后面一团呼吸的光晕，金尘往上飘。
+ * The dashboard's guardian: a living sword with a breathing halo behind it and gold dust drifting up.
  *
- * - 守护中：刀轻轻浮动、刀光不停流动；光晕金色（部分防线没开时偏琥珀）。
- * - 暂停：刀鞘滑下来套住刀刃、到底一顿，刀沉下去变暗；光晕变暗红，金尘散去。
- * - 恢复：刀鞘慢慢滑走（拔刀），快离开时一道弧形刀光划过，刀重新浮起来。
- * 每种状态的图层都常驻，用过渡切换，切换本身就是动画。
+ * - Protecting: the sword floats gently and light keeps running along it; the halo is gold (amber when some defenses are off).
+ * - Paused: the scabbard slides down over the blade and settles, the sword sinks and dims; the halo turns dark red and the dust fades.
+ * - Resuming: the scabbard slides slowly away (drawing the sword), an arc of light sweeps past as it leaves, and the sword floats again.
+ * Every state's layers are always rendered and switched with transitions, so the switch itself is the animation.
  */
 export function GuardianKatana({ paused, partial = false }: { paused: boolean; partial?: boolean }) {
   const id = useSvgId();
-  // 从暂停恢复时触发一次弧形刀光
+  // Play the arc of light once when resuming from pause
   const [drawKey, setDrawKey] = useState(0);
   const wasPaused = useRef(paused);
   useEffect(() => {
@@ -119,7 +120,7 @@ export function GuardianKatana({ paused, partial = false }: { paused: boolean; p
     wasPaused.current = paused;
   }, [paused]);
   return (
-    <svg className={`guardian ${paused ? "is-paused" : ""} ${partial ? "is-partial" : ""}`} viewBox="0 0 280 280" role="img" aria-label={paused ? "守护已暂停，刀已入鞘" : "守护中"}>
+    <svg className={`guardian ${paused ? "is-paused" : ""} ${partial ? "is-partial" : ""}`} viewBox="0 0 280 280" role="img" aria-label={paused ? t("Protection is paused, sword sheathed") : t("Protection is on")}>
       <defs>
         <radialGradient id={`${id}halo`} cx=".5" cy=".5" r=".5">
           <stop offset="0" stopColor={partial ? "#f0b44c" : "#f6c66a"} stopOpacity=".55" />
@@ -160,7 +161,7 @@ export function GuardianKatana({ paused, partial = false }: { paused: boolean; p
   );
 }
 
-/** 朱红圆角方块里的刀：开场画面和大尺寸品牌标志用（和 App 图标同一个样子） */
+/** The sword in a vermilion rounded square: for the splash and large brand marks (same look as the App icon) */
 export function KatanaIcon({ size = 120 }: { size?: number }) {
   const id = useSvgId();
   return (
@@ -180,14 +181,14 @@ export function KatanaIcon({ size = 120 }: { size?: number }) {
 }
 
 /**
- * 打开 App 时的开场（约 1.2 秒）：刀标弹出，下面像终端一样打出状态，四段依次点亮，然后淡出。
- * 系统开了“减少动态效果”时不显示。
+ * The opening splash (about 1.2 seconds): the sword mark pops in, the status types out below like a terminal, four segments light up in turn, then it fades.
+ * Not shown when the system has Reduce Motion on.
  */
 export function Splash({ status }: { status: string }) {
   const [gone, setGone] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   useEffect(() => {
-    const t = setTimeout(() => setGone(true), 1500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setGone(true), 1500);
+    return () => clearTimeout(timer);
   }, []);
   if (gone) return null;
   return (

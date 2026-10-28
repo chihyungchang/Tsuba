@@ -1,4 +1,6 @@
-// 与 Rust 端 tsuba-engine 的数据结构一一对应
+// Mirrors the data structures of the Rust tsuba-engine one to one
+
+import { t } from "./i18n";
 
 export type Verdict = "allow" | "warn" | "block";
 export type Severity = "low" | "medium" | "high";
@@ -9,7 +11,7 @@ export interface Finding {
   message: string;
   where?: string;
   snippet?: string;
-  /** 来自哪份情报、按什么授权（“OpenSSF Malicious Packages · Apache-2.0”） */
+  /** Which intel source it came from and under what license ("OpenSSF Malicious Packages · Apache-2.0") */
   source?: string;
 }
 
@@ -115,7 +117,7 @@ export interface NetEvent {
   target: string;
   request?: string;
   leaked?: string[];
-  /** 明文请求里出现的真实格式密钥，只有种类 */
+  /** Real-looking secrets seen in a plaintext request, kinds only */
   secrets?: string[];
   forwarded?: boolean;
 }
@@ -127,7 +129,7 @@ export interface Behavior {
   network: NetEvent[];
   new_files: string[];
   output: string;
-  /** 被沙箱拦下的越权操作（来自系统日志） */
+  /** Operations the sandbox denied (from the system log) */
   denied?: { process: string; operation: string; target: string }[];
 }
 
@@ -153,23 +155,28 @@ export interface ExtensionScan {
   findings: Finding[];
 }
 
-export const VERDICT_LABEL: Record<Verdict, string> = { allow: "放行", warn: "需要注意", block: "建议拦截" };
+// Getters, not plain values: each label is translated when it is read, after the language is known
+export const VERDICT_LABEL: Record<Verdict, string> = {
+  get allow() { return t("Allow"); },
+  get warn() { return t("Needs Attention"); },
+  get block() { return t("Block Recommended"); },
+};
 export const SOURCE_LABEL: Record<LogEntry["source"], string> = {
-  terminal: "终端命令",
-  paste: "粘贴的命令",
-  download: "下载",
-  mount: "打开安装镜像",
-  extension: "编辑器扩展",
-  ai_tool: "AI 工具",
-  scan: "手动检查",
+  get terminal() { return t("Terminal command"); },
+  get paste() { return t("Pasted command"); },
+  get download() { return t("Download"); },
+  get mount() { return t("Opened disk image"); },
+  get extension() { return t("Editor extension"); },
+  get ai_tool() { return t("AI tool"); },
+  get scan() { return t("Manual check"); },
 };
 export const ACTION_LABEL: Record<string, string> = {
-  executed: "已执行",
-  cancelled: "已取消",
-  quarantined: "已隔离",
-  ejected: "已阻止打开",
-  notified: "已提醒",
-  allowed: "已放行",
-  deleted: "已删除",
+  get executed() { return t("Ran"); },
+  get cancelled() { return t("Cancelled"); },
+  get quarantined() { return t("Quarantined"); },
+  get ejected() { return t("Blocked from opening"); },
+  get notified() { return t("Warned"); },
+  get allowed() { return t("Allowed"); },
+  get deleted() { return t("Deleted"); },
   scanned: "",
 };

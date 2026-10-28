@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Splash } from "./brand";
-import { useLang } from "./i18n";
+import { t, useLang } from "./i18n";
 import { Icon, TsubaMark, type IconName } from "./icons";
 import { DoctorPage } from "./pages/Doctor";
 import { HistoryPage } from "./pages/History";
@@ -15,20 +15,21 @@ import "./App.css";
 
 type Page = "overview" | "history" | "scan" | "doctor" | "settings";
 
-const PAGES: { id: Page; label: string; icon: IconName; key: string }[] = [
-  { id: "overview", label: "概览", icon: "overview", key: "1" },
-  { id: "history", label: "检查记录", icon: "history", key: "2" },
-  { id: "scan", label: "扫描", icon: "scan", key: "3" },
-  { id: "doctor", label: "体检", icon: "doctor", key: "4" },
-  { id: "settings", label: "设置", icon: "settings", key: "," },
+// A function, not a constant: labels must be translated at render time, after the language is known
+const pages = (): { id: Page; label: string; icon: IconName; key: string }[] => [
+  { id: "overview", label: t("Overview"), icon: "overview", key: "1" },
+  { id: "history", label: t("History"), icon: "history", key: "2" },
+  { id: "scan", label: t("Scan"), icon: "scan", key: "3" },
+  { id: "doctor", label: t("Health Check"), icon: "doctor", key: "4" },
+  { id: "settings", label: t("Settings"), icon: "settings", key: "," },
 ];
 
-const isPage = (s: string): s is Page => PAGES.some((p) => p.id === s);
+const isPage = (s: string): s is Page => pages().some((p) => p.id === s);
 
 export default function App() {
   // Re-render the whole tree when the language changes; every t() below picks up the new language
   useLang();
-  // 地址里的 #history 之类可以直接打开某一页（托盘菜单和开发预览用）
+  // A hash such as #history opens that page directly (used by the tray menu and the dev preview)
   const [page, setPageState] = useState<Page>(() => {
     const h = location.hash.slice(1);
     return isPage(h) ? h : "overview";
@@ -63,7 +64,7 @@ export default function App() {
     };
   }, [reload, setPage]);
 
-  // ⌘1–4 切换页面，⌘, 打开设置：Mac 软件的习惯；Esc 回首页（输入框里除外）
+  // ⌘1–4 switch pages and ⌘, opens Settings, as Mac apps do; Esc goes home (except while typing)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
@@ -72,7 +73,7 @@ export default function App() {
         return;
       }
       if (!e.metaKey || e.altKey || e.ctrlKey) return;
-      const p = PAGES.find((x) => x.key === e.key);
+      const p = pages().find((x) => x.key === e.key);
       if (p) {
         e.preventDefault();
         setPage(p.id);
@@ -93,10 +94,10 @@ export default function App() {
 
   const paused = overview?.paused ?? false;
   const resume = () => invoke("set_paused", { paused: false }).then(reload);
-  const current = PAGES.find((p) => p.id === page);
+  const current = pages().find((p) => p.id === page);
   const goHome = useCallback(() => setPage("overview"), [setPage]);
 
-  // 暂停时整个界面换成警示色：用户在哪一页都该感觉到“现在没有保护”
+  // While paused the whole window takes the warning color: on every page the user should feel "nothing is protecting me now"
   useEffect(() => {
     document.documentElement.toggleAttribute("data-paused", paused);
   }, [paused]);
@@ -104,15 +105,15 @@ export default function App() {
   return (
     <GoHome.Provider value={goHome}>
     <div className={`shell ${paused ? "is-paused" : ""}`}>
-      {/* 标题栏：只有红绿灯、居中的页面名和右边的刀标；返回放在内容里的面包屑 */}
+      {/* Title bar: only the traffic lights, the centered page name and the sword mark on the right; going back lives in the breadcrumb inside the content */}
       <header className="titlebar" data-tauri-drag-region>
         <span className="titlebar-title" data-tauri-drag-region>
           {page === "overview" ? "" : current?.label}
         </span>
         {paused ? (
-          <button className="titlebar-status is-paused" onClick={resume} title="终端检查和后台监控都停了，点一下恢复">
+          <button className="titlebar-status is-paused" onClick={resume} title={t("Terminal checks and background monitoring are stopped. Click to resume.")}>
             <Icon.shieldOff size={13} />
-            守护已暂停 · 点击恢复
+            {t("Protection paused · Click to resume")}
           </button>
         ) : (
           <span className="titlebar-status" data-tauri-drag-region>
@@ -125,7 +126,7 @@ export default function App() {
         {page === "overview" && <OverviewPage overview={overview} reload={reload} onScanned={onScanned} openEntry={openEntry} go={setPage} />}
         {page === "history" && <HistoryPage focusId={focusId} quarantine={quarantine} reload={reload} />}
         {page === "scan" && <ScanPage quarantine={quarantine} reload={reload} onScanned={onScanned} />}
-        {/* 体检可能要跑几十秒：切到别的页面时不卸载，回来进度和结果都还在 */}
+        {/* A Health Check can take tens of seconds: keep it mounted while on other pages so progress and results are still there on return */}
         <div className="page-host" hidden={page !== "doctor"}>
           <DoctorPage reload={reload} />
         </div>
@@ -136,22 +137,22 @@ export default function App() {
           <TsubaMark size={15} />
           TSUBA
         </span>
-        <span className="footbar-meta">{overview ? (overview.provider === "offline" ? "只用离线规则" : overview.ai_available ? `离线规则 + ${overview.provider_label.split(" · ")[0]}` : "离线规则（AI 还没配置好）") : "连接中"}</span>
+        <span className="footbar-meta">{overview ? (overview.provider === "offline" ? t("Offline rules only") : overview.ai_available ? t("Offline rules + {provider}", { provider: overview.provider_label.split(" · ")[0] }) : t("Offline rules (AI not set up yet)")) : t("Connecting…")}</span>
         <span className="footbar-keys">
-          {PAGES.filter((p) => p.id !== "overview" && p.id !== "settings").map((p) => (
+          {pages().filter((p) => p.id !== "overview" && p.id !== "settings").map((p) => (
             <button key={p.id} className="footbar-key" onClick={() => setPage(p.id)}>
               <kbd>⌘{p.key}</kbd>
               {p.label}
             </button>
           ))}
         </span>
-        <button className="footbar-settings" onClick={() => setPage("settings")} title="设置  ⌘,">
+        <button className="footbar-settings" onClick={() => setPage("settings")} title={`${t("Settings")}  ⌘,`}>
           <Icon.settings size={14} />
-          设置
+          {t("Settings")}
         </button>
       </footer>
       <Toaster />
-      <Splash status={overview ? (overview.paused ? "已暂停 0/4" : `守护中 ${[overview.shell_hook.installed, overview.watch_downloads, overview.watch_extensions, overview.watch_ai_tools].filter(Boolean).length}/4`) : "启动中"} />
+      <Splash status={overview ? (overview.paused ? t("paused 0/4") : t("protecting {on}/4", { on: [overview.shell_hook.installed, overview.watch_downloads, overview.watch_extensions, overview.watch_ai_tools].filter(Boolean).length })) : t("starting")} />
     </div>
     </GoHome.Provider>
   );
