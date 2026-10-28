@@ -1,116 +1,116 @@
 # Tsuba
 
-**在陌生代码第一次运行之前，先替你看一眼。**
+**Takes a look for you before unfamiliar code runs for the first time.**
 
-Tsuba（鍔，刀的护手）是一个 macOS 菜单栏应用。假面试项目、假会议软件、npm 投毒、恶意编辑器扩展，这类攻击每次都换包装，用的又是 node、curl、bash 这些正常工具，传统杀毒软件基本不报。Tsuba 在它们第一次运行的入口上拦一下：看清楚它要做什么、从哪来、像不像已知的攻击套路，再决定放行、提醒还是拦截。
+Tsuba (鍔, the hand guard of a Japanese sword) is a macOS menu bar app. Fake interview projects, fake meeting software, poisoned npm packages, malicious editor extensions: these attacks come in new packaging every time and use ordinary tools like node, curl and bash, so traditional antivirus software rarely flags them. Tsuba steps in at the entry points where they run for the first time: it works out what the code is about to do, where it came from and whether it looks like a known attack pattern, then decides whether to Allow, Warn or Block.
 
-产品背景、目标和路线图见 [PRD.md](PRD.md)。
+For product background, goals and the roadmap, see [PRD.md](PRD.md).
 
-## 它检查什么
+## What it checks
 
-| 入口 | 例子 | 检查内容 |
+| Entry point | Examples | What is checked |
 | --- | --- | --- |
-| 终端命令 | `curl … \| bash`、`npm install`、`npx`、`npm start`、`code .`、`git clone` | 下载远程脚本（不执行）并追查第二阶段；npm 包的创建时间、版本发布冷却期、安装脚本；项目源码里的隐藏代码、硬编码 C2、读取钱包和密码库；VS Code 打开文件夹就自动执行的任务 |
-| 粘贴进终端 | 网页让你“复制这条命令到终端” | 粘贴的瞬间先提醒一次，不联网；base64 混淆后交给 shell 执行的命令直接标为高危 |
-| 下载目录 | 新出现的 `.dmg`、`.pkg`、`.vsix` | 只读挂载检查签名、公证、下载来源、主程序是否被替换成隐藏文件、安装脚本 |
-| 编辑器扩展 | VS Code、Cursor、Windsurf、VSCodium 新装或更新的扩展 | 官方恶意扩展名单、启动即激活、不可见 Unicode 字符藏代码、可疑网络和文件访问；高危时自动移入隔离区 |
-| AI 编程工具 | Claude Code、Cursor、Codex 等的 MCP server、skill、插件 hooks；项目里的 `.mcp.json`、hooks、`CLAUDE.md` | 启动的包是否在恶意名单、是否从临时或隐藏目录启动、拿到了哪些密钥；skill 和工具描述是否藏着写给 AI 的指令（工具投毒）、要求对用户隐瞒、读取私钥、外传数据 |
-| 体检 | 菜单栏 → 体检 | 已知攻击留下的落地痕迹、可疑开机自启项、已装扩展快速扫描 |
-| 扫描文件夹 | “扫描”页，或 `tsuba scan <文件夹>` | 下载目录、外接硬盘、代码目录里的安装包、脚本、扩展和带自动执行入口的项目；扫过没变的不重扫，默认每 7 天用最新规则重扫一次下载目录 |
+| Terminal commands | `curl … \| bash`, `npm install`, `npx`, `npm start`, `code .`, `git clone` | Downloads the remote script (without running it) and follows any second stage; the npm package's creation date, release cooldown and install scripts; hidden code, hard-coded C2 and reads of wallets and password stores in the project source; VS Code tasks that run automatically when the folder is opened |
+| Pasting into the terminal | A web page tells you to "copy this command into your terminal" | Warns once the moment you paste, without going online; base64-obfuscated commands piped into a shell are flagged as high risk right away |
+| Downloads folder | New `.dmg`, `.pkg`, `.vsix` files | Mounts them read-only and checks the signature, notarization, download source, whether the main executable was replaced with a hidden file, and install scripts |
+| Editor extensions | Newly installed or updated extensions in VS Code, Cursor, Windsurf, VSCodium | The official malicious extension list, activation on startup, code hidden in invisible Unicode characters, suspicious network and file access; high-risk extensions are moved to quarantine automatically |
+| AI coding tools | MCP servers, skills and plugin hooks for Claude Code, Cursor, Codex and others; `.mcp.json`, hooks and `CLAUDE.md` in projects | Whether the launched package is on a malicious list, whether it starts from a temporary or hidden directory, which secrets it receives; whether skills and tool descriptions hide instructions aimed at the AI (tool poisoning), ask it to hide things from the user, read private keys or exfiltrate data |
+| Health Check | Menu bar → Health Check | Traces left behind by known attacks, suspicious login items, a quick scan of installed extensions |
+| Scan a folder | The Scan page, or `tsuba scan <folder>` | Installers, scripts, extensions and projects with auto-run entry points in the Downloads folder, external drives and code directories; unchanged files that were already scanned are skipped, and by default the Downloads folder is rescanned with the latest rules every 7 days |
 
-在 Claude Code 里问“这个为什么被拦了”：`claude mcp add tsuba -- tsuba mcp`。这是只读的 MCP 工具，只能查检查记录和隔离区，不能改任何东西；返回的命令和摘要会标明是不可信数据，密钥一律隐去。
+To ask "why was this blocked?" inside Claude Code: `claude mcp add tsuba -- tsuba mcp`. This is a read-only MCP tool: it can only look up check history and quarantine, and cannot change anything. Commands and summaries it returns are marked as untrusted data, and secrets are always redacted.
 
-确认是误报的东西可以“标记为安全”，按内容指纹记进白名单，内容一变就重新检查；可疑的文件、目录和扩展可以移入隔离区，随时恢复或删除。
+Anything confirmed to be a false positive can be "marked as safe", which records its content fingerprint in the allowlist; if the content changes, it gets checked again. Suspicious files, directories and extensions can be moved to quarantine and restored or deleted at any time.
 
-在扩展商店里装的扩展不经过终端，只能装完马上查；在 Finder 里双击打开的程序目前拦不住，需要苹果的 Endpoint Security 权限（见 PRD 第 12 节）。
+Extensions installed from the extension marketplace don't go through the terminal, so they can only be checked right after installation. Programs opened by double-clicking in Finder can't be blocked yet; that requires Apple's Endpoint Security entitlement (see PRD section 12).
 
-## 威胁情报
+## Threat intel
 
-离线规则之外，Tsuba 每天从公开来源更新一次威胁情报，存放在 `~/.tsuba/intel`（也可以在终端运行 `tsuba intel update`）：
+On top of the offline rules, Tsuba updates its threat intel from public sources once a day and stores it in `~/.tsuba/intel` (you can also run `tsuba intel update` in the terminal):
 
-| 来源 | 内容 | 许可 |
+| Source | Contents | License |
 | --- | --- | --- |
-| [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) | 约 23 万条已确认的恶意 npm / PyPI 包，也会检查 lockfile 里的间接依赖 | Apache-2.0 |
-| [OSV.dev](https://osv.dev)（在线，可关闭） | 同上，检查时实时查询，只发送包名和版本 | - |
-| VS Code 官方恶意扩展名单 | 微软下架的恶意扩展 | - |
-| [Elastic](https://github.com/elastic/protections-artifacts)、[ReversingLabs](https://github.com/reversinglabs/reversinglabs-yara-rules) YARA 规则 | 已知恶意软件家族特征 | Elastic License 2.0 / MIT |
-| [GuardDog](https://github.com/DataDog/guarddog) YARA 规则 | 恶意包常见的可疑写法（只作为证据，不单独触发提醒） | Apache-2.0 |
-| 本机 XProtect 规则 | 苹果自己的恶意软件特征，只在本机使用 | Apple |
-| [VirusTotal](https://www.virustotal.com)（可选，用户自己的 Key） | 70 多家杀毒引擎对安装包、程序、远程脚本的结论；只发送哈希，不上传文件 | 免费 API 不允许商用 |
-| [abuse.ch](https://abuse.ch) ThreatFox / URLhaus（可选） | 恶意域名、IP、网址；需要免费 Auth-Key，免费版仅限非营利使用 | - |
+| [OpenSSF Malicious Packages](https://github.com/ossf/malicious-packages) | About 230,000 confirmed malicious npm / PyPI packages; transitive dependencies in lockfiles are checked too | Apache-2.0 |
+| [OSV.dev](https://osv.dev) (online, can be turned off) | Same as above, queried live during a check; only the package name and version are sent | - |
+| VS Code official malicious extension list | Malicious extensions taken down by Microsoft | - |
+| [Elastic](https://github.com/elastic/protections-artifacts), [ReversingLabs](https://github.com/reversinglabs/reversinglabs-yara-rules) YARA rules | Signatures of known malware families | Elastic License 2.0 / MIT |
+| [GuardDog](https://github.com/DataDog/guarddog) YARA rules | Suspicious coding patterns common in malicious packages (evidence only; never triggers a Warn on its own) | Apache-2.0 |
+| Local XProtect rules | Apple's own malware signatures, used only on this Mac | Apple |
+| [VirusTotal](https://www.virustotal.com) (optional, your own key) | Verdicts from 70+ antivirus engines on installers, programs and remote scripts; only hashes are sent, files are never uploaded | The free API does not allow commercial use |
+| [abuse.ch](https://abuse.ch) ThreatFox / URLhaus (optional) | Malicious domains, IPs and URLs; requires a free Auth-Key, and the free tier is for non-profit use only | - |
 
-规则用 [YARA-X](https://github.com/VirusTotal/yara-x) 编译执行。从规则包地址下载的规则包必须带有效签名（`tsuba.sig`，ed25519）才会使用，版本也不能比正在用的旧；发布时用 `tsuba rules sign --key <私钥文件> <规则目录>` 签名。Tsuba 自己的检测规则也不写在代码里，而是 [crates/engine/rules/tsuba.yar](crates/engine/rules/tsuba.yar) 和 [tsuba.toml](crates/engine/rules/tsuba.toml)，可以单独更新。
+Rules are compiled and run with [YARA-X](https://github.com/VirusTotal/yara-x). A rule pack downloaded from the rule pack URL is used only if it carries a valid signature (`tsuba.sig`, ed25519) and its version is not older than the one in use; sign it for release with `tsuba rules sign --key <private key file> <rules directory>`. Tsuba's own detection rules aren't written in code either: they live in [crates/engine/rules/tsuba.yar](crates/engine/rules/tsuba.yar) and [tsuba.toml](crates/engine/rules/tsuba.toml) and can be updated separately.
 
-开发守则见 [CLAUDE.md](CLAUDE.md)。
+For development guidelines, see [CLAUDE.md](CLAUDE.md).
 
-## AI 判断
+## AI judgment
 
-离线规则总是先跑，AI 在此基础上结合上下文判断。可以在设置里选：
+The offline rules always run first, and the AI then judges on top of them, taking context into account. You can choose in Settings:
 
-- **Claude**：效果最好，需要 Anthropic API Key。
-- **其他模型**：OpenAI、Google Gemini、DeepSeek、通义千问、Ollama、LM Studio，或任何兼容 OpenAI Chat Completions 接口的自定义地址。
-- **仅离线规则**：不联网、不调用任何模型。
+- **Claude**: the best results; requires an Anthropic API key.
+- **Other models**: OpenAI, Google Gemini, DeepSeek, Qwen, Ollama, LM Studio, or any custom endpoint compatible with the OpenAI Chat Completions API.
+- **Offline rules only**: no network access, no model calls.
 
-模型分两档信任。公开研究显示，在识别恶意代码这件事上前沿模型明显领先，非前沿模型更容易误报，也更容易被代码里的提示注入骗过：
+Models fall into two trust tiers. Public research shows frontier models are clearly ahead at recognizing malicious code, while non-frontier models produce more false positives and are more easily fooled by prompt injection in the code:
 
-| | 前沿模型（Claude、OpenAI、Gemini，或手动标记的自定义模型） | 本地和其他模型 |
+| | Frontier models (Claude, OpenAI, Gemini, or a custom model marked manually) | Local and other models |
 | --- | --- | --- |
-| 能独立给出“建议拦截” | 能 | 不能，最多“提醒” |
-| 能降低离线规则判出的风险 | 能把“拦截”降为“提醒”，不能直接放行 | 不能 |
+| Can recommend Block on their own | Yes | No, Warn at most |
+| Can lower the risk found by the offline rules | Can lower Block to Warn, but cannot Allow outright | No |
 
-交给模型之前会去掉代码注释（防止注释里的提示注入）；证据太长时保留每段文本的开头和结尾，离线规则的命中永远完整保留。发给模型的只有这次判断需要的证据，不会上传其他文件、环境变量和密钥。配置和检查记录都在 `~/.tsuba`。
+Code comments are stripped before anything reaches the model (to defeat prompt injection hidden in comments); when evidence is too long, the beginning and end of each text are kept, and offline rule hits are always kept in full. The model only receives the evidence this judgment needs; no other files, environment variables or secrets are uploaded. Configuration and check history live in `~/.tsuba`.
 
-## 目录结构
+## Directory layout
 
 ```
 Tsuba/
-├── PRD.md                  产品需求文档
+├── PRD.md                  Product requirements document
 ├── Cargo.toml              Rust workspace
 ├── crates/
-│   ├── engine/             检测引擎（tsuba-engine）：识别、取证、离线规则、威胁情报、AI 判断
-│   │   ├── rules/          Tsuba 规则包（tsuba.yar 检测模式、tsuba.toml 名单）
-│   │   └── tests/          引擎测试和惰性攻击样本（tests/fixtures）
-│   └── cli/                终端检查程序（tsuba），由 zsh 钩子调用
-│       └── shell/          zsh 钩子
-└── app/                    Tauri 2 菜单栏应用
-    ├── src/                界面（React + TypeScript）
-    └── src-tauri/          应用后端：托盘、窗口、后台监控、终端接入
+│   ├── engine/             Detection engine (tsuba-engine): recognition, evidence collection, offline rules, threat intel, AI judgment
+│   │   ├── rules/          Tsuba rule pack (tsuba.yar detection patterns, tsuba.toml lists)
+│   │   └── tests/          Engine tests and inert attack samples (tests/fixtures)
+│   └── cli/                Terminal checker (tsuba), called by the zsh hook
+│       └── shell/          zsh hook
+└── app/                    Tauri 2 menu bar app
+    ├── src/                UI (React + TypeScript)
+    └── src-tauri/          App back end: tray, windows, background monitoring, terminal integration
 ```
 
-## 开发
+## Development
 
-需要 Rust（`rustup`）、Node.js 和 pnpm。
+Requires Rust (`rustup`), Node.js and pnpm.
 
 ```bash
-cd app && pnpm install && pnpm tauri dev   # 启动应用
-cargo test                                 # 跑引擎测试
-cargo run -p tsuba-cli -- scan <路径>       # 不开应用，直接检查一个文件或目录
-cargo run -p tsuba-cli -- eval <样本目录>   # 样本集验收：检出率和误报率，对照 PRD 第 4 节的目标
+cd app && pnpm install && pnpm tauri dev     # start the app
+cargo test                                   # run the engine tests
+cargo run -p tsuba-cli -- scan <path>        # check a file or directory directly, without the app
+cargo run -p tsuba-cli -- eval <samples dir> # sample set acceptance: detection and false positive rates against the targets in PRD section 4
 ```
 
-样本目录下放 `malicious/` 和 `benign/` 两个子目录，每个文件或子目录算一个样本（项目、扩展、安装包、脚本都可以，也可以是符号链接）。只用离线规则，结果可复现；没达标时退出码为 1，可以放进 CI。按时间切分时把较早和较新的样本放进两个目录分别跑。
+The samples directory contains two subdirectories, `malicious/` and `benign/`; each file or subdirectory counts as one sample (projects, extensions, installers and scripts all work, and so do symlinks). Only the offline rules are used, so results are reproducible; if the targets aren't met, the exit code is 1, so it can go into CI. For a time-based split, put the older and newer samples into two directories and run them separately.
 
-开发时 App 会在自己旁边（`target/debug/tsuba`）找终端检查程序，在“概览 → 接入终端”里一键装好，新开的终端窗口生效。
+During development the App looks for the terminal checker next to itself (`target/debug/tsuba`); set it up in one click under Overview → Connect Terminal, and it takes effect in newly opened terminal windows.
 
-测试样本都是惰性的：只模仿攻击代码的形状，里面的 IP 属于文档保留网段，解码后的内容也无害。
+Test samples are all inert: they only mimic the shape of attack code, their IPs belong to documentation ranges, and decoded content is harmless too.
 
-## 沙箱试运行（原型）
+## Sandbox trial run (prototype)
 
-对拿不准的脚本，可以放进沙箱跑一小会儿，看它实际做了什么，而不是逐行读代码：
+For a script you're unsure about, you can run it briefly in a sandbox and see what it actually does, instead of reading the code line by line:
 
 ```bash
 tsuba sandbox install.sh
 ```
 
-沙箱直接跑在 macOS 自带的沙箱里：真实家目录被锁死，程序只看到一个带诱饵的假家目录；所有网络请求被本地代理记录、不真正发到外部；最多跑 60 秒。程序读了诱饵敏感数据并外传、写开机自启、连裸 IP，都会被记下来。注意：跑一会儿没看到坏行为不代表一定安全。
+The sandbox runs directly in macOS's built-in sandbox: the real home directory is locked down and the program only sees a fake home directory with decoys; every network request is recorded by a local proxy and never actually sent out; it runs for at most 60 seconds. Reading decoy secrets and sending them out, writing login items and connecting to bare IPs are all recorded. Note: seeing no bad behavior during a short run does not guarantee it's safe.
 
-也可以沙箱试运行一个项目目录（`tsuba sandbox ~/code/面试项目`），跑它的启动命令看行为——面试项目“打开即执行”的恶意代码会在这里暴露。加上 `--install` 是在沙箱里试装依赖（`npm install`），看依赖的安装脚本做了什么；这时只放行到 npm 官方源的下载，其他连接照样只记录。DMG / App 的虚拟机沙箱还没做。
+You can also trial-run a project directory in the sandbox (`tsuba sandbox ~/code/interview-project`), which runs its start command and watches the behavior; malicious code in interview projects that "runs as soon as you open it" is exposed here. Add `--install` to try installing dependencies (`npm install`) in the sandbox and see what their install scripts do; in that mode only downloads from the official npm registry are let through, and every other connection is still only recorded. The virtual machine sandbox for DMGs / Apps isn't built yet.
 
-## 终端里的小技巧
+## Terminal tips
 
 ```bash
-tskip npm install          # 这一次不检查
-export TSUBA_DISABLE=1     # 当前终端窗口暂时关闭
+tskip npm install          # skip the check this one time
+export TSUBA_DISABLE=1     # turn it off for the current terminal window
 ```
 
-被取消的命令会保留在 shell 历史里，核实后按上箭头就能找回来。
+Cancelled commands stay in your shell history; once you've verified them, press the up arrow to get them back.

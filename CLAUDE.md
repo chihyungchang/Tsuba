@@ -1,66 +1,73 @@
-# Tsuba 工程守则
+# Tsuba Engineering Guidelines
 
-## 定位（最重要，所有决定都先对照这一条）
+## Positioning (most important: check every decision against this first)
 
-**Tsuba 不做通用杀毒。** 拼特征库规模和检出率，我们竞争不过 Malwarebytes、Intego 这些公司。
+**Tsuba is not a general-purpose antivirus.** We cannot out-compete companies like Malwarebytes and Intego on signature database size and detection rates.
 
-Tsuba 解决的是 **“每次都换包装、还没人见过的东西”**：假面试项目、假会议软件、刚发布的恶意包、仿冒扩展、恶意 MCP server 和 skill。目标是 **在用户运行之前挡住它**。
+Tsuba deals with **"things that come in new packaging every time and that nobody has seen before"**: fake interview projects, fake meeting software, freshly published malicious packages, impersonating extensions, malicious MCP servers and skills. The goal is to **stop them before the user runs them**.
 
-- 加功能前先问：它是帮用户在运行前挡住没见过的恶意代码，还是在做通用杀毒？后者不做。
-- 扫描、隔离、特征库这些看起来像杀毒的能力，只为上面这个目标服务：扫的是陌生代码、安装包和脚本，靠的是攻击套路和上下文，而不是“已知病毒库有多大”。
-- 已知恶意软件的识别交给 XProtect 和开源情报，我们直接复用，不重复造。
+- Before adding a feature, ask: does it help the user stop unseen malicious code before it runs, or is it general-purpose antivirus? We don't build the latter.
+- Antivirus-looking capabilities such as scanning, quarantine and signature databases serve only the goal above: they scan unfamiliar code, installers and scripts, and rely on attack patterns and context, not on "how big the known-virus database is".
+- Recognizing known malware is left to XProtect and open-source threat intel. We reuse them directly instead of rebuilding them.
 
-Tsuba 是安全软件：它犯的错，要么让攻击漏过去，要么天天打扰用户、最后被卸载。下面的规则都为这两件事服务。产品背景见 [PRD.md](./PRD.md)，目录结构见 [README.md](./README.md)。
+Tsuba is security software: its mistakes either let an attack slip through, or bother the user every day until they uninstall it. Every rule below serves these two concerns. For product background see [PRD.md](./PRD.md); for the directory layout see [README.md](./README.md).
 
-## 架构
+## Architecture
 
-- **分层，依赖只往下走。** `app`（界面、托盘、监控）→ `crates/cli`（终端检查）→ `crates/engine`（检测）。引擎不依赖 Tauri、不打印、不弹窗，App 和终端都只是它的外壳。
-- **规则是数据，不是代码。** 检测模式放在 `crates/engine/rules/tsuba.yar`，名单放在 `tsuba.toml`，可以不发版就更新。代码里只写不会过时的结构性判断（不可见字符、屏幕外隐藏代码这类）和怎么算结论。
-- **单一职责，一个模块回答一个问题。** `detect` 只认命令，`collect` 只收集证据，`rules` / `intel` 只匹配，`judge` 只问模型，`lib.rs` 负责合并结论。
-- **新的生态按“生态适配器”接入**（PRD 7.1.1）：拦截点、元数据、规则、持久化位置。不要为某一个生态在别处开特例。
+- **Layered, with dependencies pointing only downward.** `app` (UI, tray, monitoring) → `crates/cli` (terminal checks) → `crates/engine` (detection). The engine does not depend on Tauri, does not print and does not show dialogs; the App and the terminal are only shells around it.
+- **Rules are data, not code.** Detection patterns live in `crates/engine/rules/tsuba.yar` and lists live in `tsuba.toml`, so they can be updated without a release. Code only contains structural checks that don't go stale (invisible characters, code hidden off screen and the like) and how the verdict is computed.
+- **Single responsibility: one module answers one question.** `detect` only recognizes commands, `collect` only gathers evidence, `rules` / `intel` only match, `judge` only asks the model, and `lib.rs` merges the verdicts.
+- **New ecosystems plug in as "ecosystem adapters"** (PRD 7.1.1): interception point, metadata, rules, persistence locations. Don't add special cases elsewhere for a single ecosystem.
 
-## 安全
+## Security
 
-- **被检查的东西一律是不可信数据。** 只读、只解析，绝不执行：DMG 只读挂载，脚本只下载不运行，pkg 只展开。
-- **证据里的文字可能是写给 AI 的攻击。** 交给模型前去掉注释；模型的结论按信任档位合并，本地和非前沿模型不能降低离线规则判出的风险；调用 Claude Code 时关掉所有工具。
-- **离线规则命中高危时，AI 不能直接放行。** 任何新的判断路径都要守住这一条。
-- **不泄露用户的东西。** 日志和证据里不写环境变量的值、API Key、配置文件里的令牌；查 VirusTotal 只发哈希，不上传文件；只把判断需要的最小证据发给模型。
-- **失败时退到更安全的一边，但不能卡住用户。** 网络或模型不可用时用离线规则；检查程序自己出错时放行并记录，而不是让用户的终端用不了。
-- **更新通道也是供应链。** 规则包、情报下载后先校验（能编译、版本不旧）再替换，失败保留旧数据。
+- **Anything being checked is untrusted data.** Read only, parse only, never execute: DMGs are mounted read-only, scripts are downloaded but never run, pkgs are only expanded.
+- **Text in the evidence may be an attack aimed at the AI.** Strip comments before handing it to a model; merge the model's verdict according to its trust tier, so local and non-frontier models cannot lower the risk found by the offline rules; disable all tools when invoking Claude Code.
+- **When the offline rules find a high-risk hit, the AI cannot allow it outright.** Every new judgment path must uphold this.
+- **Never leak the user's data.** Logs and evidence never contain environment variable values, API keys or tokens from config files; VirusTotal lookups send only hashes and never upload files; send the model only the minimum evidence the judgment needs.
+- **On failure, fall back to the safer side, but never lock the user out.** When the network or the model is unavailable, use the offline rules; when the checker itself fails, allow and log, rather than leaving the user's terminal unusable.
+- **The update channel is a supply chain too.** Rule packs and threat intel are validated after download (they compile, the version is not older) before they replace the current data; on failure, the old data is kept.
 
-## 误报和漏报
+## False positives and false negatives
 
-- **每条新规则先在真实数据上量误报，再提交。** 至少扫一遍本机的 VS Code 扩展和已安装的 skill（`tsuba scan <扩展目录>`、`tsuba ai`），拦截数必须是 0。
-- **每次误报和漏报都写成回归测试。** 样本放 `crates/engine/tests/fixtures`，必须是惰性的：只模仿形状，IP 用文档保留网段（203.0.113.0/24、198.51.100.0/24），解码后无害。
-- **结论要可解释。** 每个“提醒”和“拦截”都要带上证据：哪个文件、哪一行、命中了什么。说不清理由的规则不要加。
-- **低风险只作为证据，不参与判断。** 正常工具也会调用系统命令、自动激活，这类信号交给 AI 结合上下文判断。
+- **Measure false positives on real data before committing any new rule.** At a minimum, scan the VS Code extensions and installed skills on your machine (`tsuba scan <extensions dir>`, `tsuba ai`); the Block count must be 0.
+- **Every false positive and false negative becomes a regression test.** Samples go in `crates/engine/tests/fixtures` and must be inert: they only mimic the shape, IPs use the documentation ranges (203.0.113.0/24, 198.51.100.0/24), and decoded content is harmless.
+- **Verdicts must be explainable.** Every Warn and Block carries evidence: which file, which line, what matched. Don't add a rule whose reason you can't explain.
+- **Low risk is evidence only and never decides the verdict.** Normal tools also invoke system commands and activate automatically; leave these signals to the AI to judge in context.
 
-## 最小可用
+## Minimum viable
 
-- **先做能验证价值的最小版本**（YAGNI）。需求没有被真实用户或真实样本证明之前，不提前抽象、不加配置项。
-- **用策略能解决的不靠检测**，例如发布冷却期、默认不跑安装脚本。
-- **能用开源规则和情报的不自己造**，但要核对许可证（商用前尤其注意 Elastic License、abuse.ch、VirusTotal 的条款）。
+- **Build the smallest version that can validate the value first** (YAGNI). Until real users or real samples prove a need, don't abstract ahead of time and don't add configuration options.
+- **Don't rely on detection when a policy can solve it**, e.g. a release cooldown, or not running install scripts by default.
+- **Don't build our own where open-source rules and threat intel exist**, but check the licenses (before commercial use, pay special attention to the terms of the Elastic License, abuse.ch and VirusTotal).
 
-## 命名和注释
+## Naming, comments and language
 
-- 名字说清楚“是什么”，不缩写：`find_project_root`、`wait_complete`，而不是 `fpr`、`wc`。
-- 布尔值用 `is_` / `has_` 开头，返回 `Option` 的函数用 `find_` / `lookup`。
-- 注释和面向用户的文字用简体中文。注释解释“为什么”（为什么这样判断、踩过什么坑），不复述代码在做什么。
-- 面向用户的提示写清楚三件事：发现了什么、为什么危险、下一步怎么做。
+- Names say clearly "what it is", without abbreviations: `find_project_root`, `wait_complete`, not `fpr`, `wc`.
+- Booleans start with `is_` / `has_`; functions that return an `Option` use `find_` / `lookup`.
+- Code, comments, docs, test names and commit messages are in English. Comments explain "why" (why we judge it this way, which pitfalls we hit), not restate what the code does.
+- User-visible text is never hard-coded:
+  - Rust: `tr!("English", name = value)`, with a Simplified Chinese entry in that crate's `locales/zh-Hans.json`.
+  - UI: `t("English", { name })`, with a Simplified Chinese entry in `app/src/locales/zh-Hans.json`.
+  - Rule pack rules carry `message` plus `message_zh`.
+- Every new user-visible string gets a Chinese entry; the catalog tests (`zh_hans_catalog_matches_sources`) and `pnpm check:i18n` must pass.
+- Never decide logic by matching user-visible text; use an ID, enum or field instead.
+- User-facing messages state three things clearly: what was found, why it is dangerous, and what to do next.
 
-## 重构
+## Refactoring
 
-- **小步走，每一步测试都是绿的。** 先让测试通过，再整理；重构和改行为分开提交。
-- **三次再抽象。** 同样的代码出现第三次再提取公共部分，前两次宁可重复。
-- **童子军规则。** 改到哪里，顺手把那里整理得比来的时候更干净，但不顺手改无关的地方。
-- **删代码比加代码好。** 没用的分支、过时的规则、注释掉的代码直接删，git 里有历史。
+- **Small steps, with tests green at every step.** Make the tests pass first, then tidy up; commit refactoring and behavior changes separately.
+- **Abstract on the third time.** Extract common code when the same code appears for the third time; the first two times, prefer duplication.
+- **The Boy Scout rule.** Wherever you change something, leave it cleaner than you found it, but don't touch unrelated places along the way.
+- **Deleting code beats adding code.** Delete unused branches, stale rules and commented-out code outright; git keeps the history.
 
-## 提交前检查
+## Pre-commit checks
 
 ```bash
-cargo test                       # 全部测试
-cargo clippy --workspace         # 不留警告
-cd app && pnpm exec tsc --noEmit # 前端类型检查
+cargo test                       # all tests
+cargo clippy --workspace         # no warnings left
+cd app && pnpm exec tsc --noEmit # front-end type check
+cd app && pnpm -s check:i18n     # every UI string has a zh-Hans entry, none unused
 ```
 
-改了检测规则时，另外在真实扩展和 skill 上量一遍误报（见上）。
+When you change detection rules, also measure false positives on real extensions and skills (see above).

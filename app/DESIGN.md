@@ -1,212 +1,214 @@
-# Tsuba 界面样式标准
+# Tsuba UI Style Guide
 
-v4，2026-10-28。风格：**黑漆与和纸**。配色跟刀标走：朱红、黑漆、金（刀的铜套和护手金边）、钢白。首页是四个方向的组合：仪表盘骨架（U1）+ 守护刀（U4）+ 便当格小结（U6）+ 底部终端日志（U3），打开 App 时弹出刀标。细节遵守 Apple Human Interface Guidelines（macOS）。
+v4, 2026-10-28. Style: **black lacquer and washi paper**. The palette follows the katana mark: vermilion, black lacquer, gold (the sword's habaki collar and the guard's gold rim) and steel white. The home page combines four directions: the dashboard skeleton (U1) + the guardian katana (U4) + the bento summary (U6) + the terminal log at the bottom (U3), and the katana mark pops up when the App opens. Details follow the Apple Human Interface Guidelines (macOS).
 
-实现：样式都在 `src/App.css` 的 token 里，组件只引用 token，不写裸色值；品牌图形（刀、守护刀、开场）在 `src/brand.tsx`。
+Implementation: all styles are tokens in `src/App.css`; components only reference tokens and never use raw color values. Brand graphics (the katana, the guardian katana, the splash) are in `src/brand.tsx`.
 
-> 历史：v1、v2 是液态玻璃，玻璃叠在页面上几乎看不出透明，还要开 macOS 私有 API；v3 是石墨灰仪表盘，主色青色和刀标没有关系。`--glass` 等变量名保留了下来，现在都指向实色面板。
+> History: v1 and v2 were liquid glass, but once glass was layered over the page the transparency was barely visible, and it required macOS private APIs; v3 was a graphite dashboard whose cyan accent had nothing to do with the katana mark. Variable names like `--glass` were kept and now all point to solid panels.
 
-## 0. 原则
+The App ships in English and Simplified Chinese. UI copy quoted below is given in English with the Chinese in parentheses.
 
-1. **一眼看懂状态，一步做到主操作。** 首页回答两个问题：现在受不受保护？有没有要我处理的事？
-2. **实色面板，层次靠明暗和细线。** 不用透明和大投影。深色是黑漆，浅色是和纸，同一套结构换一组 token。
-3. **颜色只表达意思。** 金色是主操作；绿、琥珀、红只表示放行、提醒、拦截，并且总配文字或图标；朱红只用在标志和守护刀的光晕上，和“拦截红”拉开色相。
-4. **安全状态一眼可辨。** 守护暂停时，在任何一页都要感觉到“现在没有保护”：刀入鞘、光晕变暗红。
-5. **证据先要读得清。** 命令、路径、代码片段放在更深一档的“凹槽”底上，用等宽字体。
+## 0. Principles
 
-## 0.5 标志
+1. **Status at a glance, the main action in one step.** The home page answers two questions: am I protected right now? Is there anything I need to deal with?
+2. **Solid panels; hierarchy comes from light and dark and hairlines.** No transparency and no large shadows. Dark is black lacquer, light is washi paper: the same structure with a different set of tokens.
+3. **Color only carries meaning.** Gold is the main action; green, amber and red only mean Allow, Warn and Block, and always come with text or an icon; vermilion is used only for the mark and the guardian katana's halo, and is kept apart in hue from "Block red".
+4. **Safety status is recognizable at a glance.** When protection is paused, every page must feel like "there is no protection right now": the katana is sheathed and the halo turns dark red.
+5. **Evidence must be readable first.** Commands, paths and code snippets sit on a one-step-darker "well" background in a monospaced font.
 
-**刀与护手**：Tsuba（鍔）就是日本刀的护手，挡在刀刃和握刀的手之间，对应“在代码运行之前替你挡一下”。标志就是这把刀：有弧度的钢刃、铜套、黑漆圆盘护手配金边、缠绳刀柄，斜放 35°（竖直放容易被看成十字架）。
+## 0.5 Mark
 
-- **App 图标**：朱红渐变底板 + 刀，按 macOS 图标网格（1024 画布、824 见方圆角方形）。由 1024 主图用 `pnpm tauri icon` 生成全套尺寸，放在 `src-tauri/icons/`。
-- **界面里的小标志**（`TsubaMark`）：朱红圆角方块里一把白色的刀剪影（`KatanaGlyph`）。
-- **大尺寸**（`KatanaArt` / `KatanaIcon`，`src/brand.tsx`）：和 App 图标同一把完整的刀，用在守护刀和开场。
-- **菜单栏**：同一把刀的单色剪影做模板图标（`icons/tray-template.png`），护手画成厚圆盘，18px 下也认得出是刀；系统按菜单栏深浅自动着色。
+**Sword and guard**: a tsuba (鍔) is the hand guard of a Japanese sword, sitting between the blade and the hand holding it, which matches "stepping in for you before the code runs". The mark is this sword: a curved steel blade, a copper habaki, a black lacquer disc guard with a gold rim and a cord-wrapped hilt, tilted at 35° (held upright it is easily read as a cross).
 
-## 1. 布局
+- **App icon**: a vermilion gradient plate + the katana, on the macOS icon grid (1024 canvas, 824 rounded square). The full set of sizes is generated from the 1024 master with `pnpm tauri icon` and lives in `src-tauri/icons/`.
+- **Small in-UI mark** (`TsubaMark`): a white katana silhouette (`KatanaGlyph`) in a vermilion rounded square.
+- **Large sizes** (`KatanaArt` / `KatanaIcon`, `src/brand.tsx`): the same complete katana as the App icon, used for the guardian katana and the splash.
+- **Menu bar**: a monochrome silhouette of the same katana as a template icon (`icons/tray-template.png`), with the guard drawn as a thick disc so it still reads as a sword at 18px; the system tints it to match the menu bar's light or dark appearance.
+
+## 1. Layout
 
 ```
-┌ 标题栏 40px：红绿灯 · …………………………… 刀标 Tsuba / 暂停时的红色恢复按钮 ┐
-│  ╭───────╮  ● 守护中 · 四道防线都在工作                                                │
-│  │ 守护刀 │  AI 主动防御                                                            │
-│  ╰───────╯  ✓终端 ✓安装包 ✓扩展 ✓AI 工具   [检查一个文件夹]  扫描 · 体检 · 暂停       │
-│  ┌ 3 条需要处理 ──────┬ 128 次检查 ┬ 1 在隔离区 ┬ 23.4 万 威胁情报 ┐   ← 便当格        │
-├ ⌄ tsuba ▸ 守护中 4/4 ……………………………………………………………………………… 全部记录 → ┤ ← 终端日志  │
-│  3 分钟前  BLOCK  curl … | bash · 假会议软件的安装脚本 …                                │
-└ 底栏 36px：刀标 TSUBA · 判断方式 ……………………… ⌘2 检查记录 ⌘3 扫描 ⌘4 体检 · ⚙ 设置 ┘
+┌ Title bar 40px: traffic lights · …………………… katana mark Tsuba / red Resume button when paused ┐
+│  ╭────────╮  ● Protection is on · all four defenses are working                        │
+│  │guardian│  AI Active Defense                                                         │
+│  ╰────────╯  ✓Terminal ✓Installers ✓Extensions ✓AI Tools  [Check a Folder]  Scan · Health Check · Pause │
+│  ┌ 3 need attention ──┬ 128 checks ┬ 1 in quarantine ┬ 234K threat intel ┐  ← bento grid  │
+├ ⌄ tsuba ▸ protected 4/4 ……………………………………………………………………… All History → ┤ ← terminal log │
+│  3 min ago  BLOCK  curl … | bash · install script of fake meeting software …            │
+└ Bottom bar 36px: katana mark TSUBA · judgment mode ………… ⌘2 History ⌘3 Scan ⌘4 Health Check · ⚙ Settings ┘
 ```
 
-- **窗口固定 1000 × 700**，不能拉伸和放大；所有页面按这个尺寸排，不做响应式。内容区 1000 × 624（去掉 40px 标题栏和 36px 底栏）。
-- **没有侧边栏。** 首页 → 便当格 / 链接 / 日志 → 详情页。⌘1–4、⌘, 快捷键照旧，底栏有提示。
-- **返回不放在标题栏**：红绿灯旁边放按钮很突兀。标题栏只有红绿灯、居中的页面名和右边的刀标；详情页头部卡片左上角是面包屑“‹ 首页”（检查记录页在列表栏顶部），按 Esc 也回首页。
-- **仪表盘**：
-  1. 主区：左边守护刀（280px，见组件），右边状态胶囊、标题“AI 主动防御”（30px）、一句介绍、四道防线、金色主按钮“检查一个文件夹”和“扫描 · 体检 · 暂停”三个文字按钮。暂停时标题是“主动防御已暂停”。整个窗口都可以拖文件进来检查。
-  2. 便当格小结：一排四格，宽度 2 : 1 : 1 : 1.25。“需要处理”最宽，写出最近一条；其余是检查次数、隔离区、威胁情报。
-  3. 主区和便当格在剩余空间里上下居中；终端日志贴在底部。
-- **详情页**：最上面是头部卡片（`PageHeader` 传 `icon`）：56px 带颜色的图标底块、状态、标题和说明、右侧主操作，下面一排关键数字。状态色跟着结论走：正常绿、有问题琥珀、暂停红、其他金。检查记录是左右分栏：左边列表栏比内容区暗一档。
-- **体检页**：没跑过也有内容：头部显示上次体检的时间和结论（记在本机），每张检查卡片列出具体查什么，描述必须和引擎实际检查的一致。
-- **防线开关在设置页最前面**；仪表盘只显示每道防线开没开，点一下跳到设置。
+- **The window is fixed at 1000 × 700** and cannot be resized or zoomed; every page is laid out for this size, with no responsive layout. The content area is 1000 × 624 (minus the 40px title bar and the 36px bottom bar).
+- **No sidebar.** Home → bento grid / links / log → detail page. The ⌘1–4 and ⌘, shortcuts work as before, with hints in the bottom bar.
+- **Back is not in the title bar**: a button next to the traffic lights looks out of place. The title bar has only the traffic lights, the centered page name and the katana mark on the right; detail pages have a "‹ Home" (‹ 首页) breadcrumb in the top-left corner of the header card (on the History page it sits at the top of the list column), and Esc also goes back home.
+- **Dashboard**:
+  1. Main area: the guardian katana on the left (280px, see Components); on the right the status pill, the title "AI Active Defense" (AI 主动防御, 30px), a one-line introduction, the four defenses, the gold main button "Check a Folder" (检查一个文件夹) and three text buttons "Scan · Health Check · Pause" (扫描 · 体检 · 暂停). When paused, the title is "Active Defense Paused" (主动防御已暂停). Files can be dragged onto anywhere in the window to be checked.
+  2. Bento summary: one row of four cells, widths 2 : 1 : 1 : 1.25. "Needs attention" (需要处理) is the widest and shows the latest item; the others are the check count, quarantine and threat intel.
+  3. The main area and the bento grid are centered vertically in the remaining space; the terminal log sticks to the bottom.
+- **Detail pages**: at the top is a header card (`PageHeader` with `icon`): a 56px colored icon tile, the status, the title and description, the main action on the right, and a row of key numbers below. The status color follows the verdict: green when normal, amber when there's a problem, red when paused, gold otherwise. History is a split view: the list column on the left is one step darker than the content area.
+- **Health Check page**: it has content even before it has ever run: the header shows the time and result of the last Health Check (stored locally), and each check card lists exactly what it checks; the descriptions must match what the engine actually checks.
+- **The defense switches come first on the Settings page**; the dashboard only shows whether each defense is on, and clicking one jumps to Settings.
 
-## 2. 颜色
+## 2. Color
 
-### 表面
+### Surfaces
 
-| token | 深色（黑漆） | 浅色（和纸） | 用途 |
+| token | Dark (black lacquer) | Light (washi) | Use |
 |---|---|---|---|
-| `--window` | `#17161a` | `#f6f2ea` | 窗口、内容区底色 |
-| `--bar` | `#111013` | `#ece6da` | 标题栏、底栏、检查记录的列表栏 |
-| `--panel` | `#222126` | `#fffdf8` | 卡片、分组列表、便当格 |
-| `--raised` | `#2b2a30` | `#ffffff` | 按钮、悬停的格子、选中项 |
-| `--well` | `#0e0d10` | `#f1ece2` | 终端日志、命令、代码片段、输入框（凹槽） |
+| `--window` | `#17161a` | `#f6f2ea` | Window and content area background |
+| `--bar` | `#111013` | `#ece6da` | Title bar, bottom bar, History list column |
+| `--panel` | `#222126` | `#fffdf8` | Cards, grouped lists, bento grid |
+| `--raised` | `#2b2a30` | `#ffffff` | Buttons, hovered cells, selected items |
+| `--well` | `#0e0d10` | `#f1ece2` | Terminal log, commands, code snippets, input fields (wells) |
 
-深色模式的面板顶部有 1px 白色 5% 的内高光，四周 1px 黑色描边。浅色模式只用 1px 的淡描边。
+In dark mode, panels have a 1px 5% white inner highlight on top and a 1px black border all around. Light mode only uses a faint 1px border.
 
-### 文字和线
+### Text and lines
 
-| token | 深色 | 浅色 |
+| token | Dark | Light |
 |---|---|---|
 | `--text` | `#f3efe6` | `#1f1c17` |
 | `--text-2` | `#c4bdb0` | `#4e483e` |
 | `--text-3` | `#8f887c` | `#857d70` |
-| `--line` | 暖白 8% | 暖黑 10% |
-| `--gold-line` | 金 30% | 金 35%（细金线） |
+| `--line` | warm white 8% | warm black 10% |
+| `--gold-line` | gold 30% | gold 35% (fine gold line) |
 
-文字都略带暖调，和黑漆、和纸搭；不用纯黑纯白。
+All text has a slightly warm tint to go with black lacquer and washi; no pure black or pure white.
 
-### 意义色
+### Semantic colors
 
-| token | 深色 | 浅色 | 用途 |
+| token | Dark | Light | Use |
 |---|---|---|---|
-| `--cta` | `#d8b36a`（深字 `#1d1408`） | `#b4873a`（白字） | 主操作、选中、键盘焦点，和刀的铜套一致 |
-| `--allow` | `#6fd18f` | `#1f8a50` | 放行、守护中、开关打开 |
-| `--warn` | `#f0b44c` | `#a96400` | 提醒、防线没开 |
-| `--block` | `#ff6b5e` | `#c42a1d` | 拦截、删除、已暂停（文字和图标） |
-| `--alarm` | `#c42a1d` | `#c42a1d` | 红底白字的按钮（恢复守护、确认删除） |
-| `--brand` | `#e5532f` | `#c9401f` | 只用在品牌标志 |
+| `--cta` | `#d8b36a` (dark text `#1d1408`) | `#b4873a` (white text) | Main action, selection, keyboard focus; matches the sword's habaki |
+| `--allow` | `#6fd18f` | `#1f8a50` | Allow, Protection is on, switch on |
+| `--warn` | `#f0b44c` | `#a96400` | Warn, defense off |
+| `--block` | `#ff6b5e` | `#c42a1d` | Block, delete, paused (text and icons) |
+| `--alarm` | `#c42a1d` | `#c42a1d` | White-on-red buttons (Resume Protection, confirm delete) |
+| `--brand` | `#e5532f` | `#c9401f` | Brand mark only |
 
-“拦截红”偏深红，品牌朱红偏橙，两者不混用。
+"Block red" leans deep red and brand vermilion leans orange; the two are never mixed.
 
-## 3. 字体
+## 3. Typography
 
-系统字体：SF Pro + 苹方。等宽：SF Mono。基准 13px。
+System font: SF Pro + PingFang. Monospace: SF Mono. Base size 13px.
 
-| 样式 | 字号 / 行高 | 字重 | 用途 |
+| Style | Size / line height | Weight | Use |
 |---|---|---|---|
-| Display | 26 / 31 | 700 | 仪表盘标题，全应用只有一处 |
-| Title | 24 / 30 | 700 | 详情页标题，每页一个 |
-| Headline | 17 / 24 | 600 | 报告结论 |
-| Number | 28 / 31 | 700 | 便当格里的数字 |
-| Section | 13 / 18 | 600 | 分区标题（`--text-2`） |
-| Body | 13 / 20 | 400 | 正文 |
-| Caption | 11.5–12 / 17 | 400 | 格子说明、元数据、底栏 |
-| Mono | 11.5 / 24 | 400 | 终端日志（SF Mono），说明部分仍用系统字体 |
+| Display | 26 / 31 | 700 | Dashboard title; only one in the whole App |
+| Title | 24 / 30 | 700 | Detail page title, one per page |
+| Headline | 17 / 24 | 600 | Report verdict |
+| Number | 28 / 31 | 700 | Numbers in the bento grid |
+| Section | 13 / 18 | 600 | Section headings (`--text-2`) |
+| Body | 13 / 20 | 400 | Body text |
+| Caption | 11.5–12 / 17 | 400 | Cell descriptions, metadata, bottom bar |
+| Mono | 11.5 / 24 | 400 | Terminal log (SF Mono); the description part still uses the system font |
 
-数字一律 `tabular-nums`。命令、路径、错误信息不截断（仪表盘上的“最近一条”除外，点进去看全文）。
+Numbers always use `tabular-nums`. Commands, paths and error messages are never truncated (except the "latest item" on the dashboard; click through to see the full text).
 
-## 4. 圆角和间距
+## 4. Corner radius and spacing
 
-| 值 | token | 用在 |
+| Value | token | Used for |
 |---|---|---|
-| 14px | `--r-xl` | 拖文件进来时的落点框 |
-| 12px | `--r-lg` | 分组列表、卡片、便当格 |
-| 10px | `--r-md` | 代码块、提示条、列表项 |
-| 8px | `--r-sm` | 按钮、输入框、图标底块 |
-| 胶囊 | `--r-pill` | 状态胶囊、结论标签、开关、标题栏的恢复按钮 |
+| 14px | `--r-xl` | Drop target when dragging files in |
+| 12px | `--r-lg` | Grouped lists, cards, bento grid |
+| 10px | `--r-md` | Code blocks, banners, list items |
+| 8px | `--r-sm` | Buttons, input fields, icon tiles |
+| Pill | `--r-pill` | Status pill, verdict tags, switches, the Resume button in the title bar |
 
-间距用 4px 节奏：4 / 8 / 12 / 16 / 20 / 24 / 32。仪表盘各区块之间 18，便当格之间 10，详情页分区之间 28，页面左右 24–40。
+Spacing follows a 4px rhythm: 4 / 8 / 12 / 16 / 20 / 24 / 32. 18 between dashboard sections, 10 between bento cells, 28 between detail page sections, 24–40 for the page's left and right margins.
 
-## 5. 动效
+## 5. Motion
 
-- 时长 160–240ms（入场 380–420ms），曲线 `--ease: cubic-bezier(.2,.8,.2,1)`。
-- 开场（约 1.2 秒）：刀标弹出，下面像终端一样打出 `tsuba ▸ 守护中 4/4`，四段进度依次点亮，然后淡出。
-- 入场：首页的主区、四个便当格依次上浮出现，间隔 40ms；详情页的头部卡片和检查卡片同理。
-- 守护刀：光晕呼吸、金尘上飘、刀浮动、刀光流动（见组件）。拔刀要慢，1.1 秒，不能一闪而过。
-- 便当格悬停浮起 2px 加阴影，按下回落；主按钮悬停光晕变亮。
-- 守护中时状态点缓慢呼吸（2.8 秒一次），暂停或部分防线没开时不呼吸。
-- 按钮按下缩到 0.97；开关滑块按下拉宽。
-- 进行中的任务：卡片底边扫光或转圈，不用整页遮罩。
-- 暂停时标题栏的恢复按钮缓慢呼吸（2.4 秒一次）。
-- 系统开了“减少动态效果”时全部关闭。
+- Duration 160–240ms (380–420ms for entrances), easing `--ease: cubic-bezier(.2,.8,.2,1)`.
+- Splash (about 1.2 s): the katana mark pops up, below it `tsuba ▸ protected 4/4` (`tsuba ▸ 守护中 4/4`) is typed out like a terminal, four progress segments light up one after another, then it fades out.
+- Entrance: the home page's main area and the four bento cells rise in one after another, 40ms apart; the same goes for a detail page's header card and check cards.
+- Guardian katana: the halo breathes, gold dust drifts upward, the sword floats and light flows along the blade (see Components). Drawing the sword must be slow, 1.1 s, never a flash.
+- Bento cells lift 2px with a shadow on hover and settle back when pressed; the main button's halo brightens on hover.
+- While protection is on, the status dot breathes slowly (once every 2.8 s); it does not breathe when paused or when some defenses are off.
+- Buttons shrink to 0.97 when pressed; switch knobs widen when pressed.
+- Tasks in progress: a sweep along the card's bottom edge or a spinner, never a full-page overlay.
+- When paused, the Resume button in the title bar breathes slowly (once every 2.4 s).
+- Everything is turned off when the system's "Reduce motion" setting is on.
 
-## 6. 交互规范（UX）
+## 6. Interaction guidelines (UX)
 
-1. **互不相干的任务互不打断。** 每个任务有自己的进行中、出错、完成状态，可以同时跑（体检的三项检查）。“全部”只启动还没在跑的。
-2. **离开页面不丢进度。** 耗时任务的页面（体检）切走时不卸载。
-3. **出错就近显示。** 哪一项出错写在哪一项上。
-4. **危险状态要“响”。** 守护暂停时：
-   - 仪表盘：刀入鞘（黑漆刀鞘盖住刀刃），刀变暗、光晕变暗红、金尘散去，状态胶囊变红，标题“保护已关闭，刀已入鞘。”，写清哪些东西现在不会被检查，主按钮变成红色的“恢复守护”；终端日志显示“已暂停 0/4”；
-   - 标题栏右上角变成红色的“守护已暂停 · 点击恢复”，在任何一页都能一键恢复；
-   - 窗口顶部压一层淡红光。
-5. **删不回来的操作要点两次，并且和其他按钮隔开。** 放在工具栏最右边；第一下变成“再点一下，永久删除”，三秒内再点才执行。能撤销的操作（移入隔离区）优先。
-6. **删除要有护栏。** 只能删记录里那个具体的文件或项目；家目录、家目录下的一级目录、系统目录一律拒绝。护栏在引擎里（`quarantine::delete_path`）。
-7. **每个操作都有反馈。** 做完给一句提示（toast），失败时写明原因和下一步。
-8. **不打扰。** 仪表盘只摆一个主操作；警告只在真的有事时出现，不轰炸。
+1. **Unrelated tasks never interrupt each other.** Each task has its own in-progress, error and done states and can run concurrently (the three Health Check checks). "All" only starts the ones that aren't already running.
+2. **Leaving a page doesn't lose progress.** Pages with long-running tasks (Health Check) are not unmounted when you switch away.
+3. **Show errors where they happen.** An error is shown on the item that failed.
+4. **Dangerous states must be "loud".** When protection is paused:
+   - Dashboard: the katana is sheathed (a black lacquer scabbard covers the blade), the sword dims, the halo turns dark red, the gold dust disperses, the status pill turns red, the title reads "Protection is off. The blade is sheathed." (保护已关闭，刀已入鞘。), it spells out what won't be checked right now, and the main button becomes the red "Resume Protection" (恢复守护); the terminal log shows "paused 0/4" (已暂停 0/4);
+   - The top-right corner of the title bar becomes a red "Protection paused · Click to resume" (守护已暂停 · 点击恢复), so protection can be resumed in one click from any page;
+   - A faint red glow lies over the top of the window.
+5. **Irreversible actions take two clicks and are kept apart from other buttons.** They go at the far right of the toolbar; the first click turns the button into "Click Again to Delete Permanently" (再点一下，永久删除), and only a second click within three seconds executes it. Prefer reversible actions (Move to Quarantine).
+6. **Deletion has guardrails.** Only the specific file or project in the record can be deleted; the home directory, its first-level subdirectories and system directories are always refused. The guardrails live in the engine (`quarantine::delete_path`).
+7. **Every action gets feedback.** When it's done, show a short message (toast); on failure, state the reason and the next step.
+8. **Don't be a nuisance.** The dashboard has only one main action; warnings appear only when something is actually wrong, never as a barrage.
 
-## 7. 组件
+## 7. Components
 
-### 按钮
+### Buttons
 
-圆角 8px，高 30px（仪表盘主按钮 38px），字重 500–650。
+Corner radius 8px, height 30px (38px for the dashboard main button), weight 500–650.
 
-| 变体 | 外观 | 用法 |
+| Variant | Appearance | Use |
 |---|---|---|
-| 默认 | `--raised` 实底 + 细描边 | 次要操作 |
-| `primary` / `cta` | `--cta` 实底 | 一屏最多一个主操作 |
-| `cta-alarm` | `--alarm` 实底，白字 | 恢复守护 |
-| `danger` | 默认外观，文字 `--block`；`is-armed` 时 `--alarm` 实底 | 删除类，点两次 |
-| `link` | 无底 | 行内轻操作（暂停守护、移除） |
-| `back` | 默认外观，小号 | 标题栏的“‹ 返回” |
-| `icon-button` | 无底，28px | 必须有 `aria-label` 和 `title` |
+| Default | Solid `--raised` + hairline border | Secondary actions |
+| `primary` / `cta` | Solid `--cta` | At most one main action per screen |
+| `cta-alarm` | Solid `--alarm`, white text | Resume Protection |
+| `danger` | Default appearance, `--block` text; solid `--alarm` when `is-armed` | Delete-type actions, two clicks |
+| `link` | No background | Light inline actions (Pause Protection, Remove) |
+| `back` | Default appearance, small | "‹ Back" (‹ 返回) in the title bar |
+| `icon-button` | No background, 28px | Must have `aria-label` and `title` |
 
-禁用：不透明度 0.4。键盘焦点：3px `--focus` 外环。
+Disabled: opacity 0.4. Keyboard focus: a 3px `--focus` outer ring.
 
-### 状态胶囊
+### Status pill
 
-高 24，胶囊形，状态色 soft 底 + 1px 状态色描边 + 发光圆点 + 文字。守护中是绿色，部分防线没开是琥珀，暂停是红色。
+Height 24, pill-shaped: a soft status-color background + a 1px status-color border + a glowing dot + text. Green when protection is on, amber when some defenses are off, red when paused.
 
-### 守护刀（`GuardianKatana`）
+### Guardian katana (`GuardianKatana`)
 
-280px。一把斜放的刀（`KatanaArt`，和 App 图标同一把），后面一团光晕，护手附近金尘往上飘。不画外圈：防线开了几道写在旁边的状态胶囊和四个勾里。颜色固定，不随主题变（它是一件器物）。
+280px. A tilted katana (`KatanaArt`, the same one as the App icon) with a halo behind it and gold dust drifting up near the guard. No outer ring: how many defenses are on is shown by the status pill and the four check marks beside it. Its colors are fixed and don't change with the theme (it is an object).
 
-动效让人感觉它“活着”。每种状态的图层常驻、用过渡切换，所以切换本身就是动画：
+The motion makes it feel "alive". Each state's layers are always present and switch via transitions, so the switch itself is the animation:
 
-| 状态 | 动效 |
+| State | Motion |
 |---|---|
-| 守护中（常驻） | 光晕 4.5 秒呼吸一次（放大到 1.08）；22 颗金尘 3.5–6.5 秒从护手附近飘上去、淡出；刀 5.5 秒轻轻浮动、微微摆动；刀光 3.2 秒从刀根流到刀尖；刃纹 2.6 秒一明一暗。部分防线没开时光晕偏琥珀 |
-| 暂停（切换） | 刀鞘从刀尖方向滑下套住刀刃（0.6 秒），到底一顿（往下压 10px 再弹回）；刀沉下去、变暗变灰；光晕换成暗红；金尘散去；刀光和刃纹停 |
-| 恢复（切换） | 拔刀：刀鞘往刀尖方向滑走（1.1 秒，起步慢、中间快、最后收住），快离开时一道弧形刀光划过（0.75 秒后开始，0.9 秒）；刀重新浮起来，光晕和金尘回来 |
+| Protection on (steady) | The halo breathes once every 4.5 s (scaling up to 1.08); 22 gold dust particles drift up from near the guard over 3.5–6.5 s and fade out; the sword floats gently and sways slightly over 5.5 s; a gleam flows from the base of the blade to the tip over 3.2 s; the hamon pulses brighter and dimmer every 2.6 s. When some defenses are off, the halo leans amber |
+| Paused (transition) | The scabbard slides down from the tip and covers the blade (0.6 s), then jolts at the end (presses down 10px and springs back); the sword sinks and turns dim and gray; the halo changes to dark red; the gold dust disperses; the gleam and the hamon stop |
+| Resumed (transition) | Drawing the sword: the scabbard slides off toward the tip (1.1 s, slow start, fast middle, easing to a stop), and just before it clears, an arc of light sweeps across (starts after 0.75 s, lasts 0.9 s); the sword floats up again, and the halo and gold dust return |
 
-刀鞘的“滑”和“一顿”分在两层 `<g>` 上：两个都动 `transform`，放在同一层时，去掉动画的那一刻浏览器不会再走过渡，刀鞘会直接瞬移走。系统开了“减少动态效果”时没有这些动画，只有状态本身。
+The scabbard's "slide" and "jolt" are on two separate `<g>` layers: both animate `transform`, and if they share a layer, the browser skips the transition the moment the animation is removed, so the scabbard would teleport away. When the system's "Reduce motion" setting is on, none of these animations play; only the state itself is shown.
 
-### 便当格
+### Bento grid
 
-`--panel` 实底，圆角 12，最小高 104，内边距 14×16，整格可点。数字 28/700，说明 11.5 `--text-3`。“需要处理”有提醒时底色带一点拦截红、数字变红，下面用等宽字体写出最近一条；威胁情报的数字用金色，右下角一枚淡金环。
+Solid `--panel`, corner radius 12, minimum height 104, padding 14×16, the whole cell is clickable. Numbers 28/700, descriptions 11.5 `--text-3`. When "Needs attention" (需要处理) has warnings, its background takes a tint of Block red, the number turns red, and the latest item is written below in a monospaced font; the threat intel number is gold, with a faint gold ring in the bottom-right corner.
 
-### 终端日志（`TermLog`）
+### Terminal log (`TermLog`)
 
-贴在内容区底部（sticky），`--well` 底、上边一条细线。标题行：`⌄ tsuba ▸ 守护中 4/4`，右边“全部记录 →”；点标题行收起或展开，状态记在本机。每条一行：时间 · 标签 · 标题（等宽）· 说明（系统字体、截断），点一行打开那条记录。标签：`BLOCK` 拦截红、`WARN` 琥珀、`QUAR` / `DEL` 金、`PASS` 灰。
+Sticks to the bottom of the content area (sticky), with a `--well` background and a hairline on top. Header row: `⌄ tsuba ▸ protected 4/4` (`⌄ tsuba ▸ 守护中 4/4`), with "All History →" (全部记录 →) on the right; clicking the header row collapses or expands it, and the state is stored locally. One line per entry: time · tag · title (monospaced) · description (system font, truncated); clicking a line opens that record. Tags: `BLOCK` in Block red, `WARN` in amber, `QUAR` / `DEL` in gold, `PASS` in gray.
 
-### 开场（`Splash`）
+### Splash (`Splash`)
 
-整窗黑漆渐变，中间 132px 刀标弹出（带朱红光晕），下面等宽字打出状态和闪烁光标，四段金色进度依次点亮，1.15 秒后淡出。系统开了“减少动态效果”时不显示。
+A full-window black lacquer gradient; a 132px katana mark pops up in the middle (with a vermilion halo), below it the status is typed out in a monospaced font with a blinking cursor, four gold progress segments light up one after another, and it fades out after 1.15 s. Not shown when the system's "Reduce motion" setting is on.
 
-### 输入框、开关、分段控件、分组列表、结论标签、提示条
+### Input fields, switches, segmented controls, grouped lists, verdict tags, banners
 
-- **输入框**：`--well` 凹槽底，圆角 8，高 32，聚焦时边框变 `--cta`。
-- **开关**：38 × 22，开为 `--allow`。
-- **分段控件**：`--fill` 凹槽底，选中段 `--raised`。
-- **分组列表**：`--panel` 卡片，行最小高 54，行间内缩细线。
-- **结论标签**：胶囊，状态色 soft 底 + 状态色文字 + 图标，永远配文字“放行 / 提醒 / 拦截”。
-- **提示条**：状态色 soft 底，圆角 10，放在出错位置附近。
+- **Input fields**: `--well` background, corner radius 8, height 32; the border turns `--cta` on focus.
+- **Switches**: 38 × 22, `--allow` when on.
+- **Segmented controls**: `--fill` well background, selected segment `--raised`.
+- **Grouped lists**: `--panel` cards, minimum row height 54, inset hairlines between rows.
+- **Verdict tags**: pills with a soft status-color background + status-color text + an icon, always labeled "Allow / Warn / Block" (放行 / 提醒 / 拦截).
+- **Banners**: soft status-color background, corner radius 10, placed near where the error happened.
 
-## 8. 浅色 / 深色
+## 8. Light / dark
 
-- 设置 → 外观：跟随系统 / 浅色 / 深色，保存在本机（`localStorage` 的 `tsuba-theme`）。
-- `<html data-theme="light|dark">` 由 `src/theme.ts` 在渲染前写入，同时设置窗口外观（标题栏、红绿灯、系统弹窗），并监听系统切换。
-- 每次改样式两套都截图；开发预览地址加 `?paused` 可以直接看暂停状态。
+- Settings → Appearance (外观): System / Light / Dark (跟随系统 / 浅色 / 深色), stored locally (`tsuba-theme` in `localStorage`).
+- `<html data-theme="light|dark">` is written by `src/theme.ts` before rendering; it also sets the window appearance (title bar, traffic lights, system dialogs) and listens for system changes.
+- Take screenshots of both themes after every style change; add `?paused` to the dev preview URL to see the paused state directly.
 
-## 9. 可访问性
+## 9. Accessibility
 
-- 正文对比度 ≥ 4.5:1，`--text-3` 只用在 11.5px 以上的辅助信息。
-- 所有交互元素都有键盘焦点样式；图标按钮有名字；⌘1 回首页、⌘2–4 进各页、⌘, 设置，上下键切换检查记录。
-- 系统开了“减少动态效果”时没有动画。
+- Body text contrast ≥ 4.5:1; `--text-3` is used only for secondary information at 11.5px or larger.
+- Every interactive element has a keyboard focus style; icon buttons have names; ⌘1 goes home, ⌘2–4 open each page, ⌘, opens Settings, and the up and down arrow keys move through History.
+- No animations when the system's "Reduce motion" setting is on.
