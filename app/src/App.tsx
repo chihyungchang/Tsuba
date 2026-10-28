@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Splash } from "./brand";
 import { Icon, TsubaMark, type IconName } from "./icons";
 import { DoctorPage } from "./pages/Doctor";
 import { HistoryPage } from "./pages/History";
@@ -129,13 +130,22 @@ export default function App() {
           <TsubaMark size={15} />
           TSUBA
         </span>
-        <span className="footbar-meta">{overview ? (overview.provider === "offline" ? "只用离线规则" : overview.ai_available ? `离线规则 + ${overview.provider_label}` : "离线规则（AI 还没配置好）") : "连接中"}</span>
+        <span className="footbar-meta">{overview ? (overview.provider === "offline" ? "只用离线规则" : overview.ai_available ? `离线规则 + ${overview.provider_label.split(" · ")[0]}` : "离线规则（AI 还没配置好）") : "连接中"}</span>
+        <span className="footbar-keys">
+          {PAGES.filter((p) => p.id !== "overview" && p.id !== "settings").map((p) => (
+            <button key={p.id} className="footbar-key" onClick={() => setPage(p.id)}>
+              <kbd>⌘{p.key}</kbd>
+              {p.label}
+            </button>
+          ))}
+        </span>
         <button className="footbar-settings" onClick={() => setPage("settings")} title="设置  ⌘,">
           <Icon.settings size={14} />
           设置
         </button>
       </footer>
       <Toaster />
+      <Splash status={overview ? (overview.paused ? "已暂停 0/4" : `守护中 ${[overview.shell_hook.installed, overview.watch_downloads, overview.watch_extensions, overview.watch_ai_tools].filter(Boolean).length}/4`) : "启动中"} />
     </div>
   );
 }
