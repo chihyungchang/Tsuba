@@ -95,6 +95,18 @@ pub fn strip_comments(code: &str) -> String {
             }
             continue;
         }
+        // HTML / Markdown 注释：skill、CLAUDE.md、网页里藏指令最常用的地方，渲染出来人看不见、模型却读得到
+        if c == '<' && chars.get(i + 1..i + 4) == Some(&['!', '-', '-'][..]) {
+            i += 4;
+            while i < chars.len() && chars.get(i..i + 3) != Some(&['-', '-', '>'][..]) {
+                if chars[i] == '\n' {
+                    out.push('\n');
+                }
+                i += 1;
+            }
+            i += 3;
+            continue;
+        }
         if c == '/' && next == Some('*') {
             i += 2;
             while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
