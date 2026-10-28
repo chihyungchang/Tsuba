@@ -1,10 +1,10 @@
 /*
-  Tsuba 界面样式：黑漆与和纸，配色跟刀标走（朱红、黑漆、金、钢白）。标准见 app/DESIGN.md。
+  Tsuba UI styles: black lacquer and washi paper, colors taken from the tsuba mark (vermilion, black lacquer, gold, steel white). Standard: app/DESIGN.md.
 
-  - 一屏仪表盘 + 从磁贴进入的详情页；面板是不透明的实色，层次靠明暗和细线，不靠透明和阴影。
-  - 浅色是 :root，深色是 :root[data-theme="dark"]，由 src/theme.ts 切换；两套只换 token，不换结构。
-  - 颜色只表达意思：金色是主操作，绿 / 琥珀 / 红是放行 / 提醒 / 拦截，朱红只用在品牌标志和刀镡环。
-  - 组件只引用这里的 token。--glass 一类名字是上一版留下的，现在都指向实色面板。
+  - A one-screen dashboard plus detail pages entered from its tiles; panels are opaque solid colors, depth comes from light/dark and hairlines, not transparency and shadows.
+  - Light is :root, dark is :root[data-theme="dark"], switched by src/theme.ts; the two only swap tokens, never structure.
+  - Color only carries meaning: gold is the primary action, green / amber / red are allow / warn / block, vermilion is only for the brand mark and the tsuba ring.
+  - Components only reference the tokens here. Names like --glass are left over from the previous version and now all point to solid panels.
 */
 
 :root {
@@ -38,7 +38,7 @@
   --dash: rgba(150, 110, 40, 0.4);
   --hover: rgba(60, 45, 20, 0.05);
 
-  /* 主操作：金色，和刀的铜套、护手的金边一致；和红色的“拦截”、朱红的品牌都分得开 */
+  /* Primary action: gold, matching the katana's habaki and the guard's gold rim; clearly distinct from the red "Block" and the vermilion brand */
   --cta: #b4873a;
   --cta-hover: #a07630;
   --cta-text: #fffaf0;
@@ -56,7 +56,7 @@
   --warn-soft: rgba(204, 128, 10, 0.13);
   --block: #c42a1d;
   --block-soft: rgba(196, 42, 29, 0.1);
-  /* 红底白字的按钮单独一个更深的红，深色模式的 --block 太浅、白字读不清 */
+  /* White-on-red buttons get their own deeper red: dark mode's --block is too light for white text to read */
   --alarm: #c42a1d;
   --intel: linear-gradient(180deg, #68b844, #4f9a33);
 
@@ -141,7 +141,7 @@ body {
   background: var(--window);
 }
 
-/* 内容可以选中复制：命令、路径、证据 */
+/* Content is selectable for copying: commands, paths, evidence */
 .command,
 .snippet,
 .mono,
@@ -233,7 +233,7 @@ code {
   color: var(--block);
 }
 
-/* ---------- 按钮和输入 ---------- */
+/* ---------- Buttons and inputs ---------- */
 
 button {
   font: inherit;
@@ -357,7 +357,7 @@ select {
   transition: box-shadow 0.16s var(--ease);
 }
 
-/* 原生下拉框在深色玻璃上很突兀：去掉系统外观，自己画箭头（灰色在两种模式下都可读） */
+/* Native selects look out of place on dark glass: drop the system appearance and draw our own arrow (gray reads in both modes) */
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -397,14 +397,14 @@ select:focus {
   }
 }
 
-/* ---------- 外壳 ---------- */
+/* ---------- Shell ---------- */
 
 .shell {
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: var(--window);
-  /* 自成一层，暂停时的红光（z-index: -1）才会落在背景之上、内容之下 */
+  /* Its own stacking context, so the paused red glow (z-index: -1) lands above the background and below the content */
   position: relative;
   isolation: isolate;
 }
@@ -441,7 +441,7 @@ select:focus {
   position: relative;
 }
 
-/* 检查记录自己分栏、各自滚动 */
+/* History has its own columns, each scrolling on its own */
 .content-history {
   overflow: hidden;
 }
@@ -490,7 +490,7 @@ select:focus {
   flex-shrink: 0;
 }
 
-/* 详情页头部卡片：大图标 + 标题 + 状态 + 主操作，下面一排关键数字 */
+/* Detail page header card: large icon + title + status + primary action, with a row of key numbers below */
 .page-header.page-hero {
   display: block;
   margin-top: 22px;
@@ -598,7 +598,7 @@ select:focus {
   color: var(--text-3);
 }
 
-/* ---------- 分区和分组列表 ---------- */
+/* ---------- Sections and grouped lists ---------- */
 
 .section {
   display: flex;
@@ -654,7 +654,7 @@ select:focus {
   position: relative;
 }
 
-/* 行间细线从文字开始，不从卡片边开始：macOS 设置的分组列表 */
+/* Row separators start at the text, not the card edge: like grouped lists in macOS Settings */
 .row-wrap + .row-wrap::before {
   content: "";
   position: absolute;
@@ -805,7 +805,7 @@ select:focus {
   margin-top: 8px;
 }
 
-/* 一行可复制的命令 */
+/* A single copyable command line */
 .copy-line {
   display: flex;
   align-items: center;
@@ -909,7 +909,7 @@ select:focus {
   max-width: 300px;
 }
 
-/* ---------- 开关 ---------- */
+/* ---------- Toggles ---------- */
 
 .toggle {
   width: 38px;
@@ -947,7 +947,7 @@ select:focus {
     0 0 0 0.5px rgba(0, 0, 0, 0.04);
 }
 
-/* 按住时滑块拉长一点，松手再弹过去：iOS 开关的手感 */
+/* The knob stretches a little while pressed and springs across on release: the feel of an iOS switch */
 .toggle:active:not(:disabled) span {
   width: 22px;
 }
@@ -965,7 +965,7 @@ select:focus {
   transform: translateX(12px);
 }
 
-/* ---------- 结论标签 ---------- */
+/* ---------- Verdict badges ---------- */
 
 .badge {
   display: inline-flex;
@@ -1001,9 +1001,9 @@ select:focus {
   color: var(--block);
 }
 
-/* ---------- 标题栏和底栏 ---------- */
+/* ---------- Title bar and status bar ---------- */
 
-/* 系统的红绿灯压在左边 78px 里（tauri.conf.json 的 trafficLightPosition） */
+/* The system traffic lights sit in the left 78px (trafficLightPosition in tauri.conf.json) */
 .titlebar {
   height: 40px;
   flex-shrink: 0;
@@ -1018,7 +1018,7 @@ select:focus {
 
 
 
-/* 页面名居中，左右各留出红绿灯和右侧标志的位置，避免偏心 */
+/* Page name centered, leaving room for the traffic lights on the left and the mark on the right so it isn't off-center */
 .titlebar-title {
   flex: 1;
   text-align: center;
@@ -1028,7 +1028,7 @@ select:focus {
   letter-spacing: 0.02em;
 }
 
-/* 详情页的面包屑：“‹ 首页”，轻、贴着内容，不和红绿灯挤在一起 */
+/* Detail page breadcrumb ("‹ Home"): light, close to the content, not crowded against the traffic lights */
 button.crumb {
   height: 22px;
   padding: 0 8px 0 4px;
@@ -1069,7 +1069,7 @@ button.crumb:hover:not(:disabled) .crumb-chevron {
   color: var(--text-2);
 }
 
-/* 暂停时标题栏右上角变成红色的恢复按钮，在任何一页都看得见、点得到 */
+/* While paused, the title bar's top right becomes a red resume button, visible and clickable on every page */
 button.titlebar-status.is-paused,
 button.titlebar-status.is-paused:hover:not(:disabled) {
   height: 26px;
@@ -1124,7 +1124,7 @@ button.footbar-settings:hover:not(:disabled) {
   color: var(--text);
 }
 
-/* ---------- 概览（仪表盘） ---------- */
+/* ---------- Overview (dashboard) ---------- */
 
 .content-overview {
   display: flex;
@@ -1141,7 +1141,7 @@ button.footbar-settings:hover:not(:disabled) {
   animation: page-in 0.24s var(--ease);
 }
 
-/* 窗口固定 1000 × 700：内容区 1000 × 624，按这个尺寸排 */
+/* The window is fixed at 1000 × 700: the content area is 1000 × 624, laid out for that size */
 .dash-hero {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -1273,7 +1273,7 @@ button.cta.cta-alarm:hover:not(:disabled) {
   color: var(--text-3);
 }
 
-/* 拖着文件经过窗口时，主区域给出明确的落点 */
+/* When a file is dragged over the window, the main area shows a clear drop target */
 .dashboard.is-dragging .dash-hero {
   border-radius: var(--r-xl);
   outline: 2px dashed var(--cta);
@@ -1281,7 +1281,7 @@ button.cta.cta-alarm:hover:not(:disabled) {
   background: color-mix(in srgb, var(--cta) 8%, transparent);
 }
 
-/* ---------- 首页守护图：光晕与金尘（首页左侧） ---------- */
+/* ---------- Home guardian art: halo and gold dust (left side of home) ---------- */
 
 .guardian {
   width: 280px;
@@ -1289,7 +1289,7 @@ button.cta.cta-alarm:hover:not(:disabled) {
   overflow: visible;
 }
 
-/* 光晕：慢慢呼吸；部分防线没开时偏琥珀（在组件里换颜色）；暂停时换成暗红 */
+/* Halo: breathes slowly; leans amber when some defenses are off (color set in the component); dark red when paused */
 .guardian-halo {
   transform-box: view-box;
   transform-origin: 140px 140px;
@@ -1318,7 +1318,7 @@ button.cta.cta-alarm:hover:not(:disabled) {
   opacity: 1;
 }
 
-/* 金尘：从护手附近往上飘；暂停时整组淡出（单个光点的动画透明度会压过普通样式，所以淡出整组） */
+/* Gold dust: drifts up from near the guard; fades out as a group when paused (each mote's animated opacity overrides normal styles, so the whole group fades) */
 .guardian-dust {
   transition: opacity 0.6s var(--ease);
 }
@@ -1353,7 +1353,7 @@ button.cta.cta-alarm:hover:not(:disabled) {
   animation-play-state: paused;
 }
 
-/* 刀：守护中轻轻浮动、微微摆动；暂停时沉下去、变暗 */
+/* Katana: floats and sways slightly while protecting; sinks and dims when paused */
 .guardian-sword {
   transform-box: view-box;
   transform-origin: 140px 150px;
@@ -1391,7 +1391,7 @@ button.cta.cta-alarm:hover:not(:disabled) {
   }
 }
 
-/* 刀光：不停地从刀根流向刀尖；刃纹一明一暗 */
+/* Blade glint: flows continuously from the base to the tip; the hamon pulses bright and dim */
 .katana-glint {
   animation: katana-glint 3.2s cubic-bezier(0.3, 0.6, 0.4, 1) infinite;
 }
@@ -1433,9 +1433,9 @@ button.cta.cta-alarm:hover:not(:disabled) {
 }
 
 /*
-  刀鞘：守护中藏在刀尖外；
-  - 拔刀（恢复）：1.1 秒，先慢后快再收住，像真的把刀抽出来；
-  - 入鞘（暂停）：0.6 秒滑下去，到底一顿。
+  Scabbard: hidden beyond the tip while protecting;
+  - Drawing (resume): 1.1 s, slow then fast then settling, like really drawing the sword;
+  - Sheathing (pause): 0.6 s sliding down, with a stop at the bottom.
 */
 .katana-sheath {
   transform: translateY(-720px);
@@ -1475,7 +1475,7 @@ button.cta.cta-alarm:hover:not(:disabled) {
   }
 }
 
-/* 拔刀时一道弧形刀光：等刀鞘快离开时才划出来 */
+/* An arc of light when drawing: it sweeps only as the scabbard is about to clear */
 .guardian-slash {
   opacity: 0;
   animation: guardian-slash 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) 0.75s both;
@@ -1520,7 +1520,7 @@ button.cta.cta-alarm:hover:not(:disabled) {
   font-weight: 550;
 }
 
-/* ---------- 便当格小结 ---------- */
+/* ---------- Bento summary ---------- */
 
 .bento {
   display: grid;
@@ -1608,7 +1608,7 @@ button.cell.cell-alert:not(.is-calm) {
   margin-top: 4px;
 }
 
-/* 威胁情报格右下角一枚淡金色的环，呼应刀镡 */
+/* A faint gold ring in the threat intel tile's bottom right, echoing the tsuba */
 .cell-intel::after {
   content: "";
   position: absolute;
@@ -1620,7 +1620,7 @@ button.cell.cell-alert:not(.is-calm) {
   border: 11px solid color-mix(in srgb, var(--cta) 14%, transparent);
 }
 
-/* ---------- 底部终端日志 ---------- */
+/* ---------- Bottom terminal log ---------- */
 
 .term-log {
   position: sticky;
@@ -1786,7 +1786,7 @@ button.term-line:active:not(:disabled) {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
 }
 
-/* 底栏的快捷键提示 */
+/* Keyboard shortcut hints in the status bar */
 .footbar-keys {
   display: inline-flex;
   gap: 4px;
@@ -1818,7 +1818,7 @@ button.footbar-key:hover:not(:disabled) {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* ---------- 开场 ---------- */
+/* ---------- Onboarding ---------- */
 
 .splash {
   position: fixed;
@@ -1930,14 +1930,14 @@ button.footbar-key:hover:not(:disabled) {
   }
 }
 
-/* ---------- 检查记录 ---------- */
+/* ---------- History ---------- */
 
 .split {
   display: flex;
   height: 100%;
 }
 
-/* 列表栏：比内容区暗一档的整列，和标题栏、底栏同色 */
+/* List column: a full column one step darker than the content, the same color as the title bar and status bar */
 .list-pane {
   width: 320px;
   flex-shrink: 0;
@@ -2218,7 +2218,7 @@ button.footbar-key:hover:not(:disabled) {
   margin-right: 4px;
 }
 
-/* ---------- 报告 ---------- */
+/* ---------- Report ---------- */
 
 .report {
   margin-top: 26px;
@@ -2406,7 +2406,7 @@ button.footbar-key:hover:not(:disabled) {
   line-height: 1.7;
 }
 
-/* ---------- 扫描 ---------- */
+/* ---------- Scan ---------- */
 
 .progress-card {
   display: flex;
@@ -2434,7 +2434,7 @@ button.footbar-key:hover:not(:disabled) {
   font-weight: 650;
 }
 
-/* ---------- 体检 ---------- */
+/* ---------- Health Check ---------- */
 
 .check-grid {
   display: grid;
@@ -2481,7 +2481,7 @@ button.footbar-key:hover:not(:disabled) {
   color: var(--block);
 }
 
-/* 进行中：卡片底边一道来回扫的光，几张卡同时跑也各自可见 */
+/* Running: a light sweeping back and forth along the card's bottom edge, visible per card when several run at once */
 .check-progress {
   position: absolute;
   left: 0;
@@ -2586,7 +2586,7 @@ button.footbar-key:hover:not(:disabled) {
   margin-top: 1px;
 }
 
-/* ---------- 设置 ---------- */
+/* ---------- Settings ---------- */
 
 .choice-grid {
   display: grid;
@@ -2743,7 +2743,7 @@ button.footbar-key:hover:not(:disabled) {
   margin-right: auto;
 }
 
-/* 窗口窄时收起成两列 */
+/* Collapse to two columns when the window is narrow */
 @media (max-width: 960px) {
   .check-grid,
   .choice-grid {
@@ -2759,11 +2759,11 @@ button.footbar-key:hover:not(:disabled) {
   }
 }
 
-/* ---------- 操作反馈 ---------- */
+/* ---------- Action feedback ---------- */
 
 .toaster {
   position: fixed;
-  /* 居中在内容区，而不是整个窗口（避开侧边栏） */
+  /* Centered in the content area, not the whole window (clear of the sidebar) */
   left: 50%;
   bottom: 58px;
   transform: translateX(-50%);
@@ -2820,9 +2820,9 @@ button.link.is-armed {
   color: var(--block);
 }
 
-/* ---------- 动效 ---------- */
+/* ---------- Motion ---------- */
 
-/* 首页依次出现：主区 → 快速操作 → 四块磁贴，比整页一起冒出来更从容 */
+/* Home appears in sequence: hero → quick actions → the four tiles, calmer than the whole page popping in at once */
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -2855,7 +2855,7 @@ button.link.is-armed {
   animation-delay: 0.2s;
 }
 
-/* 守护中：状态点缓慢呼吸，表示一直在工作；暂停和部分防线时不呼吸 */
+/* Protecting: the status dot breathes slowly to show it is always working; no breathing when paused or partial */
 @keyframes breathe {
   50% {
     box-shadow: 0 0 0 5px color-mix(in srgb, var(--hero-tone) 22%, transparent), 0 0 10px var(--hero-tone);
@@ -2866,14 +2866,14 @@ button.link.is-armed {
   animation: breathe 2.8s ease-in-out infinite;
 }
 
-/* 主按钮悬停时光晕更亮 */
+/* The primary button's glow brightens on hover */
 button.cta:hover:not(:disabled) {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.25),
     0 6px 20px color-mix(in srgb, var(--cta) 45%, transparent);
 }
 
-/* 底栏的设置齿轮悬停时转一下 */
+/* The status bar's settings gear turns once on hover */
 button.footbar-settings svg {
   transition: transform 0.4s var(--ease);
 }
@@ -2882,7 +2882,7 @@ button.footbar-settings:hover:not(:disabled) svg {
   transform: rotate(60deg);
 }
 
-/* 详情页头部卡片和检查卡片也依次出现 */
+/* Detail page header cards and check cards also appear in sequence */
 .page-hero,
 .check-grid > .check-card {
   animation: rise-in 0.38s var(--ease) both;
