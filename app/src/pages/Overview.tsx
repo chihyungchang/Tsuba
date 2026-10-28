@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { TsubaRing } from "../brand";
+import { GuardianKatana } from "../brand";
 import { Icon } from "../icons";
 import { IntelManifest, LogEntry, Overview } from "../types";
 import { Banner, Spinner, baseName, errText, relativeTime } from "../ui";
@@ -169,7 +169,7 @@ export function OverviewPage({
     <>
       <div className={`dashboard ${dragging ? "is-dragging" : ""}`}>
         <section className={`dash-hero ${paused ? "is-paused" : active < defenses.length ? "is-partial" : ""}`} data-tauri-drag-region>
-          <TsubaRing defenses={defenses} paused={paused} />
+          <GuardianKatana paused={paused} partial={active < defenses.length} />
           <div className="dash-hero-text">
             <span className="status-pill">{paused ? "守护已暂停 · 现在没有保护" : active === defenses.length ? "守护中 · 四道防线都在工作" : `守护中 · ${active} / ${defenses.length} 道防线在工作`}</span>
             <h1>{paused ? "主动防御已暂停" : "AI 主动防御"}</h1>

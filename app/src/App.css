@@ -1144,8 +1144,8 @@ button.footbar-settings:hover:not(:disabled) {
 /* 窗口固定 1000 × 700：内容区 1000 × 624，按这个尺寸排 */
 .dash-hero {
   display: grid;
-  grid-template-columns: 250px 1fr;
-  gap: 40px;
+  grid-template-columns: 280px 1fr;
+  gap: 36px;
   align-items: center;
   padding: 8px 8px 0;
   --hero-tone: var(--allow);
@@ -1281,140 +1281,133 @@ button.cta.cta-alarm:hover:not(:disabled) {
   background: color-mix(in srgb, var(--cta) 8%, transparent);
 }
 
-/* ---------- 刀镡状态环（首页左侧） ---------- */
+/* ---------- 首页守护图：光晕与金尘（首页左侧） ---------- */
 
-.tsuba-ring {
-  width: 250px;
-  height: 250px;
+.guardian {
+  width: 280px;
+  height: 280px;
   overflow: visible;
 }
 
-/* 整个环：暂停时轻轻一沉（缩小、逆时针转一点），恢复时带一点回弹 */
-.ring-body {
-  transform-origin: 120px 120px;
-  transition: transform 0.7s cubic-bezier(0.34, 1.4, 0.5, 1);
+/* 光晕：慢慢呼吸；部分防线没开时偏琥珀（在组件里换颜色）；暂停时换成暗红 */
+.guardian-halo {
+  transform-box: view-box;
+  transform-origin: 140px 140px;
+  animation: halo-breathe 4.5s ease-in-out infinite;
+  transition: opacity 0.7s var(--ease);
 }
 
-.tsuba-ring.is-paused .ring-body {
-  transform: scale(0.95) rotate(-6deg);
-  transition-timing-function: var(--ease);
-}
-
-/* 外圈每段：金 / 红 / 暗底三层交叉切换，逐段延迟 */
-.ring-seg .seg-gold,
-.ring-seg .seg-red {
-  transition: opacity 0.45s var(--ease);
-  transition-delay: calc(var(--i) * 0.12s);
-}
-
-.ring-seg .seg-gold {
-  opacity: 0;
-}
-
-.ring-seg.is-on .seg-gold {
-  opacity: 1;
-  animation: seg-breathe 3.2s ease-in-out infinite;
-  animation-delay: calc(var(--i) * 0.4s);
-}
-
-.ring-seg .seg-red {
-  opacity: 0;
-}
-
-.tsuba-ring.is-paused .seg-gold {
-  opacity: 0;
-  animation: none;
-}
-
-.tsuba-ring.is-paused .seg-red {
-  opacity: 1;
-}
-
-@keyframes seg-breathe {
+@keyframes halo-breathe {
   50% {
-    opacity: 0.72;
+    transform: scale(1.08);
+    opacity: 0.75;
   }
 }
 
-/* 绕外圈走的光点：守护中才有 */
-.ring-comet {
-  transform-origin: 120px 120px;
-  animation: comet 7s linear infinite;
-  transition: opacity 0.4s var(--ease);
+.guardian-halo-red {
+  opacity: 0;
+  transition: opacity 0.8s var(--ease);
 }
 
-.tsuba-ring.is-paused .ring-comet {
+.guardian.is-paused .guardian-halo {
+  animation: none;
   opacity: 0;
 }
 
-@keyframes comet {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* 盘面：暂停时整面泛红 */
-.disc-red {
-  opacity: 0;
-  transition: opacity 0.6s var(--ease) 0.2s;
-}
-
-.tsuba-ring.is-paused .disc-red {
+.guardian.is-paused .guardian-halo-red {
   opacity: 1;
 }
 
-.ring-waves-wrap {
-  opacity: 0.14;
+/* 金尘：从护手附近往上飘；暂停时整组淡出（单个光点的动画透明度会压过普通样式，所以淡出整组） */
+.guardian-dust {
   transition: opacity 0.6s var(--ease);
 }
 
-.tsuba-ring.is-paused .ring-waves-wrap {
-  opacity: 0.05;
-}
-
-/* 盘面的青海波纹慢慢转：器物是“活”的 */
-.ring-waves {
-  transform-origin: 120px 120px;
-  animation: ring-turn 60s linear infinite;
-}
-
-@keyframes ring-turn {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* 刀鞘：守护中藏在刀尖外；暂停时沿刀身滑下来套住刀刃，恢复时往刀尖方向滑走（拔刀） */
-.katana-sheath {
-  transform: translateY(-640px);
+.guardian-dust circle {
   opacity: 0;
-  transition:
-    transform 0.75s cubic-bezier(0.6, 0, 0.3, 1),
-    opacity 0.35s var(--ease);
+  animation: dust-rise var(--d) linear infinite;
+  animation-delay: var(--delay);
 }
 
-.katana-sheath.is-on {
-  transform: translateY(0);
-  opacity: 1;
-  transition:
-    transform 0.75s cubic-bezier(0.5, 0, 0.2, 1),
-    opacity 0.2s var(--ease);
-}
-
-/* 刀光：每 4 秒从刀根掠到刀尖 */
-.katana-glint {
-  animation: glint 4s var(--ease) infinite;
-}
-
-@keyframes glint {
-  0%,
-  60% {
-    transform: translateY(0);
+@keyframes dust-rise {
+  0% {
+    transform: translate(0, 0);
     opacity: 0;
   }
 
-  66% {
+  15% {
+    opacity: var(--o);
+  }
+
+  100% {
+    transform: translate(var(--dx), -150px);
+    opacity: 0;
+  }
+}
+
+.guardian.is-paused .guardian-dust {
+  opacity: 0;
+}
+
+.guardian.is-paused .guardian-dust circle {
+  animation-play-state: paused;
+}
+
+/* 刀：守护中轻轻浮动、微微摆动；暂停时沉下去、变暗 */
+.guardian-sword {
+  transform-box: view-box;
+  transform-origin: 140px 150px;
+  animation: sword-float 5.5s ease-in-out infinite;
+  transition: filter 0.7s var(--ease);
+}
+
+@keyframes sword-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+
+  30% {
+    transform: translateY(-4px) rotate(-1.2deg);
+  }
+
+  65% {
+    transform: translateY(2px) rotate(0.8deg);
+  }
+}
+
+.guardian.is-paused .guardian-sword {
+  animation: sword-settle 0.7s var(--ease) both;
+  filter: saturate(0.5) brightness(0.75);
+}
+
+@keyframes sword-settle {
+  from {
+    transform: translateY(-3px);
+  }
+
+  to {
+    transform: translateY(4px);
+  }
+}
+
+/* 刀光：不停地从刀根流向刀尖；刃纹一明一暗 */
+.katana-glint {
+  animation: katana-glint 3.2s cubic-bezier(0.3, 0.6, 0.4, 1) infinite;
+}
+
+@keyframes katana-glint {
+  0% {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+
+  15% {
     opacity: 1;
+  }
+
+  70% {
+    opacity: 0.9;
   }
 
   100% {
@@ -1423,19 +1416,84 @@ button.cta.cta-alarm:hover:not(:disabled) {
   }
 }
 
-/* 拔刀的一闪：恢复守护时刀刃整片亮一下 */
-.katana-draw-flash {
-  opacity: 0;
-  animation: draw-flash 0.9s var(--ease) 0.45s both;
+.katana-hamon {
+  animation: katana-hamon 2.6s ease-in-out infinite;
 }
 
-@keyframes draw-flash {
-  30% {
-    opacity: 0.9;
+@keyframes katana-hamon {
+  50% {
+    stroke-opacity: 0.25;
+  }
+}
+
+.guardian.is-paused .katana-glint,
+.guardian.is-paused .katana-hamon {
+  animation: none;
+  opacity: 0;
+}
+
+/*
+  刀鞘：守护中藏在刀尖外；
+  - 拔刀（恢复）：1.1 秒，先慢后快再收住，像真的把刀抽出来；
+  - 入鞘（暂停）：0.6 秒滑下去，到底一顿。
+*/
+.katana-sheath {
+  transform: translateY(-720px);
+  opacity: 0;
+  transition:
+    transform 1.1s cubic-bezier(0.55, 0, 0.25, 1),
+    opacity 0.35s var(--ease) 0.8s;
+}
+
+.katana-sheath.is-on {
+  transform: translateY(0);
+  opacity: 1;
+  transition:
+    transform 0.6s cubic-bezier(0.45, 0, 0.2, 1),
+    opacity 0.15s var(--ease);
+}
+
+.katana-sheath.is-on .katana-sheath-body {
+  animation: sheath-click 0.9s var(--ease) 0.6s both;
+}
+
+@keyframes sheath-click {
+  0% {
+    transform: translateY(0);
   }
 
-  to {
+  12% {
+    transform: translateY(10px);
+  }
+
+  30% {
+    transform: translateY(-3px);
+  }
+
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* 拔刀时一道弧形刀光：等刀鞘快离开时才划出来 */
+.guardian-slash {
+  opacity: 0;
+  animation: guardian-slash 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) 0.75s both;
+}
+
+@keyframes guardian-slash {
+  0% {
     opacity: 0;
+    stroke-dashoffset: 420;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    stroke-dashoffset: 0;
   }
 }
 
