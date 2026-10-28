@@ -1,5 +1,10 @@
 //! Tsuba 菜单栏应用：托盘菜单、主窗口、后台监控，以及给界面调用的命令。
 
+/// User-facing text in the App backend: `tr!("Found {n} files", n = count)`. Defined before the modules so they can use it.
+macro_rules! tr {
+    ($($args:tt)*) => { tsuba_engine::tr_in!(crate::ZH_HANS, $($args)*) };
+}
+
 mod shell_hook;
 mod watch;
 mod watch_ai;
@@ -14,6 +19,8 @@ use tauri::{ActivationPolicy, AppHandle, Emitter, Manager, State, WindowEvent};
 use tsuba_engine::rules::{Finding, Verdict};
 use tsuba_engine::store::{self, Config, LogEntry};
 use tsuba_engine::{doctor, extension, judge, quarantine, scan, trust};
+
+static ZH_HANS: tsuba_engine::i18n::Catalog = tsuba_engine::i18n::Catalog::new(|| tsuba_engine::i18n::parse_catalog(include_str!("../locales/zh-Hans.json")));
 
 struct AppState {
     config: Arc<Mutex<Config>>,
@@ -44,7 +51,7 @@ fn set_paused_flag(app: &AppHandle, paused: bool) -> Result<(), String> {
         std::fs::remove_file(&flag).map_err(|e| e.to_string())?;
     }
     if let Some(item) = app.state::<AppState>().pause_item.lock().unwrap().as_ref() {
-        let _ = item.set_text(if paused { "恢复守护" } else { "暂停守护" });
+        let _ = item.set_text(pause_label(paused));
     }
     let _ = app.emit("status-changed", ());
     Ok(())
@@ -479,17 +486,40 @@ pub fn sandbox_available() -> bool {
     tsuba_engine::sandbox::available()
 }
 
-fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "打开 Tsuba", true, None::<&str>)?;
-    let history = MenuItem::with_id(app, "history", "检查记录", true, None::<&str>)?;
-    let pause = MenuItem::with_id(app, "pause", if is_paused() { "恢复守护" } else { "暂停守护" }, true, None::<&str>)?;
-    let doctor = MenuItem::with_id(app, "doctor", "体检", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "退出 Tsuba", true, None::<&str>)?;
+fn pause_label(paused: bool) -> String {
+    if paused { tr!("Resume Protection") } else { tr!("Pause Protection") }
+}
+
+/// Built again when the language changes, so the menu is always in the window's language.
+fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let open = MenuItem::with_id(app, "open", tr!("Open Tsuba"), true, None::<&str>)?;
+    let history = MenuItem::with_id(app, "history", tr!("Check History"), true, None::<&str>)?;
+    let pause = MenuItem::with_id(app, "pause", pause_label(is_paused()), true, None::<&str>)?;
+    let doctor = MenuItem::with_id(app, "doctor", tr!("Health Check"), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", tr!("Quit Tsuba"), true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&open, &history, &sep1, &pause, &doctor, &sep2, &quit])?;
     *app.state::<AppState>().pause_item.lock().unwrap() = Some(pause);
+    Ok(menu)
+}
 
+/// The window's language setting; the engine's findings, notifications and the tray menu follow it.
+#[tauri::command]
+fn set_lang(app: AppHandle, lang: String) -> Result<(), String> {
+    let lang = tsuba_engine::i18n::Lang::parse(&lang);
+    if lang == tsuba_engine::i18n::lang() {
+        return Ok(());
+    }
+    tsuba_engine::i18n::set_lang(lang);
+    if let Some(tray) = app.tray_by_id("tsuba") {
+        tray.set_menu(Some(tray_menu(&app).map_err(|e| e.to_string())?)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let menu = tray_menu(app.handle())?;
     TrayIconBuilder::with_id("tsuba")
         // 菜单栏用单色的模板图标：系统按浅色 / 深色菜单栏自动着色，彩色 App 图标在菜单栏里会显得突兀
         .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-template.png"))?)
@@ -527,6 +557,8 @@ pub fn run() {
             pause_item: Mutex::new(None),
         })
         .setup(|app| {
+            // Until the window reports its setting, follow the system language
+            tsuba_engine::i18n::set_lang(tsuba_engine::i18n::system_lang());
             build_tray(app)?;
             shell_hook::refresh_if_installed();
             restart_watchers(app.handle());
@@ -544,6 +576,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            set_lang,
             get_overview,
             set_paused,
             install_shell_hook,
@@ -585,3 +618,16 @@ pub fn run() {
         });
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zh_hans_catalog_matches_sources() {
+        let sources = tsuba_engine::i18n::read_sources(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+        let sources: Vec<&str> = sources.iter().map(String::as_str).collect();
+        if let Err(e) = tsuba_engine::i18n::check_catalog(&ZH_HANS, &sources, &[]) {
+            panic!("{e}");
+        }
+    }
+}

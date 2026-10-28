@@ -1,0 +1,10 @@
+{
+  "Also used for notifications, the menu bar menu and new check results. Past results keep the language they were checked in.": "通知、菜单栏菜单和新的检查结果也用这个语言。以前的检查记录保持当时的语言。",
+  "Appearance": "外观",
+  "Color Mode": "颜色模式",
+  "Dark": "深色",
+  "Language": "语言",
+  "Light": "浅色",
+  "System": "跟随系统",
+  "When following the system, Tsuba switches along with macOS dark mode": "跟随系统时，macOS 切换深色模式 Tsuba 也跟着换"
+}

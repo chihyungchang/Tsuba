@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Icon, type IconName } from "../icons";
+import { loadLangPreference, setLangPreference, t, type LangPreference } from "../i18n";
 import { loadThemePreference, setThemePreference, type ThemePreference } from "../theme";
 import { Config, IntelManifest, Overview, Provider } from "../types";
 import { Banner, Group, PageHeader, Row, Section, Spinner, Toggle, errText, relativeTime, shortPath, toast, toastDone } from "../ui";
@@ -122,32 +123,66 @@ function McpSection({ cliPath }: { cliPath: string }) {
   );
 }
 
-const THEMES: { id: ThemePreference; label: string }[] = [
-  { id: "system", label: "跟随系统" },
-  { id: "light", label: "浅色" },
-  { id: "dark", label: "深色" },
+// Functions, not constants: labels must be translated at render time, after the language is known
+const themes = (): { id: ThemePreference; label: string }[] => [
+  { id: "system", label: t("System") },
+  { id: "light", label: t("Light") },
+  { id: "dark", label: t("Dark") },
 ];
+
+// Language names stay in their own language, so people can find theirs whatever is showing now
+const langs = (): { id: LangPreference; label: string }[] => [
+  { id: "system", label: t("System") },
+  { id: "en", label: "English" },
+  { id: "zh-Hans", label: "简体中文" },
+];
+
+function Segmented<T extends string>({ label, options, value, onChange }: { label: string; options: { id: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div className="segmented segmented-inline" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.id} type="button" role="radio" aria-checked={value === o.id} className={value === o.id ? "on" : ""} onClick={() => onChange(o.id)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function AppearanceSection() {
   const [theme, setTheme] = useState(loadThemePreference);
-  const choose = (t: ThemePreference) => {
-    setTheme(t);
-    setThemePreference(t);
-  };
+  const [lang, setLang] = useState(loadLangPreference);
   return (
-    <Section title="外观">
+    <Section title={t("Appearance")}>
       <Group>
         <Row
-          title="颜色模式"
-          detail="跟随系统时，macOS 切换深色模式 Tsuba 也跟着换"
+          title={t("Color Mode")}
+          detail={t("When following the system, Tsuba switches along with macOS dark mode")}
           trailing={
-            <div className="segmented segmented-inline" role="radiogroup" aria-label="颜色模式">
-              {THEMES.map((t) => (
-                <button key={t.id} type="button" role="radio" aria-checked={theme === t.id} className={theme === t.id ? "on" : ""} onClick={() => choose(t.id)}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <Segmented
+              label={t("Color Mode")}
+              options={themes()}
+              value={theme}
+              onChange={(v) => {
+                setTheme(v);
+                setThemePreference(v);
+              }}
+            />
+          }
+        />
+        <Row
+          title={t("Language")}
+          detail={t("Also used for notifications, the menu bar menu and new check results. Past results keep the language they were checked in.")}
+          trailing={
+            <Segmented
+              label={t("Language")}
+              options={langs()}
+              value={lang}
+              onChange={(v) => {
+                setLang(v);
+                setLangPreference(v);
+              }}
+            />
           }
         />
       </Group>

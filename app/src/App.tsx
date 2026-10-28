@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Splash } from "./brand";
+import { useLang } from "./i18n";
 import { Icon, TsubaMark, type IconName } from "./icons";
 import { DoctorPage } from "./pages/Doctor";
 import { HistoryPage } from "./pages/History";
@@ -25,6 +26,8 @@ const PAGES: { id: Page; label: string; icon: IconName; key: string }[] = [
 const isPage = (s: string): s is Page => PAGES.some((p) => p.id === s);
 
 export default function App() {
+  // Re-render the whole tree when the language changes; every t() below picks up the new language
+  useLang();
   // 地址里的 #history 之类可以直接打开某一页（托盘菜单和开发预览用）
   const [page, setPageState] = useState<Page>(() => {
     const h = location.hash.slice(1);
