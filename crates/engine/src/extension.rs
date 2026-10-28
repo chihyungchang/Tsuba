@@ -1,7 +1,7 @@
-//! VS Code 及其衍生编辑器（Cursor、Windsurf、VSCodium）的扩展：扫描。隔离和恢复见 quarantine.rs。
+//! Extensions for VS Code and its forks (Cursor, Windsurf, VSCodium): scanning. Quarantine and restore live in quarantine.rs.
 //!
-//! 在扩展商店里装扩展不经过 shell，只能在文件写进扩展目录后马上检查。
-//! 发现高危时把扩展目录挪进隔离区，赶在编辑器下次加载它之前。
+//! Installing from the Marketplace doesn't go through the shell, so the only chance is to check right after the files land
+//! in the extensions folder. A high-risk extension is moved to quarantine before the editor loads it next time.
 
 use crate::rules::{self, CHILD_PROCESS_RULE, Finding, Severity};
 use crate::{home_dir, macos, read_limited};
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 const SCAN_EXT: &[&str] = &["js", "cjs", "mjs", "sh", "py", "ps1", "command"];
 const MAX_FILES: usize = 1500;
 
-/// 已存在的扩展目录。
+/// Extension folders that exist.
 pub fn extension_dirs() -> Vec<PathBuf> {
     [".vscode/extensions", ".vscode-insiders/extensions", ".cursor/extensions", ".windsurf/extensions", ".vscode-oss/extensions"]
         .iter()
@@ -20,7 +20,7 @@ pub fn extension_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
-/// 扩展目录里的一个子目录是否像一个已安装的扩展（publisher.name-version）。
+/// Whether a subdirectory of an extensions folder looks like an installed extension (publisher.name-version).
 pub fn is_extension_dir(p: &Path) -> bool {
     let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     !name.starts_with('.') && p.join("package.json").is_file()
@@ -32,7 +32,7 @@ fn installed_metadata(dir: &Path) -> Option<Value> {
     list.as_array()?.iter().find(|e| e["relativeLocation"].as_str() == Some(&name)).map(|e| e["metadata"].clone())
 }
 
-/// 扩展自带的 node_modules 里，依赖包的测试和示例代码不会被加载，里面的“可疑写法”多是测试数据。
+/// Tests and examples of dependencies in an extension's node_modules are never loaded, and their "suspicious patterns" are mostly test data.
 fn is_dependency_test(root: &Path, p: &Path) -> bool {
     let rel = p.strip_prefix(root).unwrap_or(p).to_string_lossy();
     if !rel.contains("node_modules/") {
@@ -58,18 +58,18 @@ pub fn scan_extension(dir: &Path) -> (Value, Vec<Finding>) {
     info.insert("engines".into(), pkg["engines"].clone());
 
     if crate::intel::feeds::vscode_malicious(&id) {
-        findings.push(Finding::new(Severity::High, format!("VS Code 官方已经把 {id} 列为恶意扩展并下架"), &id).with_source(crate::intel::VSCODE));
+        findings.push(Finding::new(Severity::High, tr!("Microsoft has listed {id} as a malicious VS Code extension and removed it from the Marketplace", id = id), &id).with_source(crate::intel::VSCODE));
     }
     let events: Vec<&str> = pkg["activationEvents"].as_array().map(|a| a.iter().filter_map(|v| v.as_str()).collect()).unwrap_or_default();
     if events.contains(&"*") {
-        findings.push(Finding::new(Severity::Low, "扩展在编辑器一启动就激活（activationEvents: *），不管你有没有用到它", &id));
+        findings.push(Finding::new(Severity::Low, tr!("The extension activates as soon as the editor starts (activationEvents: *), whether or not you use it"), &id));
     } else if events.contains(&"onStartupFinished") {
-        findings.push(Finding::new(Severity::Low, "扩展在编辑器启动完成后自动激活", &id));
+        findings.push(Finding::new(Severity::Low, tr!("The extension activates automatically once the editor has started"), &id));
     }
 
     if let Some(meta) = installed_metadata(dir) {
         if meta["source"].as_str() == Some("vsix") {
-            findings.push(Finding::new(Severity::Low, "这个扩展是用 .vsix 文件手动安装的，不是从扩展商店装的", &id));
+            findings.push(Finding::new(Severity::Low, tr!("This extension was installed by hand from a .vsix file, not from the Marketplace"), &id));
         }
         info.insert("install_metadata".into(), meta);
     }
@@ -89,7 +89,7 @@ pub fn scan_extension(dir: &Path) -> (Value, Vec<Finding>) {
         let loc = format!("{id}/{rel}");
         let mut fs = rules::scan_text(&String::from_utf8_lossy(&bytes), &loc);
         fs.extend(crate::intel::yara::scan(&bytes, &loc));
-        // 扩展调用系统命令很常见（语言服务器、git 工具），单独出现不说明问题
+        // Extensions run system commands all the time (language servers, git tools); on its own that means nothing
         for f in fs.iter_mut().filter(|f| f.rule == CHILD_PROCESS_RULE) {
             f.severity = Severity::Low;
         }
@@ -111,21 +111,21 @@ pub fn scan_extension(dir: &Path) -> (Value, Vec<Finding>) {
     (Value::Object(info), findings)
 }
 
-/// .vsix 是 zip 包，解到临时目录后按已安装扩展的方式检查。
+/// A .vsix is a zip archive: unpack it to a temporary directory and check it like an installed extension.
 pub fn scan_vsix(path: &Path) -> (Value, Vec<Finding>) {
     let Ok(tmp) = tempfile::Builder::new().prefix("tsuba-vsix-").tempdir() else {
-        return (json!({ "path": path.to_string_lossy(), "error": "无法创建临时目录" }), vec![]);
+        return (json!({ "path": path.to_string_lossy(), "error": tr!("Can't create a temporary directory") }), vec![]);
     };
     let (code, out) = macos::run(&["ditto", "-x", "-k", &path.to_string_lossy(), &tmp.path().to_string_lossy()], 60);
     if code != 0 {
-        return (json!({ "path": path.to_string_lossy(), "error": format!("无法解压：{out}") }), vec![]);
+        return (json!({ "path": path.to_string_lossy(), "error": tr!("Can't unpack it: {error}", error = out) }), vec![]);
     }
     let (mut info, findings) = scan_extension(&tmp.path().join("extension"));
     info["path"] = json!(path.to_string_lossy());
     (info, findings)
 }
 
-/// 编辑器配置目录本身是不是“扩展”：用于 `tsuba scan <目录>` 时自动判断。
+/// Whether a directory is itself an extension: lets `tsuba scan <dir>` pick the right check.
 pub fn looks_like_extension(dir: &Path) -> bool {
     let pkg: Value = serde_json::from_str(&read_limited(&dir.join("package.json"), 500_000)).unwrap_or(Value::Null);
     !pkg["engines"]["vscode"].is_null()

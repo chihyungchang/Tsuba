@@ -1,6 +1,6 @@
-//! 识别一条 shell 命令里有哪些需要检查的危险动作。
+//! Spots the risky actions in a shell command that need checking.
 //!
-//! 只做语法层面的识别，不联网、不读文件，保证足够快。
+//! Syntax only: no network and no file reads, so it stays fast.
 
 use regex::Regex;
 use serde::Serialize;
@@ -45,17 +45,17 @@ impl Target {
     }
 }
 
-// 远程脚本直接交给解释器执行：curl ... | bash、bash <(curl ...)、sh -c "$(curl ...)"
+// A remote script handed straight to an interpreter: curl ... | bash, bash <(curl ...), sh -c "$(curl ...)"
 const INTERP: &str = r"(?:sudo\s+(?:-\S+\s+)*)?(?:env\s+)?(?:/\S*/)?(?:ba|z|da|k|fi)?sh|python3?|node|perl|ruby|osascript";
 
 fn rx(s: &str) -> Regex {
-    Regex::new(s).expect("detect 正则无效")
+    Regex::new(s).expect("invalid detect regex")
 }
 
 static PIPE_TO_SHELL: LazyLock<Regex> = LazyLock::new(|| rx(&format!(r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:{INTERP})\b")));
 static PROCESS_SUBST: LazyLock<Regex> = LazyLock::new(|| rx(&format!(r"(?:{INTERP}|source|\.)\s+<\(\s*(?:curl|wget)\b")));
 static CMD_SUBST: LazyLock<Regex> = LazyLock::new(|| rx(&format!(r#"(?:{INTERP}|eval)\s+(?:-c\s+)?["']?\$\(\s*(?:curl|wget)\b"#)));
-// echo xxx | base64 -d | bash、bash -c "$(echo xxx | base64 --decode)"：ClickFix 页面最常让人粘贴的形态
+// echo xxx | base64 -d | bash, bash -c "$(echo xxx | base64 --decode)": the shapes ClickFix pages most often ask people to paste
 static B64_PIPE: LazyLock<Regex> = LazyLock::new(|| rx(&format!(r"base64\s+(?:-\w*[dD]\w*|--decode)\b[^;&]*\|\s*(?:{INTERP})\b")));
 static B64_SUBST: LazyLock<Regex> = LazyLock::new(|| rx(&format!(r#"(?:{INTERP}|eval)\s+(?:-c\s+)?["']?\$\([^)]*base64\s+(?:-\w*[dD]|--decode)"#)));
 static URL: LazyLock<Regex> = LazyLock::new(|| rx(r#"https?://[^\s'"|;&)]+"#));
@@ -67,10 +67,10 @@ const PKG_MANAGERS: &[&str] = &["npm", "pnpm", "yarn", "bun"];
 const INSTALL_SUBCMDS: &[&str] = &["install", "i", "ci", "add", "isntall", "in"];
 const RUN_SUBCMDS: &[&str] = &["start", "run", "dev", "test", "exec", "serve"];
 const EDITORS: &[&str] = &["code", "code-insiders", "cursor", "windsurf", "codium"];
-/// 在当前目录启动就会读取项目里的 MCP 配置、hooks、CLAUDE.md 的 AI 编程工具
+/// AI coding tools that read the project's MCP config, hooks and CLAUDE.md when started in the current directory
 const AI_CLIS: &[&str] = &["claude", "codex", "gemini"];
 
-/// 按 ; && || | 切成多段，每段用 shell 规则分词。分词失败时退回空格切分。
+/// Splits on ; && || | and tokenizes each part with shell rules, falling back to splitting on spaces.
 fn split_commands(cmd: &str) -> Vec<Vec<String>> {
     let mut out = Vec::new();
     for part in SPLIT.split(cmd) {
@@ -78,7 +78,7 @@ fn split_commands(cmd: &str) -> Vec<Vec<String>> {
             continue;
         }
         let mut toks = shlex::split(part).unwrap_or_else(|| part.split_whitespace().map(String::from).collect());
-        // 去掉前面的环境变量赋值和 sudo
+        // Drop leading environment variable assignments and sudo
         while let Some(t) = toks.first() {
             if ASSIGN.is_match(t) || matches!(t.as_str(), "sudo" | "command" | "exec" | "time" | "nohup") {
                 toks.remove(0);
@@ -139,7 +139,7 @@ pub fn detect(cmd: &str) -> Vec<Target> {
         } else if prog == "node" && args.first().is_some_and(|a| !a.starts_with('-')) {
             targets.push(Target::new(Kind::ProjectRun, json!({ "manager": "node", "script": args[0] })));
         } else if AI_CLIS.contains(&prog.as_str()) && args.first().map(String::as_str) == Some("mcp") && args.get(1).map(String::as_str) == Some("add") {
-            // claude mcp add [选项] <名字> -- <命令...>，或 claude mcp add --transport http <名字> <网址>
+            // claude mcp add [options] <name> -- <command...>, or claude mcp add --transport http <name> <url>
             let (before, after) = match args.iter().position(|a| a == "--") {
                 Some(i) => (&args[2..i], args[i + 1..].to_vec()),
                 None => (&args[2..], vec![]),
@@ -184,7 +184,7 @@ pub fn detect(cmd: &str) -> Vec<Target> {
     targets
 }
 
-/// pip install x、pip3 install x、python -m pip install x、uv pip install x、uv add x
+/// pip install x, pip3 install x, python -m pip install x, uv pip install x, uv add x
 fn pip_install(prog: &str, args: &[String]) -> Option<Vec<String>> {
     let rest: &[String] = match prog {
         "pip" | "pip3" => args,
@@ -199,7 +199,7 @@ fn pip_install(prog: &str, args: &[String]) -> Option<Vec<String>> {
     if rest.first().map(String::as_str) != Some("install") {
         return None;
     }
-    // -r requirements.txt 这种不是包名
+    // Things like -r requirements.txt aren't package names
     let mut pkgs = Vec::new();
     let mut skip = false;
     for a in &rest[1..] {
@@ -214,7 +214,7 @@ fn pip_install(prog: &str, args: &[String]) -> Option<Vec<String>> {
     Some(pkgs)
 }
 
-/// 文本里出现的所有 http(s) 网址。
+/// Every http(s) URL in the text.
 pub fn urls_in(text: &str) -> Vec<String> {
     URL.find_iter(text).map(|m| m.as_str().to_string()).collect()
 }
@@ -228,14 +228,16 @@ static CLEAN_SUBST: LazyLock<Regex> =
 static CLEAN_PROCSUBST: LazyLock<Regex> =
     LazyLock::new(|| rx(&format!(r"^\s*({VETTED_INTERP})\s+<\(\s*(?:curl|wget|fetch)\b[^|;&]*\)\s*$")));
 
-/// 当命令是“下载器 | 解释器”“解释器 -c "$(下载器)"”或“解释器 <(下载器)”这种干净形式、
-/// 解释器后面没有多余参数、也没有 sudo 时，返回该用哪个解释器直接运行已经下载检查过的那份脚本。
+/// When the command has a clean shape, "downloader | interpreter", "interpreter -c "$(downloader)"" or
+/// "interpreter <(downloader)", with no extra interpreter arguments and no sudo, returns the interpreter to run the
+/// already downloaded and checked script with directly.
 ///
-/// 这样用户确认执行时，跑的就是 Tsuba 看过的内容，服务器没法第二次下发不一样的东西（TOCTOU）。
-/// 复杂形式（带 sudo、带参数、多个下载源）返回 None，调用方改用“重新下载并比对哈希”兜底。
+/// That way, when the user confirms, what runs is exactly what Tsuba saw, and the server can't serve something different
+/// the second time (TOCTOU). Complex shapes (sudo, arguments, several sources) return None and the caller falls back to
+/// downloading again and comparing hashes.
 pub fn vetted_interpreter(cmd: &str) -> Option<String> {
-    // 只允许恰好一个下载 URL，避免多阶段里选错。下面的正则是整条命令锚定的，
-    // 命令里还串了别的（; && 多个管道）都不会匹配。
+    // Exactly one download URL, so a multi-stage command can't make us pick the wrong one. The regexes below are anchored
+    // to the whole command, so anything else chained on (; && more pipes) won't match.
     if urls_in(cmd).len() != 1 {
         return None;
     }
@@ -247,14 +249,14 @@ pub fn vetted_interpreter(cmd: &str) -> Option<String> {
     None
 }
 
-/// git clone 带值的选项：值不是仓库地址或目标目录
+/// git clone options that take a value: the value is neither the repository nor the target directory
 const CLONE_VALUE_OPTS: &[&str] = &[
     "-b", "--branch", "-o", "--origin", "--depth", "-c", "--config", "--reference", "--reference-if-able", "--separate-git-dir",
     "-j", "--jobs", "--template", "-u", "--upload-pack", "--filter", "--shallow-since", "--shallow-exclude", "--server-option",
 ];
 
-/// `git clone` / `gh repo clone` 之后，新仓库会落在哪个目录（相对当前目录）。不是克隆命令返回空。
-/// 克隆本身只下载、不执行；真正的风险在之后用编辑器或 AI 工具打开、运行它，所以克隆完马上查一遍。
+/// The directory (relative to the current one) a new repository lands in after `git clone` / `gh repo clone`. Empty for other commands.
+/// Cloning only downloads and runs nothing; the real risk comes later when it is opened in an editor or AI tool or run, so check it right after the clone.
 pub fn clone_dirs(cmd: &str) -> Vec<String> {
     let mut out = Vec::new();
     for toks in split_commands(cmd) {
@@ -269,7 +271,7 @@ pub fn clone_dirs(cmd: &str) -> Vec<String> {
         while i < rest.len() {
             let a = &rest[i];
             if a == "--" {
-                // gh repo clone <repo> [dir] -- <git 参数>
+                // gh repo clone <repo> [dir] -- <git options>
                 if prog == "gh" {
                     break;
                 }
@@ -288,7 +290,7 @@ pub fn clone_dirs(cmd: &str) -> Vec<String> {
         let dir = match pos.as_slice() {
             [_, dir, ..] => dir.clone(),
             [repo] => {
-                // https://host/owner/name.git、git@host:owner/name.git、owner/name（gh）
+                // https://host/owner/name.git, git@host:owner/name.git, owner/name (gh)
                 let tail = repo.trim_end_matches('/').rsplit(['/', ':']).next().unwrap_or("");
                 tail.strip_suffix(".git").unwrap_or(tail).to_string()
             }
