@@ -10,6 +10,8 @@ name: Update website
 on:
   release:
     types: [published]
+  # Run it by hand (Actions → Update website → Run workflow) to test the hook
+  workflow_dispatch:
 
 permissions: {}
 
