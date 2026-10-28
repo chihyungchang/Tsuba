@@ -1,6 +1,6 @@
 [package]
 name = "tsuba-cli"
-description = "Tsuba 终端检查程序，由 zsh 钩子调用"
+description = "Tsuba terminal checker, called by the zsh hook"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,4 +1,4 @@
-//! 监控 AI 编程工具：新增或修改的 MCP server、skill、插件 hooks。
+//! Watches AI coding tools: new or changed MCP servers, skills and plugin hooks.
 
 use crate::watch::{paused, two_phase};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -12,12 +12,12 @@ use tsuba_engine::agents::{self, McpServer};
 use tsuba_engine::rules::{self, Verdict};
 use tsuba_engine::store::{self, Config};
 
-/// 见过的 MCP server 和 skill：键 → 内容指纹
+/// MCP servers and skills already seen: key → content fingerprint
 #[derive(Clone)]
 struct AiSeen(Arc<Mutex<HashMap<String, String>>>);
 
 impl AiSeen {
-    /// 第一次运行时把现有的全部记为见过，只检查之后新出现或改动的。已有的可以在“体检”里扫描
+    /// On the first run, mark everything present as seen and only check what is added or changed later. Existing ones can be scanned in Health Check
     fn load() -> AiSeen {
         let v = store::load_json("ai_seen.json");
         let map: HashMap<String, String> = serde_json::from_value(v).unwrap_or_default();
@@ -33,7 +33,7 @@ impl AiSeen {
         seen
     }
 
-    /// 内容和上次不一样（或第一次见到）就记下来并返回 true
+    /// Records the fingerprint and returns true when it differs from last time (or is new)
     fn changed(&self, key: &str, fp: &str) -> bool {
         let mut m = self.0.lock().unwrap();
         if m.get(key).map(String::as_str) == Some(fp) {
@@ -45,7 +45,7 @@ impl AiSeen {
     }
 }
 
-/// 同一个文件短时间内会连续变动多次，等安静下来再检查
+/// A file often changes several times in a row; wait until it settles before checking
 #[derive(Clone, Default)]
 struct Debounce(Arc<Mutex<HashSet<PathBuf>>>);
 
@@ -67,11 +67,11 @@ fn check_server(app: &AppHandle, cfg: &Config, s: McpServer) {
     if tsuba_engine::trust::is_trusted_mcp(&s) {
         return;
     }
-    let title = format!("{} · {}（MCP server）", s.client, s.name);
+    let title = tr!("{client} · {name} (MCP server)", client = s.client, name = s.name);
     let detail = s.command_line();
     two_phase(app, cfg, "ai_tool", &title, |c| {
         let findings = agents::scan_mcp_server(&s, c.intel.online_lookup);
-        let evidence = json!({ "command": format!("(新增的 MCP server) {detail}"), "targets": [{ "kind": "mcp_server", "server": s }], "findings": findings });
+        let evidence = json!({ "command": format!("(new MCP server) {detail}"), "targets": [{ "kind": "mcp_server", "server": s }], "findings": findings });
         tsuba_engine::judge_evidence(c, &evidence, findings)
     });
 }
@@ -81,12 +81,13 @@ fn check_unit(app: &AppHandle, cfg: &Config, unit: &Path) {
         return;
     }
     let (info, findings) = agents::scan_unit(unit);
-    // skill 经常随着同步更新，没问题的不记录、不调用模型
+    // Skills get updated by syncing all the time: clean ones are not recorded and don't call the model
     if rules::offline_verdict(&findings) == Verdict::Allow {
         return;
     }
-    let title = format!("{}（{}）", info["path"].as_str().unwrap_or(""), if info["kind"] == "hooks" { "插件 hooks" } else { "skill" });
-    let evidence = json!({ "command": format!("(新增或修改的 AI 工具 {}) {}", info["kind"], info["path"]), "targets": [{ "kind": "ai_skill", "info": info }], "findings": findings });
+    let path = info["path"].as_str().unwrap_or("");
+    let title = if info["kind"] == "hooks" { tr!("{path} (plugin hooks)", path = path) } else { tr!("{path} (skill)", path = path) };
+    let evidence = json!({ "command": format!("(new or changed AI tool {}) {}", info["kind"], info["path"]), "targets": [{ "kind": "ai_skill", "info": info }], "findings": findings });
     two_phase(app, cfg, "ai_tool", &title, |c| tsuba_engine::judge_evidence(c, &evidence, findings.clone()));
 }
 
@@ -94,7 +95,7 @@ pub fn start(app: &AppHandle, cfg: Arc<Mutex<Config>>, watchers: &mut Vec<Recomm
     let seen = AiSeen::load();
     let debounce = Debounce::default();
 
-    // MCP 配置文件：~/.claude.json 写得很频繁，所以只在 server 的配置真的变了时才检查
+    // MCP config files: ~/.claude.json is written very often, so only check when a server's config really changed
     let configs: Vec<(String, PathBuf)> = agents::user_mcp_configs().into_iter().map(|(c, p)| (c.to_string(), p)).collect();
     let parents: HashSet<PathBuf> = configs.iter().filter_map(|(_, p)| p.parent().map(Path::to_path_buf)).filter(|p| p.is_dir()).collect();
     let (app2, cfg2, seen2, deb2, configs2) = (app.clone(), cfg.clone(), seen.clone(), debounce.clone(), configs.clone());
@@ -122,7 +123,7 @@ pub fn start(app: &AppHandle, cfg: Arc<Mutex<Config>>, watchers: &mut Vec<Recomm
         watchers.push(w);
     }
 
-    // skill 和插件目录
+    // Skill and plugin folders
     let (app2, cfg2, seen2, deb2) = (app.clone(), cfg.clone(), seen.clone(), debounce.clone());
     if let Ok(mut w) = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let Ok(ev) = res else { return };

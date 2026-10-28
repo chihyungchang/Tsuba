@@ -1,5 +1,5 @@
-//! 后台监控：下载目录里新出现的安装包、打开的安装镜像、编辑器扩展目录里新装或更新的扩展。
-//! AI 编程工具的监控在 watch_ai.rs。
+//! Background watchers: new installers in Downloads, disk images being opened, and extensions installed or updated
+//! in editor extension folders. AI coding tools are watched in watch_ai.rs.
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::{Value, json};
@@ -18,7 +18,7 @@ pub struct Watchers {
     _watchers: Vec<RecommendedWatcher>,
 }
 
-/// 记住已经见过的文件和扩展，App 重启后不重复检查。
+/// Files and extensions already seen, so they are not checked again after the App restarts.
 #[derive(Clone, Default)]
 struct Seen(Arc<Mutex<HashSet<String>>>);
 
@@ -29,7 +29,7 @@ impl Seen {
         Seen(Arc::new(Mutex::new(set)))
     }
 
-    /// 第一次见到返回 true。
+    /// True the first time a key is seen.
     fn insert(&self, key: &str) -> bool {
         let mut set = self.0.lock().unwrap();
         let fresh = set.insert(key.to_string());
@@ -52,7 +52,8 @@ pub(crate) fn paused() -> bool {
     store::home().join("paused").exists()
 }
 
-/// 用 macOS 系统通知提醒。
+/// Shows a macOS notification. Callers build the text with `tr!` right before calling, so it is in the language
+/// current at send time even when sent from a background watcher.
 pub(crate) fn notify_user(title: &str, body: &str) {
     let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "'");
     let body: String = body.chars().take(240).collect();
@@ -64,8 +65,8 @@ fn file_name(p: &str) -> String {
     Path::new(p).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| p.to_string())
 }
 
-/// 记一条检查记录，有风险时发通知；拦截时把窗口调出来。
-/// `previous` 是同一条记录之前的结论（两段式检查的第二段），结论没有变得更严重时不重复提醒。
+/// Records a check, notifies when it is risky and brings up the window on Block.
+/// `previous` is the earlier verdict of the same record (second phase of a two-phase check); no repeat notification unless it got worse.
 pub(crate) fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Option<Verdict>) {
     let r = &entry.report;
     let name = file_name(&entry.title);
@@ -73,13 +74,13 @@ pub(crate) fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Optio
     match r.verdict {
         Verdict::Allow if entry.action.is_empty() => entry.action = "allowed".into(),
         Verdict::Warn | Verdict::Block if escalated => {
-            let what = match entry.action.as_str() {
-                "quarantined" => "已移入隔离区",
-                "ejected" => "已阻止打开",
-                _ => "先不要打开它",
+            let next_step = match entry.action.as_str() {
+                "quarantined" => tr!("It has been moved to quarantine."),
+                "ejected" => tr!("Tsuba stopped it from opening."),
+                _ => tr!("Don't open it yet."),
             };
-            let label = if r.verdict == Verdict::Block { "建议拦截" } else { "需要注意" };
-            notify_user(&format!("Tsuba：{name} {label}"), &format!("{} {what}。", r.summary));
+            let title = if r.verdict == Verdict::Block { tr!("Tsuba: block recommended for {name}", name = name) } else { tr!("Tsuba: {name} needs attention", name = name) };
+            notify_user(&title, &format!("{} {next_step}", r.summary));
             if entry.action.is_empty() {
                 entry.action = "notified".into();
             }
@@ -94,9 +95,9 @@ pub(crate) fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Optio
     }
 }
 
-/// 两段式检查：离线规则不到一秒就出结论，有风险马上提醒；AI 的判断随后补上，更新同一条记录。
+/// Two-phase check: offline rules decide in under a second and warn right away; the AI's judgment follows and updates the same record.
 pub(crate) fn two_phase(app: &AppHandle, cfg: &Config, source: &str, title: &str, check: impl Fn(&Config) -> tsuba_engine::Report) -> Verdict {
-    // 第一段只用本机的规则和名单，不联网，不到一秒出结论
+    // Phase one uses only local rules and lists, no network, done in under a second
     let offline_cfg = cfg.offline_only();
     let first = LogEntry::new(source, title, "", check(&offline_cfg));
     let offline = first.report.verdict;
@@ -112,8 +113,8 @@ pub(crate) fn two_phase(app: &AppHandle, cfg: &Config, source: &str, title: &str
     verdict
 }
 
-/// 等文件写完：大小连续不变，而且浏览器的临时文件已经没了。
-/// Chrome 和 Safari 下载完才改成最终文件名；Firefox 先建一个空的最终文件，边下边写 .part。
+/// Waits until the file is fully written: the size stops changing and the browser's temporary file is gone.
+/// Chrome and Safari rename to the final name when done; Firefox creates an empty final file first and writes into .part.
 fn wait_complete(p: &Path) -> bool {
     let part = |ext: &str| PathBuf::from(format!("{}.{ext}", p.display())).exists();
     let mut last = u64::MAX;
@@ -131,7 +132,7 @@ fn wait_complete(p: &Path) -> bool {
     false
 }
 
-/// 已经判断过的镜像文件 → 结论。用户打开它时直接按这个处理，不用再等。
+/// Disk image → verdict for images already judged. When the user opens one, act on it right away without waiting.
 #[derive(Clone, Default)]
 struct Verdicts(Arc<Mutex<HashMap<PathBuf, Verdict>>>);
 
@@ -154,7 +155,7 @@ fn on_download(app: AppHandle, cfg: Arc<Mutex<Config>>, seen: Seen, verdicts: Ve
     });
 }
 
-/// 弹出一个已挂载的镜像。刚挂载的卷可能还被 Finder 或 Spotlight 占着，确认真的卸载了才算成功。
+/// Ejects a mounted image. A fresh volume may still be held by Finder or Spotlight, so only report success once it is really gone.
 fn eject(mount_point: &Path) -> bool {
     for _ in 0..5 {
         macos::run(&["hdiutil", "detach", "-force", &mount_point.to_string_lossy()], 15);
@@ -166,8 +167,8 @@ fn eject(mount_point: &Path) -> bool {
     false
 }
 
-/// 用户打开（挂载）了一个安装镜像。这是真正能拦住的时刻：判为高危就立刻把它弹出，
-/// 赶在用户双击里面的东西之前。只用离线规则，不到一秒出结果。
+/// The user opened (mounted) a disk image. This is the moment it can really be stopped: if it is high risk,
+/// eject it at once, before the user double-clicks anything inside. Offline rules only, done in under a second.
 fn on_mount(app: AppHandle, verdicts: Verdicts, mounted: Arc<Mutex<HashSet<PathBuf>>>, p: PathBuf) {
     if p.parent() != Some(Path::new("/Volumes")) {
         return;
@@ -180,7 +181,7 @@ fn on_mount(app: AppHandle, verdicts: Verdicts, mounted: Arc<Mutex<HashSet<PathB
         return;
     }
     std::thread::spawn(move || {
-        // hdiutil 登记挂载信息要一点时间
+        // hdiutil takes a moment to register the mount
         let mut image = None;
         for _ in 0..10 {
             image = macos::mounted_images().into_iter().find(|(mp, _)| *mp == p).map(|(_, img)| img);
@@ -189,7 +190,7 @@ fn on_mount(app: AppHandle, verdicts: Verdicts, mounted: Arc<Mutex<HashSet<PathB
             }
             std::thread::sleep(Duration::from_millis(150));
         }
-        // 不是磁盘镜像（U 盘、移动硬盘），不管
+        // Not a disk image (USB stick, external drive): ignore
         let Some(image) = image else { return };
         if paused() {
             return;
@@ -205,9 +206,9 @@ fn on_mount(app: AppHandle, verdicts: Verdicts, mounted: Arc<Mutex<HashSet<PathB
             return;
         }
         let summary = if verdict == Verdict::Block {
-            format!("{label} 带有明显的恶意安装包特征，Tsuba 已经把它弹出，没有让它打开")
+            tr!("{name} has clear signs of a malicious installer. Tsuba ejected it before it could be opened.", name = label)
         } else {
-            format!("{label} 有可疑之处，打开里面的东西之前先看看证据")
+            tr!("{name} looks suspicious. Look at the evidence before opening anything inside.", name = label)
         };
         let mut entry = LogEntry::new(
             "mount",
@@ -217,7 +218,7 @@ fn on_mount(app: AppHandle, verdicts: Verdicts, mounted: Arc<Mutex<HashSet<PathB
                 verdict,
                 summary,
                 reasons: vec![],
-                advice: "不要从终端或右键强制打开镜像里的任何文件。如果是别人让你装的会议软件或面试工具，直接删除，并向对方的公司核实。".into(),
+                advice: tr!("Don't force open anything in the image from the terminal or the right-click menu. If someone asked you to install it as meeting software or an interview tool, delete it and check with their company."),
                 source: "offline".into(),
                 model: String::new(),
                 findings,
@@ -239,7 +240,7 @@ fn on_extension(app: AppHandle, cfg: Arc<Mutex<Config>>, seen: Seen, root: PathB
         return;
     }
     std::thread::spawn(move || {
-        // 编辑器解压扩展需要几秒，等它写完 package.json
+        // The editor takes a few seconds to unpack an extension; wait for package.json
         std::thread::sleep(Duration::from_secs(4));
         if !extension::is_extension_dir(&p) || !seen.insert(&key) || paused() {
             return;
@@ -256,8 +257,8 @@ fn on_extension(app: AppHandle, cfg: Arc<Mutex<Config>>, seen: Seen, root: PathB
     });
 }
 
-/// 第一次运行时，把已有的文件和扩展记为“见过”，只检查之后新出现的。
-/// 已装扩展可以在“体检”里手动扫描。
+/// On the first run, mark existing files and extensions as seen and only check what appears later.
+/// Installed extensions can be scanned by hand in Health Check.
 fn baseline(seen: &Seen) {
     if store::home().join("seen.json").exists() {
         return;
@@ -297,7 +298,7 @@ pub fn start(app: &AppHandle, cfg: Arc<Mutex<Config>>) -> Watchers {
                 watchers.push(w);
             }
 
-        // 已经挂载着的卷不检查，只看之后新挂载的
+        // Volumes already mounted are not checked, only ones mounted later
         let mounted: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(
             std::fs::read_dir("/Volumes").map(|rd| rd.flatten().map(|e| e.path()).collect()).unwrap_or_default(),
         ));

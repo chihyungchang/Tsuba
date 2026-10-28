@@ -1,4 +1,4 @@
-//! 把终端检查程序和 zsh 钩子装到 ~/.tsuba，并在 ~/.zshrc 里加一行。
+//! Installs the terminal checker and zsh hook into ~/.tsuba and adds a line to ~/.zshrc.
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -6,7 +6,9 @@ use tsuba_engine::{home_dir, store};
 
 const ZSH_SCRIPT: &str = include_str!("../../../crates/cli/shell/tsuba.zsh");
 const RC_LINE: &str = "[[ -f ~/.tsuba/tsuba.zsh ]] && source ~/.tsuba/tsuba.zsh";
-const RC_COMMENT: &str = "# Tsuba：在危险命令执行前检查";
+const RC_COMMENT: &str = "# Tsuba: check dangerous commands before they run";
+/// The comment older versions wrote into ~/.zshrc; still removed on uninstall.
+const LEGACY_RC_COMMENT: &str = "# Tsuba：在危险命令执行前检查";
 
 #[derive(Serialize)]
 pub struct HookStatus {
@@ -15,7 +17,7 @@ pub struct HookStatus {
     pub cli_path: String,
 }
 
-/// 检查程序和 App 主程序放在同一个目录：开发时是 target/debug，打包后是 Tsuba.app/Contents/MacOS。
+/// The checker sits next to the App binary: target/debug in development, Tsuba.app/Contents/MacOS when bundled.
 pub fn bundled_cli() -> Option<PathBuf> {
     let p = std::env::current_exe().ok()?.parent()?.join("tsuba");
     p.is_file().then_some(p)
@@ -35,9 +37,9 @@ pub fn status() -> HookStatus {
     }
 }
 
-/// 复制而不是链接：App 被挪动或删除时，终端里不会突然找不到程序报错。
+/// Copied rather than linked, so moving or deleting the App doesn't suddenly break the terminal.
 fn copy_files() -> Result<(), String> {
-    let src = bundled_cli().ok_or("找不到 Tsuba 检查程序，请重新安装 Tsuba")?;
+    let src = bundled_cli().ok_or_else(|| tr!("Can't find the Tsuba checker. Reinstall Tsuba."))?;
     let home = store::home();
     std::fs::create_dir_all(home.join("bin")).map_err(|e| e.to_string())?;
     let dest = home.join("bin/tsuba");
@@ -58,7 +60,7 @@ pub fn install() -> Result<(), String> {
             new.push('\n');
         }
         new.push_str(&format!("\n{RC_COMMENT}\n{RC_LINE}\n"));
-        std::fs::write(&rc_path, new).map_err(|e| format!("无法写入 ~/.zshrc：{e}"))?;
+        std::fs::write(&rc_path, new).map_err(|e| tr!("Couldn't write ~/.zshrc: {error}", error = e))?;
     }
     Ok(())
 }
@@ -67,8 +69,8 @@ pub fn uninstall() -> Result<(), String> {
     let rc_path = zshrc();
     let rc = std::fs::read_to_string(&rc_path).unwrap_or_default();
     if rc.contains(RC_LINE) {
-        let kept: Vec<&str> = rc.lines().filter(|l| *l != RC_LINE && *l != RC_COMMENT).collect();
-        std::fs::write(&rc_path, kept.join("\n") + "\n").map_err(|e| format!("无法写入 ~/.zshrc：{e}"))?;
+        let kept: Vec<&str> = rc.lines().filter(|l| *l != RC_LINE && *l != RC_COMMENT && *l != LEGACY_RC_COMMENT).collect();
+        std::fs::write(&rc_path, kept.join("\n") + "\n").map_err(|e| tr!("Couldn't write ~/.zshrc: {error}", error = e))?;
     }
     let home = store::home();
     let _ = std::fs::remove_file(home.join("bin/tsuba"));
@@ -76,7 +78,7 @@ pub fn uninstall() -> Result<(), String> {
     Ok(())
 }
 
-/// App 升级后，把终端里用的检查程序也更新到同一版本。
+/// After the App is upgraded, update the terminal checker to the same version.
 pub fn refresh_if_installed() {
     if status().installed {
         let _ = copy_files();
