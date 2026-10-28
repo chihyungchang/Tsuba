@@ -1,6 +1,6 @@
-//! YARA 规则：从公开规则库下载，用 YARA-X 编译成一个文件，检查时直接加载。
+//! YARA rules: downloaded from public rule repositories and compiled with YARA-X into one file that checks load directly.
 
-use super::{SourceStatus, dir, file_mtime, github_head, github_tarball, write_atomic};
+use super::{Label, SourceStatus, dir, file_mtime, github_head, github_tarball, write_atomic};
 use crate::rules::{Finding, Severity};
 use crate::store;
 use regex::Regex;
@@ -12,23 +12,23 @@ const COMPILED: &str = "rules.yarac";
 
 pub struct YaraSource {
     pub id: &'static str,
-    pub name: &'static str,
-    pub license: &'static str,
+    pub name: Label,
+    pub license: Label,
     pub url: &'static str,
-    /// (仓库, 分支)；None 表示读本机文件
+    /// (repository, branch); None means a local file
     repo: Option<(&'static str, &'static str)>,
     local: Option<&'static str>,
-    /// 仓库里哪些文件是要用的规则
+    /// Which files in the repository are the rules to use
     wanted: fn(&str) -> bool,
-    /// 命中时的严重度：恶意软件家族特征算高危；GuardDog 是“可疑写法”，算中危
+    /// Severity of a match: malware family signatures are high; GuardDog flags "suspicious patterns" and counts lower
     severity: Severity,
 }
 
 pub const SOURCES: &[YaraSource] = &[
     YaraSource {
         id: "elastic",
-        name: "Elastic 恶意软件规则",
-        license: "Elastic License 2.0",
+        name: Label::Localized(|| tr!("Elastic malware rules")),
+        license: Label::Fixed("Elastic License 2.0"),
         url: "https://github.com/elastic/protections-artifacts",
         repo: Some(("elastic/protections-artifacts", "main")),
         local: None,
@@ -37,8 +37,8 @@ pub const SOURCES: &[YaraSource] = &[
     },
     YaraSource {
         id: "reversinglabs",
-        name: "ReversingLabs 规则",
-        license: "MIT",
+        name: Label::Localized(|| tr!("ReversingLabs rules")),
+        license: Label::Fixed("MIT"),
         url: "https://github.com/reversinglabs/reversinglabs-yara-rules",
         repo: Some(("reversinglabs/reversinglabs-yara-rules", "develop")),
         local: None,
@@ -47,22 +47,22 @@ pub const SOURCES: &[YaraSource] = &[
     },
     YaraSource {
         id: "guarddog",
-        name: "GuardDog 恶意包规则",
-        license: "Apache-2.0",
+        name: Label::Localized(|| tr!("GuardDog malicious package rules")),
+        license: Label::Fixed("Apache-2.0"),
         url: "https://github.com/DataDog/guarddog",
         repo: Some(("DataDog/guarddog", "v3")),
         local: None,
-        // capability-* 只是描述“会联网”“会读文件”这类能力，正常包也有，只要 threat-*。
-        // 即使是 threat-* 也是“可疑写法”而不是恶意软件特征：在真实扩展上实测，
-        // 33 个正常扩展里有 20 个会被它判成拦截（Claude Code、debugpy 等大型打包代码）。
-        // 所以只算低风险，作为证据交给 AI 结合上下文判断
+        // capability-* only describes abilities like "uses the network" or "reads files" that normal packages have too; take threat-* only.
+        // Even threat-* is "suspicious patterns" rather than malware signatures: measured on real extensions,
+        // it would block 20 of 33 normal ones (large bundles such as Claude Code and debugpy).
+        // So it only counts as low risk, evidence for the AI to judge in context
         wanted: |p| p.starts_with("guarddog/analyzer/sourcecode/threat-") && p.ends_with(".yar"),
         severity: Severity::Low,
     },
     YaraSource {
         id: "xprotect",
-        name: "本机 XProtect 规则",
-        license: "Apple（只在本机使用，不分发）",
+        name: Label::Localized(|| tr!("XProtect rules on this Mac")),
+        license: Label::Localized(|| tr!("Apple (used on this Mac only, not redistributed)")),
         url: "/Library/Apple/System/Library/CoreServices/XProtect.bundle",
         repo: None,
         local: Some("/Library/Apple/System/Library/CoreServices/XProtect.bundle/Contents/Resources/XProtect.yara"),
@@ -75,19 +75,19 @@ fn source_dir(id: &str) -> std::path::PathBuf {
     dir().join("yara").join(id)
 }
 
-/// 把一个来源的规则文件下载到 ~/.tsuba/intel/yara/<id>/，原样保存，方便查看。
+/// Downloads one source's rule files into ~/.tsuba/intel/yara/<id>/, saved as is so they're easy to inspect.
 pub fn update_source(src: &YaraSource, old: Option<&SourceStatus>) -> SourceStatus {
-    let mut s = SourceStatus { id: src.id.into(), name: src.name.into(), license: src.license.into(), url: src.url.into(), ..Default::default() };
+    let mut s = SourceStatus { id: src.id.into(), name: src.name.to_string(), license: src.license.to_string(), url: src.url.into(), ..Default::default() };
     let target = source_dir(src.id);
     let version = match (src.repo, src.local) {
         (Some((repo, branch)), _) => github_head(repo, branch),
         (None, Some(path)) if Path::new(path).is_file() => Ok(file_mtime(Path::new(path))),
-        _ => Err("本机没有这个文件".to_string()),
+        _ => Err(tr!("This file doesn't exist on this Mac")),
     };
     let version = match version {
         Ok(v) => v,
         Err(e) => {
-            s.error = Some(format!("无法检查更新：{e}"));
+            s.error = Some(tr!("Couldn't check for updates: {error}", error = e));
             return s;
         }
     };
@@ -114,7 +114,7 @@ pub fn update_source(src: &YaraSource, old: Option<&SourceStatus>) -> SourceStat
         _ => Ok(()),
     };
     if let Err(e) = res {
-        s.error = Some(format!("下载失败：{e}"));
+        s.error = Some(tr!("Download failed: {error}", error = e));
         let _ = std::fs::remove_dir_all(&staging);
         return s;
     }
@@ -132,7 +132,7 @@ pub fn update_source(src: &YaraSource, old: Option<&SourceStatus>) -> SourceStat
 static IMPORT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^\s*import\s+"[^"]+"\s*$"#).unwrap());
 static RULE_START: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^\s*(?:(?:private|global)\s+)*rule\s+\w+").unwrap());
 
-/// 整个文件编译失败时，拆成一条条规则分别编译，只丢掉不兼容的那几条。
+/// When a whole file fails to compile, compile it rule by rule and drop only the incompatible ones.
 fn add_file(compiler: &mut yara_x::Compiler, text: &str) -> (usize, usize) {
     let total = RULE_START.find_iter(text).count();
     if compiler.add_source(text).is_ok() {
@@ -153,9 +153,9 @@ fn add_file(compiler: &mut yara_x::Compiler, text: &str) -> (usize, usize) {
     (ok, skipped)
 }
 
-/// 把所有来源的规则编译成一个文件。每个来源一个命名空间，命中时能知道是哪家的规则。
+/// Compiles every source's rules into one file. One namespace per source, so a match tells whose rule it was.
 pub fn compile_all() -> SourceStatus {
-    let mut s = SourceStatus { id: "yara".into(), name: "YARA 规则（编译后）".into(), license: "-".into(), url: String::new(), ..Default::default() };
+    let mut s = SourceStatus { id: "yara".into(), name: super::YARA_COMPILED.0.to_string(), license: super::YARA_COMPILED.1.to_string(), url: String::new(), ..Default::default() };
     let mut compiler = yara_x::Compiler::new();
     compiler.relaxed_re_syntax(true);
     let (mut ok, mut skipped) = (0, 0);
@@ -178,10 +178,11 @@ pub fn compile_all() -> SourceStatus {
                 s.error = Some(e.to_string());
             }
         }
-        Err(e) => s.error = Some(format!("保存编译结果失败：{e}")),
+        Err(e) => s.error = Some(tr!("Couldn't save the compiled rules: {error}", error = e)),
     }
+    // The version is shown as "N usable, M skipped" when displayed, from these two numbers
     s.count = ok;
-    s.version = format!("{ok} 条可用，{skipped} 条与 YARA-X 不兼容已跳过");
+    s.skipped = skipped;
     s.updated = store::now();
     s
 }
@@ -195,7 +196,7 @@ pub fn available() -> bool {
     rules().is_some()
 }
 
-/// 用全部 YARA 规则扫一段内容。没有规则（还没更新过）时什么都不做。
+/// Scans content with all YARA rules. Does nothing when there are no rules yet (never updated).
 pub fn scan(data: &[u8], location: &str) -> Vec<Finding> {
     let Some(rules) = rules() else { return vec![] };
     if data.is_empty() || data.len() > 64 * 1024 * 1024 {
@@ -214,11 +215,13 @@ pub fn scan(data: &[u8], location: &str) -> Vec<Finding> {
                 ("description" | "threat_name" | "malware", yara_x::MetaValue::String(s)) => Some(s.to_string()),
                 _ => None,
             });
-            let source_name = src.map(|s| s.name).unwrap_or(ns);
-            let detail = desc.map(|d| format!("：{d}")).unwrap_or_default();
-            let (sev, msg) = match src.map(|s| s.severity) {
-                Some(sev @ (Severity::Low | Severity::Medium)) => (sev, format!("{source_name}提示可疑写法 {}{detail}", r.identifier())),
-                _ => (Severity::High, format!("命中已知恶意软件特征 {}（{source_name}）{detail}", r.identifier())),
+            let source_name = src.map(|s| s.name.to_string()).unwrap_or_else(|| ns.to_string());
+            let rule = r.identifier();
+            let (sev, msg) = match (src.map(|s| s.severity), desc) {
+                (Some(sev @ (Severity::Low | Severity::Medium)), Some(d)) => (sev, tr!("{source} flags a suspicious pattern {rule}: {description}", source = source_name, rule = rule, description = d)),
+                (Some(sev @ (Severity::Low | Severity::Medium)), None) => (sev, tr!("{source} flags a suspicious pattern {rule}", source = source_name, rule = rule)),
+                (_, Some(d)) => (Severity::High, tr!("Matches known malware signature {rule} ({source}): {description}", rule = rule, source = source_name, description = d)),
+                (_, None) => (Severity::High, tr!("Matches known malware signature {rule} ({source})", rule = rule, source = source_name)),
             };
             let finding = Finding::new(sev, msg, location);
             match src {
@@ -229,7 +232,7 @@ pub fn scan(data: &[u8], location: &str) -> Vec<Finding> {
         .collect()
 }
 
-/// 扫一个文件（读不了或太大就跳过）。
+/// Scans one file (skipped when unreadable or too large).
 pub fn scan_file(path: &Path, location: &str) -> Vec<Finding> {
     if rules().is_none() || path.metadata().map(|m| m.len() > 64 * 1024 * 1024).unwrap_or(true) {
         return vec![];

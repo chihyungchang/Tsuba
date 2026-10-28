@@ -1,4 +1,4 @@
-//! 恶意包名单：OpenSSF Malicious Packages（本地索引）+ OSV.dev（在线实时查询）。
+//! Malicious package lists: OpenSSF Malicious Packages (local index) + OSV.dev (live online lookups).
 
 use super::{SourceStatus, exists, github_head, github_tarball, read_json, write_atomic};
 use crate::store;
@@ -10,19 +10,19 @@ use std::time::Duration;
 const REPO: &str = "ossf/malicious-packages";
 const FILE: &str = "packages.json";
 
-/// 支持的生态，键是 OSV 里的写法
+/// Supported ecosystems: (our key, OSV's spelling)
 pub const ECOSYSTEMS: &[(&str, &str)] = &[("npm", "npm"), ("pypi", "PyPI")];
 
-/// 一个恶意包条目
+/// One malicious package entry
 #[derive(Clone, Debug)]
 pub struct Hit {
     pub id: String,
     pub summary: String,
-    /// None 表示所有版本都是恶意的
+    /// None means every version is malicious
     pub versions: Option<Vec<String>>,
 }
 
-/// OSV 里一个 affected 条目覆盖哪些版本。ranges 里 introduced 为 0 且没有 fixed，就是全部版本。
+/// Which versions an OSV affected entry covers. introduced 0 with no fixed in ranges means every version.
 fn affected_versions(a: &Value) -> Option<Vec<String>> {
     let all = a["ranges"].as_array().into_iter().flatten().any(|r| {
         let events = r["events"].as_array().cloned().unwrap_or_default();
@@ -38,22 +38,22 @@ fn affected_versions(a: &Value) -> Option<Vec<String>> {
 pub fn update_ossf(old: Option<&SourceStatus>) -> SourceStatus {
     let mut s = SourceStatus {
         id: "ossf".into(),
-        name: super::OSSF.0.into(),
-        license: super::OSSF.1.into(),
+        name: super::OSSF.0.to_string(),
+        license: super::OSSF.1.to_string(),
         url: "https://github.com/ossf/malicious-packages".into(),
         ..Default::default()
     };
     let head = match github_head(REPO, "main") {
         Ok(h) => h,
         Err(e) => {
-            s.error = Some(format!("无法检查更新：{e}"));
+            s.error = Some(tr!("Couldn't check for updates: {error}", error = e));
             return s;
         }
     };
     if old.is_some_and(|o| o.version == head && o.error.is_none()) && exists(FILE) {
         return old.cloned().unwrap();
     }
-    // 生态 → 包名 → 条目列表
+    // ecosystem → package name → entries
     let mut index: HashMap<&str, Map<String, Value>> = HashMap::new();
     let mut count = 0usize;
     let res = github_tarball(REPO, "main", |path, bytes| {
@@ -78,7 +78,7 @@ pub fn update_ossf(old: Option<&SourceStatus>) -> SourceStatus {
         }
     });
     if let Err(e) = res {
-        s.error = Some(format!("下载失败：{e}"));
+        s.error = Some(tr!("Download failed: {error}", error = e));
         return s;
     }
     let data: Map<String, Value> = index.into_iter().map(|(k, v)| (k.to_string(), Value::Object(v))).collect();
@@ -92,7 +92,7 @@ pub fn update_ossf(old: Option<&SourceStatus>) -> SourceStatus {
     s
 }
 
-/// PyPI 包名大小写、下划线、点都等价
+/// PyPI package names treat case, underscores and dots as equivalent
 fn normalize_pypi(name: &str) -> String {
     name.to_lowercase().replace(['_', '.'], "-")
 }
@@ -102,7 +102,7 @@ fn index() -> &'static Value {
     INDEX.get_or_init(|| read_json(FILE))
 }
 
-/// 在本地名单里查一个包。给了版本时只在这个版本被列为恶意时命中；没给版本时只要包名在名单里就命中。
+/// Looks a package up in the local list. With a version it matches only if that version is listed as malicious; without one, the name being listed is enough.
 pub fn lookup(ecosystem: &str, name: &str, version: Option<&str>) -> Option<Hit> {
     let name = if ecosystem == "pypi" { normalize_pypi(name) } else { name.to_string() };
     let entries = index()[ecosystem][&name].as_array()?;
@@ -116,8 +116,8 @@ pub fn lookup(ecosystem: &str, name: &str, version: Option<&str>) -> Option<Hit>
     })
 }
 
-/// 在线查 OSV.dev：只看恶意包（MAL- 开头）。查不到网络时返回空，不影响检查。
-/// 返回：包名 → 命中的编号
+/// Queries OSV.dev online, malicious packages only (IDs starting with MAL-). Returns nothing without a network so the check isn't affected.
+/// Returns: package name → matching IDs
 pub fn osv_query(ecosystem: &str, items: &[(String, Option<String>)]) -> HashMap<String, Vec<String>> {
     let osv_eco = ECOSYSTEMS.iter().find(|(k, _)| *k == ecosystem).map(|(_, v)| *v).unwrap_or(ecosystem);
     let mut out = HashMap::new();

@@ -1,4 +1,4 @@
-//! 白名单、隔离区、文件夹扫描：都读写 ~/.tsuba，单独一个测试程序，把 TSUBA_HOME 指到临时目录。
+//! Allowlist, quarantine and folder scans all read and write ~/.tsuba, so they get their own test binary with TSUBA_HOME pointed at a temporary folder.
 
 use std::path::Path;
 use tsuba_engine::rules::Verdict;
@@ -14,7 +14,7 @@ const RISKY_SCRIPT: &str = "#!/bin/bash\nxattr -d com.apple.quarantine /Applicat
 #[test]
 fn trust_quarantine_and_folder_scan() {
     let home = tempfile::tempdir().unwrap();
-    // 这个测试程序里只有它读写本机存储，不会和别的测试抢环境变量
+    // The only test in this binary that touches local storage, so it doesn't race other tests over the environment variable
     unsafe { std::env::set_var("TSUBA_HOME", home.path()) };
     let dir = tempfile::tempdir().unwrap();
     let script = dir.path().join("install.sh");
@@ -22,31 +22,31 @@ fn trust_quarantine_and_folder_scan() {
     std::fs::write(dir.path().join("photo.jpg"), "not code").unwrap();
     let cfg = offline();
 
-    // 文件夹扫描：只挑脚本，跳过照片；第二次扫没变化的沿用结果
+    // Folder scan: picks scripts, skips photos; a second scan reuses results for unchanged files
     let r = scan::scan_folder(&cfg, dir.path(), |_| {});
     assert_eq!((r.checked, r.unchanged), (1, 0));
     assert_eq!(r.hits.len(), 1);
-    assert!(r.hits[0].verdict >= Verdict::Warn, "删除隔离标记的脚本应被标出");
+    assert!(r.hits[0].verdict >= Verdict::Warn, "a script that removes the quarantine flag should be flagged");
     let again = scan::scan_folder(&cfg, dir.path(), |_| {});
     assert_eq!((again.checked, again.unchanged, again.hits.len()), (0, 1, 1));
     assert!(!again.hits[0].fresh);
 
-    // 白名单：标记安全后放行；内容一变就重新检查
+    // Allowlist: allowed once marked safe; checked again as soon as the content changes
     assert_ne!(tsuba_engine::evaluate_path(&cfg, &script).2.verdict, Verdict::Allow);
     trust::trust_path(&script).unwrap();
     assert_eq!(tsuba_engine::evaluate_path(&cfg, &script).2.verdict, Verdict::Allow);
     std::fs::write(&script, format!("{RISKY_SCRIPT}# changed\n")).unwrap();
-    assert!(!trust::is_trusted_path(&script), "内容变了不应再信任");
+    assert!(!trust::is_trusted_path(&script), "changed content should no longer be trusted");
     assert_ne!(tsuba_engine::evaluate_path(&cfg, &script).2.verdict, Verdict::Allow);
     trust::remove(&trust::list()[0].key);
     assert!(trust::list().is_empty());
 
-    // 隔离区：单个文件也能隔离、恢复、删除
-    let item = quarantine::quarantine(&script, "测试").unwrap();
+    // Quarantine: a single file can be quarantined, restored and deleted
+    let item = quarantine::quarantine(&script, "test").unwrap();
     assert!(!script.exists() && Path::new(&item.stored).is_file());
     quarantine::restore(&item.id).unwrap();
     assert!(script.is_file());
-    let item = quarantine::quarantine(&script, "测试").unwrap();
+    let item = quarantine::quarantine(&script, "test").unwrap();
     quarantine::delete(&item.id).unwrap();
     assert!(!Path::new(&item.stored).exists() && quarantine::list().is_empty());
 }
@@ -68,7 +68,7 @@ fn folder_scan_picks_projects_and_skips_dependencies() {
     assert!(!truncated);
 }
 
-/// 样本集验收：现有惰性样本全部检出、正常样本零误报。漏掉的“扫描安装镜像文件夹”就是这样发现的。
+/// Fixture set acceptance: every inert malicious sample is caught and benign samples have zero false positives. This is how the missed "scan a folder of installer images" case was found.
 #[test]
 fn evaluation_on_fixtures_meets_targets() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -85,6 +85,6 @@ fn evaluation_on_fixtures_meets_targets() {
     let ev = tsuba_engine::evaluation::run(&Config::default(), set.path(), |_| {});
     let missed: Vec<_> = ev.missed().map(|s| s.name.clone()).collect();
     let fps: Vec<_> = ev.false_positives().map(|s| s.name.clone()).collect();
-    assert!(missed.is_empty() && fps.is_empty(), "漏报 {missed:?}，误报 {fps:?}");
+    assert!(missed.is_empty() && fps.is_empty(), "missed {missed:?}, false positives {fps:?}");
     assert!(ev.passes());
 }
