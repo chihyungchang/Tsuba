@@ -4,9 +4,27 @@ import { listen } from "@tauri-apps/api/event";
 import { Icon } from "../icons";
 import { Config, FolderScan, LogEntry, QuarantineItem, ScanHit, TrustItem } from "../types";
 import { Banner, ConfirmButton, Empty, toastDone, FindingList, Group, PageHeader, Row, Section, Spinner, Toggle, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
+import { t } from "../i18n";
 
-const KIND_LABEL: Record<ScanHit["kind"], string> = { installer: "安装包", extension: "扩展", skill: "AI skill", project: "项目", file: "脚本", trusted: "已信任" };
+function kindLabel(kind: ScanHit["kind"]): string {
+  switch (kind) {
+    case "installer":
+      return t("Installer");
+    case "extension":
+      return t("Extension");
+    case "skill":
+      return t("AI skill");
+    case "project":
+      return t("Project");
+    case "file":
+      return t("Script");
+    case "trusted":
+      return t("Trusted");
+  }
+}
 const KIND_ICON = { installer: "package", extension: "extension", skill: "plug", project: "folder", file: "terminal", trusted: "check" } as const;
+
+const everyDays = (days: number) => (days === 1 ? t("Every day") : t("Every {n} days", { n: days }));
 
 export function ScanPage({ quarantine, reload, onScanned }: { quarantine: QuarantineItem[]; reload: () => void; onScanned: (e: LogEntry) => void }) {
   const [cfg, setCfg] = useState<Config | null>(null);
@@ -76,7 +94,7 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
       if (path && cfg && !cfg.scan.folders.includes(path)) await saveScan({ ...cfg.scan, folders: [...cfg.scan.folders, path] });
     });
 
-  // 处理完一项就从结果里拿掉
+  // Once an item is handled, drop it from the results
   const settle = (path: string, cmd: "quarantine_path" | "trust_item", args: Record<string, unknown>) =>
     run(async () => {
       await invoke(cmd, args);
@@ -99,34 +117,34 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
   return (
     <div className="page">
       <PageHeader
-        title="扫描"
-        subtitle="下载目录、外接硬盘、代码目录里的安装包、脚本、扩展和项目。照片视频和依赖目录跳过。"
+        title={t("Scan")}
+        subtitle={t("Installers, scripts, extensions and projects in Downloads, external drives and code folders. Photos, videos and dependency folders are skipped.")}
         icon="scan"
         tone={scanning ? "neutral" : result ? (result.hits.length ? "warn" : "allow") : "neutral"}
-        status={scanning ? "正在扫描…" : result ? (result.hits.length ? `这次发现 ${result.hits.length} 个需要看的` : "这次没有发现问题") : last ? `上次定期扫描 ${relativeTime(last)}` : "还没有扫描过"}
+        status={scanning ? t("Scanning…") : result ? (result.hits.length === 0 ? t("Nothing found this time") : result.hits.length === 1 ? t("Found 1 item to review") : t("Found {n} items to review", { n: result.hits.length })) : last ? t("Last scheduled scan {time}", { time: relativeTime(last) }) : t("Not scanned yet")}
         stats={[
-          { label: "常用文件夹", value: cfg ? cfg.scan.folders.length : "—" },
-          { label: "定期扫描", value: cfg ? (cfg.scan.scheduled ? `每 ${cfg.scan.interval_days} 天` : "已关闭") : "—" },
-          { label: "隔离区", value: quarantine.length, tone: quarantine.length ? "warn" : undefined },
-          { label: "白名单", value: trusted.length },
+          { label: t("Favorite Folders"), value: cfg ? cfg.scan.folders.length : "—" },
+          { label: t("Scheduled Scan"), value: cfg ? (cfg.scan.scheduled ? everyDays(cfg.scan.interval_days) : t("Off")) : "—" },
+          { label: t("Quarantine"), value: quarantine.length, tone: quarantine.length ? "warn" : undefined },
+          { label: t("Allowlist"), value: trusted.length },
         ]}
       >
         <button className="primary" disabled={busy !== ""} onClick={pickAndScan}>
           <Icon.folder size={14} />
-          选择文件夹…
+          {t("Choose Folder…")}
         </button>
       </PageHeader>
 
       {error && <Banner onClose={() => setError("")}>{error}</Banner>}
 
       {(scanning || result) && (
-        <Section title="扫描结果" aside={result && <span className="section-aside">{shortPath(result.root)}</span>}>
+        <Section title={t("Scan Results")} aside={result && <span className="section-aside">{shortPath(result.root)}</span>}>
           {scanning && (
             <div className="progress-card">
               <Spinner />
               <div className="progress-text">
-                <div>正在扫描</div>
-                <div className="mono muted small ellipsis">{progress ? shortPath(progress) : "正在列出文件…"}</div>
+                <div>{t("Scanning")}</div>
+                <div className="mono muted small ellipsis">{progress ? shortPath(progress) : t("Listing files…")}</div>
               </div>
             </div>
           )}
@@ -134,19 +152,19 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
             <>
               <div className="scan-summary">
                 <span>
-                  <strong>{result.checked}</strong> 个新检查
+                  <strong>{result.checked}</strong> {t("newly checked")}
                 </span>
                 <span>
-                  <strong>{result.unchanged}</strong> 个没变化，沿用上次结果
+                  <strong>{result.unchanged}</strong> {t("unchanged, last results reused")}
                 </span>
                 <span className={result.hits.length > 0 ? "tone-warn" : "tone-allow"}>
-                  <strong>{result.hits.length}</strong> 个需要看一下
+                  <strong>{result.hits.length}</strong> {t("worth a look")}
                 </span>
-                {result.truncated && <span className="muted">东西太多，只扫了前一部分</span>}
+                {result.truncated && <span className="muted">{t("Too many files: only the first part was scanned")}</span>}
               </div>
               {result.hits.length === 0 ? (
                 <Group>
-                  <Empty icon="check" title="没有发现问题" />
+                  <Empty icon="check" title={t("No Problems Found")} />
                 </Group>
               ) : (
                 <Group>
@@ -168,19 +186,19 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
                       {open === h.path && (
                         <div className="row-expand">
                           <div className="mono muted small">
-                            {KIND_LABEL[h.kind]} · {shortPath(h.path)}
+                            {kindLabel(h.kind)} · {shortPath(h.path)}
                           </div>
                           <FindingList findings={h.findings} />
                           <div className="toolbar">
                             <button className="primary" onClick={() => settle(h.path, "quarantine_path", { path: h.path, reason: h.summary })}>
-                              移入隔离区
+                              {t("Move to Quarantine")}
                             </button>
                             <button disabled={busy !== ""} onClick={() => run(async () => onScanned(await invoke<LogEntry>("scan_path", { path: h.path })), "deep")}>
-                              {busy === "deep" ? "检查中…" : "让 AI 再看一遍"}
+                              {busy === "deep" ? t("Checking…") : t("Ask AI to Recheck")}
                             </button>
-                            <button onClick={() => settle(h.path, "trust_item", { key: h.path })}>我确认它安全</button>
+                            <button onClick={() => settle(h.path, "trust_item", { key: h.path })}>{t("Mark as Safe")}</button>
                             <button className="link" onClick={() => invoke("reveal_in_finder", { path: h.path })}>
-                              在 Finder 中显示
+                              {t("Show in Finder")}
                             </button>
                           </div>
                         </div>
@@ -196,15 +214,15 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
 
       {cfg && (
         <Section
-          title="常用文件夹"
+          title={t("Favorite Folders")}
           aside={
             <button className="link" onClick={addFolder}>
-              添加…
+              {t("Add…")}
             </button>
           }
         >
           <Group>
-            {cfg.scan.folders.length === 0 && <Empty icon="folder" title="还没有常用文件夹" />}
+            {cfg.scan.folders.length === 0 && <Empty icon="folder" title={t("No Favorite Folders Yet")} />}
             {cfg.scan.folders.map((f) => (
               <Row
                 key={f}
@@ -214,9 +232,9 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
                 trailing={
                   <>
                     <button disabled={busy !== ""} onClick={() => scanFolder(f)}>
-                      {busy === `scan:${f}` ? "扫描中…" : "扫描"}
+                      {busy === `scan:${f}` ? t("Scanning…") : t("Scan")}
                     </button>
-                    <button className="icon-button" aria-label="移除" title="从常用文件夹里移除" onClick={() => saveScan({ ...cfg.scan, folders: cfg.scan.folders.filter((x) => x !== f) })}>
+                    <button className="icon-button" aria-label={t("Remove")} title={t("Remove from favorite folders")} onClick={() => saveScan({ ...cfg.scan, folders: cfg.scan.folders.filter((x) => x !== f) })}>
                       ×
                     </button>
                   </>
@@ -225,19 +243,19 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
             ))}
             <Row
               icon="refresh"
-              title="定期扫描"
-              detail={`每 ${cfg.scan.interval_days} 天用最新规则重扫一遍，找出规则更新后才认出来的老文件${last ? ` · 上次 ${relativeTime(last)}` : ""}`}
-              trailing={<Toggle label="定期扫描" on={cfg.scan.scheduled} onChange={(v) => saveScan({ ...cfg.scan, scheduled: v })} />}
+              title={t("Scheduled Scan")}
+              detail={`${t("Rescans with the latest rules to catch old files that only newer rules recognize")} · ${everyDays(cfg.scan.interval_days)}${last ? ` · ${t("last {time}", { time: relativeTime(last) })}` : ""}`}
+              trailing={<Toggle label={t("Scheduled Scan")} on={cfg.scan.scheduled} onChange={(v) => saveScan({ ...cfg.scan, scheduled: v })} />}
             />
           </Group>
         </Section>
       )}
 
-      <Section title="隔离区" aside={quarantine.length > 0 && <span className="section-aside">{quarantine.length} 项</span>}>
+      <Section title={t("Quarantine")} aside={quarantine.length > 0 && <span className="section-aside">{quarantine.length === 1 ? t("1 item") : t("{n} items", { n: quarantine.length })}</span>}>
         <Group>
           {quarantine.length === 0 ? (
-            <Empty icon="lock" title="隔离区是空的">
-              被判为高危的文件和扩展会挪到这里，随时可以恢复。
+            <Empty icon="lock" title={t("Quarantine Is Empty")}>
+              {t("High-risk files and extensions are moved here. You can restore them at any time.")}
             </Empty>
           ) : (
             quarantine.map((q) => (
@@ -249,9 +267,9 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
                 detail={`${relativeTime(q.time)} · ${q.reason}`}
                 trailing={
                   <>
-                    <button onClick={() => act("restore_quarantine", { id: q.id })}>恢复</button>
-                    <ConfirmButton confirm="确认删除" onConfirm={() => act("delete_quarantine", { id: q.id })}>
-                      删除
+                    <button onClick={() => act("restore_quarantine", { id: q.id })}>{t("Restore")}</button>
+                    <ConfirmButton confirm={t("Confirm Delete")} onConfirm={() => act("delete_quarantine", { id: q.id })}>
+                      {t("Delete")}
                     </ConfirmButton>
                   </>
                 }
@@ -261,23 +279,23 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
         </Group>
       </Section>
 
-      <Section title="白名单" aside={<span className="section-aside">按内容指纹记录，内容变了会重新检查</span>}>
+      <Section title={t("Allowlist")} aside={<span className="section-aside">{t("Recorded by content fingerprint; checked again if the content changes")}</span>}>
         <Group>
           {trusted.length === 0 ? (
-            <Empty icon="check" title="还没有标记过">
-              误报的东西点“我确认它安全”，以后就不再提醒。
+            <Empty icon="check" title={t("Nothing Marked Yet")}>
+              {t("Click “Mark as Safe” on a false alarm and Tsuba will not warn about it again.")}
             </Empty>
           ) : (
-            trusted.map((t) => (
+            trusted.map((item) => (
               <Row
-                key={t.key}
+                key={item.key}
                 icon="check"
                 tone="allow"
-                title={baseName(t.label)}
-                detail={`${shortPath(t.label)} · ${relativeTime(t.time)}`}
+                title={baseName(item.label)}
+                detail={`${shortPath(item.label)} · ${relativeTime(item.time)}`}
                 trailing={
-                  <button className="link" onClick={() => act("untrust_item", { key: t.key })}>
-                    移除
+                  <button className="link" onClick={() => act("untrust_item", { key: item.key })}>
+                    {t("Remove")}
                   </button>
                 }
               />

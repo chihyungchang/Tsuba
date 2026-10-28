@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Icon, type IconName } from "../icons";
 import { AiScanItem, ExtensionScan, Finding } from "../types";
 import { Banner, FindingList, toastDone, Group, PageHeader, Row, Section, Spinner, VerdictBadge, errText, relativeTime } from "../ui";
+import { t } from "../i18n";
 
 type Check = "doctor" | "exts" | "ai";
 
@@ -42,20 +43,23 @@ function CheckCard({
             <li key={x}>{x}</li>
           ))}
         </ul>
-        {busy && <div className="check-done muted">正在检查…</div>}
-        {!busy && error && <div className="check-done tone-block">没查完：{error}</div>}
+        {busy && <div className="check-done muted">{t("Checking…")}</div>}
+        {!busy && error && <div className="check-done tone-block">{t("Did not finish: {error}", { error })}</div>}
         {!busy && !error && done && <div className={`check-done ${issue ? "tone-warn" : "tone-allow"}`}>{done}</div>}
       </div>
       <button disabled={busy} onClick={onRun}>
         {busy ? <Spinner /> : null}
-        {busy ? "检查中" : done || error ? "再查一次" : "开始"}
+        {busy ? t("Checking") : done || error ? t("Check Again") : t("Start")}
       </button>
       {busy && <span className="check-progress" />}
     </div>
   );
 }
 
-/** 上次全部检查完的时间和结论，记在本机：没跑过体检时，页面头部也能告诉用户上次是什么时候、结果如何 */
+/**
+ * When the last full run finished and how it went, kept on this Mac, so the header can say so before a new run.
+ * Stored as an ISO time and a count only, so it reads the same in any language.
+ */
 const LAST_RUN_KEY = "tsuba-doctor-last";
 type LastRun = { time: string; issues: number };
 
@@ -67,12 +71,14 @@ function loadLastRun(): LastRun | null {
   }
 }
 
+const issuesToReview = (n: number) => (n === 1 ? t("1 issue to review") : t("{n} issues to review", { n }));
+
 export function DoctorPage({ reload }: { reload: () => void }) {
   const [lastRun, setLastRun] = useState<LastRun | null>(loadLastRun);
   const [doctor, setDoctor] = useState<{ findings: Finding[]; advice: string } | null>(null);
   const [exts, setExts] = useState<ExtensionScan[] | null>(null);
   const [ai, setAi] = useState<AiScanItem[] | null>(null);
-  // 三项检查互不相干，各自记进行中和出错，可以同时跑：点了一项再点另一项，前一项照常跑完
+  // The three checks are independent and track running and failure separately, so they can run at once: starting one does not interrupt another
   const [running, setRunning] = useState<ReadonlySet<Check>>(new Set());
   const [failed, setFailed] = useState<Partial<Record<Check, string>>>({});
   const [open, setOpen] = useState<string | null>(null);
@@ -98,10 +104,10 @@ export function DoctorPage({ reload }: { reload: () => void }) {
       });
     }
   };
-  // 已经在跑的不重复启动，其余的一起开始
+  // Start everything that is not already running
   const runAll = () => (Object.keys(CHECKS) as Check[]).filter((c) => !running.has(c)).forEach(run);
 
-  // 仪表盘上的“全面体检”：跳到这一页并开始全部检查
+  // "Health Check" on the dashboard: jump to this page and start every check
   const runAllRef = useRef(runAll);
   runAllRef.current = runAll;
   useEffect(() => {
@@ -135,39 +141,39 @@ export function DoctorPage({ reload }: { reload: () => void }) {
     try {
       localStorage.setItem(LAST_RUN_KEY, JSON.stringify(run));
     } catch {
-      // 记不住只是下次看不到“上次体检”，不影响检查
+      // Not remembered: next time there is just no "last Health Check", the checks are unaffected
     }
   }, [allDone, issues]);
 
   const status =
     running.size > 0
-      ? "体检中…"
+      ? t("Running Health Check…")
       : allDone
         ? issues === 0
-          ? "这次没有发现问题"
-          : `${issues} 处需要看一下`
+          ? t("Nothing found this time")
+          : issuesToReview(issues)
         : lastRun
-          ? `上次体检 ${relativeTime(lastRun.time)} · ${lastRun.issues === 0 ? "没有发现问题" : `${lastRun.issues} 处需要看一下`}`
-          : "还没有体检过";
+          ? `${t("Last Health Check {time}", { time: relativeTime(lastRun.time) })} · ${lastRun.issues === 0 ? t("no problems found") : issuesToReview(lastRun.issues)}`
+          : t("No Health Check yet");
   const tone = running.size > 0 ? "neutral" : allDone ? (issues === 0 ? "allow" : "warn") : lastRun && lastRun.issues > 0 ? "warn" : "neutral";
 
   return (
     <div className="page">
       <PageHeader
-        title="体检"
-        subtitle="已经中招了吗？查一遍已知攻击留下的痕迹、已装的扩展和 AI 工具。"
+        title={t("Health Check")}
+        subtitle={t("Already compromised? Looks for traces of known attacks and checks installed extensions and AI tools.")}
         icon="doctor"
         tone={tone}
         status={status}
         stats={[
-          { label: "感染痕迹", value: doctor ? (doctor.findings.length === 0 ? "未发现" : `${doctor.findings.length} 处`) : "—", tone: doctor ? (doctor.findings.length ? "block" : "allow") : undefined },
-          { label: "编辑器扩展", value: exts ? `${exts.length} 个 · ${risky.length} 个可疑` : "—", tone: exts ? (risky.length ? "warn" : "allow") : undefined },
-          { label: "AI 编程工具", value: ai ? `${aiCount("mcp")} 个 MCP · ${aiCount("skill")} 个 skill${aiRisky.length ? ` · ${aiRisky.length} 项可疑` : ""}` : "—", tone: ai ? (aiRisky.length ? "warn" : "allow") : undefined },
+          { label: t("Infection Traces"), value: doctor ? (doctor.findings.length === 0 ? t("None") : t("{n} found", { n: doctor.findings.length })) : "—", tone: doctor ? (doctor.findings.length ? "block" : "allow") : undefined },
+          { label: t("Editor Extensions"), value: exts ? t("{n} · {suspicious} suspicious", { n: exts.length, suspicious: risky.length }) : "—", tone: exts ? (risky.length ? "warn" : "allow") : undefined },
+          { label: t("AI Coding Tools"), value: ai ? `${t("{mcp} MCP · {skills} skill", { mcp: aiCount("mcp"), skills: aiCount("skill") })}${aiRisky.length ? ` · ${t("{n} suspicious", { n: aiRisky.length })}` : ""}` : "—", tone: ai ? (aiRisky.length ? "warn" : "allow") : undefined },
         ]}
       >
         <button className="primary" disabled={running.size === 3} onClick={runAll}>
           {running.size > 0 ? <Spinner /> : <Icon.doctor size={14} />}
-          {running.size === 0 ? "全部检查" : running.size === 3 ? "体检中" : `检查其余 ${3 - running.size} 项`}
+          {running.size === 0 ? t("Check All") : running.size === 3 ? t("Checking") : t("Check Remaining {n}", { n: 3 - running.size })}
         </button>
       </PageHeader>
 
@@ -176,10 +182,10 @@ export function DoctorPage({ reload }: { reload: () => void }) {
       <div className="check-grid">
         <CheckCard
           icon="overview"
-          title="感染痕迹"
-          detail="已知攻击留下的落地痕迹，几秒钟"
-          points={["家目录里攻击组织常用的落地目录，如 ~/.node_modules、~/.task、~/.n2", "开机自启项里的可疑命令（node、curl、base64 解码）", "痕迹清单随规则包每天更新"]}
-          done={doctor ? (doctor.findings.length === 0 ? "没有发现已知痕迹" : `发现 ${doctor.findings.length} 处痕迹`) : null}
+          title={t("Infection Traces")}
+          detail={t("Files known attacks leave behind. Takes a few seconds.")}
+          points={[t("Drop folders attack groups favor in your home folder, such as ~/.node_modules, ~/.task and ~/.n2"), t("Suspicious commands in login items (node, curl, base64 decoding)"), t("The trace list updates daily with the rule pack")]}
+          done={doctor ? (doctor.findings.length === 0 ? t("No known traces found") : doctor.findings.length === 1 ? t("Found 1 trace") : t("Found {n} traces", { n: doctor.findings.length })) : null}
           issue={!!doctor && doctor.findings.length > 0}
           error={failed.doctor}
           busy={running.has("doctor")}
@@ -187,10 +193,10 @@ export function DoctorPage({ reload }: { reload: () => void }) {
         />
         <CheckCard
           icon="extension"
-          title="编辑器扩展"
-          detail="已装的扩展，只用离线规则，几秒钟"
-          points={["VS Code、Cursor、Windsurf、VSCodium 里所有扩展", "官方恶意扩展名单、不可见字符藏代码", "启动即激活、可疑的网络和文件访问"]}
-          done={exts ? `${exts.length} 个扩展，${risky.length === 0 ? "都正常" : `${risky.length} 个可疑`}` : null}
+          title={t("Editor Extensions")}
+          detail={t("Installed extensions, offline rules only. Takes a few seconds.")}
+          points={[t("Every extension in VS Code, Cursor, Windsurf and VSCodium"), t("Official malicious extension lists, code hidden in invisible characters"), t("Activation on startup, suspicious network and file access")]}
+          done={exts ? (risky.length === 0 ? t("{n} extensions, all clean", { n: exts.length }) : t("{n} extensions, {suspicious} suspicious", { n: exts.length, suspicious: risky.length })) : null}
           issue={risky.length > 0}
           error={failed.exts}
           busy={running.has("exts")}
@@ -198,10 +204,10 @@ export function DoctorPage({ reload }: { reload: () => void }) {
         />
         <CheckCard
           icon="plug"
-          title="AI 编程工具"
-          detail="AI 编程工具的配置和扩展"
-          points={["Claude Code、Cursor、Codex 等的 MCP server", "已安装的 skill 和插件 hooks", "工具投毒、要求对用户隐瞒、读取私钥"]}
-          done={ai ? `${ai.length} 项，${aiRisky.length === 0 ? "都正常" : `${aiRisky.length} 项可疑`}` : null}
+          title={t("AI Coding Tools")}
+          detail={t("Configuration and add-ons of AI coding tools")}
+          points={[t("MCP servers in Claude Code, Cursor, Codex and more"), t("Installed skills and plugin hooks"), t("Tool poisoning, instructions to hide things from you, reading private keys")]}
+          done={ai ? (aiRisky.length === 0 ? t("{n} items, all clean", { n: ai.length }) : t("{n} items, {suspicious} suspicious", { n: ai.length, suspicious: aiRisky.length })) : null}
           issue={aiRisky.length > 0}
           error={failed.ai}
           busy={running.has("ai")}
@@ -210,7 +216,7 @@ export function DoctorPage({ reload }: { reload: () => void }) {
       </div>
 
       {doctor && doctor.findings.length > 0 && (
-        <Section title="感染痕迹">
+        <Section title={t("Infection Traces")}>
           <div className="panel">
             <FindingList findings={doctor.findings} />
             {doctor.advice && <p className="advice">{doctor.advice}</p>}
@@ -219,7 +225,7 @@ export function DoctorPage({ reload }: { reload: () => void }) {
       )}
 
       {risky.length > 0 && (
-        <Section title="可疑的扩展">
+        <Section title={t("Suspicious Extensions")}>
           <Group>
             {risky.map((x) => (
               <Row
@@ -240,12 +246,12 @@ export function DoctorPage({ reload }: { reload: () => void }) {
                   <div className="row-expand">
                     <FindingList findings={x.findings} />
                     <div className="toolbar">
-                      <button className="primary" onClick={() => act("quarantine_path", { path: x.path, reason: "体检时手动隔离" })}>
-                        移入隔离区
+                      <button className="primary" onClick={() => act("quarantine_path", { path: x.path, reason: t("Quarantined manually during Health Check") })}>
+                        {t("Move to Quarantine")}
                       </button>
-                      <button onClick={() => act("trust_item", { key: x.path })}>我确认它安全</button>
+                      <button onClick={() => act("trust_item", { key: x.path })}>{t("Mark as Safe")}</button>
                       <button className="link" onClick={() => invoke("reveal_in_finder", { path: x.path })}>
-                        在 Finder 中显示
+                        {t("Show in Finder")}
                       </button>
                     </div>
                   </div>
@@ -257,7 +263,7 @@ export function DoctorPage({ reload }: { reload: () => void }) {
       )}
 
       {aiRisky.length > 0 && (
-        <Section title="可疑的 AI 工具配置">
+        <Section title={t("Suspicious AI Tool Configurations")}>
           <Group>
             {aiRisky.map((x) => (
               <Row
@@ -278,7 +284,7 @@ export function DoctorPage({ reload }: { reload: () => void }) {
                   <div className="row-expand">
                     <FindingList findings={x.findings} />
                     <div className="toolbar">
-                      <button onClick={() => act("trust_item", { key: x.trust_key })}>我确认它安全</button>
+                      <button onClick={() => act("trust_item", { key: x.trust_key })}>{t("Mark as Safe")}</button>
                     </div>
                   </div>
                 )}

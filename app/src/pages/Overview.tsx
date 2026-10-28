@@ -6,13 +6,14 @@ import { GuardianKatana } from "../brand";
 import { Icon } from "../icons";
 import { IntelManifest, LogEntry, Overview } from "../types";
 import { Banner, Spinner, baseName, errText, relativeTime } from "../ui";
+import { lang, t } from "../i18n";
 
 type Go = (page: "history" | "scan" | "doctor" | "settings") => void;
 
-/** 记录的简称：命令原样显示（截断），文件只显示文件名 */
+/** Short name of an entry: commands as-is (truncated), files by file name only */
 const entryName = (e: LogEntry, max = 42) => (e.source === "terminal" || e.source === "paste" ? (e.title.length > max ? `${e.title.slice(0, max - 2)}…` : e.title) : baseName(e.title));
 
-/** 日志里的标签：隔离优先，其次按结论 */
+/** The log tag: quarantine first, then by verdict */
 function logTag(e: LogEntry): { text: string; tone: string } {
   if (e.action === "quarantined") return { text: "QUAR", tone: "quar" };
   if (e.action === "deleted") return { text: "DEL", tone: "quar" };
@@ -23,9 +24,20 @@ function logTag(e: LogEntry): { text: string; tone: string } {
 
 const LOG_OPEN_KEY = "tsuba-log-open";
 
+// Number formats follow the window language; could move next to relativeTime in ui.tsx
+const numberLocale = () => (lang() === "zh-Hans" ? "zh-CN" : "en");
+const formatCount = (n: number) => n.toLocaleString(numberLocale());
+
+/** Big counts in the tile: Chinese groups by 万 ("23.4 万"), English uses K / M ("234K") */
+function formatCompactCount(n: number): string {
+  if (n < 10000) return formatCount(n);
+  if (lang() === "zh-Hans") return `${(n / 10000).toFixed(1)} 万`;
+  return new Intl.NumberFormat("en", { notation: "compact" }).format(n);
+}
+
 /**
- * 底部的终端日志：最近几条检查，像命令行输出一样一行一条，点一行看详情。
- * 可以收起成一行状态；收起与否记在本机。
+ * Terminal log at the bottom: the latest checks, one per line like command output; click a line for details.
+ * Collapses to a single status line; whether it is collapsed is remembered on this Mac.
  */
 function TermLog({ entries, status, openEntry, go }: { entries: LogEntry[]; status: { text: string; count: string; tone: string }; openEntry: (id: string) => void; go: Go }) {
   const [open, setOpen] = useState(() => {
@@ -40,25 +52,25 @@ function TermLog({ entries, status, openEntry, go }: { entries: LogEntry[]; stat
     try {
       localStorage.setItem(LOG_OPEN_KEY, open ? "0" : "1");
     } catch {
-      // 记不住只是下次默认展开
+      // Not remembered: it just opens expanded next time
     }
   };
   return (
-    <section className={`term-log ${open ? "is-open" : ""}`} aria-label="最近的检查">
+    <section className={`term-log ${open ? "is-open" : ""}`} aria-label={t("Recent checks")}>
       <div className="term-head">
-        <button type="button" className="term-toggle" onClick={toggle} aria-expanded={open} title={open ? "收起日志" : "展开日志"}>
+        <button type="button" className="term-toggle" onClick={toggle} aria-expanded={open} title={open ? t("Hide log") : t("Show log")}>
           <Icon.chevron size={12} className="term-chevron" />
           <span className="term-prompt">tsuba ▸</span>
           <b className={`term-status tone-${status.tone}`}>{status.text}</b>
           <span className={`term-count tone-${status.tone}`}>{status.count}</span>
         </button>
         <button type="button" className="term-more" onClick={() => go("history")}>
-          全部记录 →
+          {t("All History →")}
         </button>
       </div>
       {open && (
         <div className="term-lines">
-          {entries.length === 0 && <div className="term-empty">还没有检查记录。接入终端后，检查过的命令会出现在这里。</div>}
+          {entries.length === 0 && <div className="term-empty">{t("No checks yet. Once the terminal is connected, checked commands show up here.")}</div>}
           {entries.map((e) => {
             const tag = logTag(e);
             return (
@@ -118,7 +130,7 @@ export function OverviewPage({
     }
   };
 
-  // 整个窗口都可以拖进来检查
+  // Anything dropped anywhere on the window gets checked
   useEffect(() => {
     const un = getCurrentWebview().onDragDropEvent((event) => {
       const p = event.payload;
@@ -132,7 +144,7 @@ export function OverviewPage({
     return () => {
       un.then((f) => f());
     };
-    // check 只用到 onScanned，所以只在它变化时重新订阅
+    // check only depends on onScanned, so resubscribe only when it changes
   }, [onScanned]);
 
   if (!overview) return null;
@@ -153,17 +165,17 @@ export function OverviewPage({
 
   const paused = overview.paused;
   const defenses = [
-    { label: "终端命令", on: overview.shell_hook.installed },
-    { label: "安装包", on: overview.watch_downloads },
-    { label: "编辑器扩展", on: overview.watch_extensions },
-    { label: "AI 编程工具", on: overview.watch_ai_tools },
+    { label: t("Terminal"), on: overview.shell_hook.installed },
+    { label: t("Installers"), on: overview.watch_downloads },
+    { label: t("Extensions"), on: overview.watch_extensions },
+    { label: t("AI Coding Tools"), on: overview.watch_ai_tools },
   ];
   const active = defenses.filter((d) => d.on).length;
   const risky = entries.filter((e) => e.report.verdict !== "allow");
   const intelCount = intel?.sources.reduce((n, s) => n + s.count, 0) ?? 0;
   const status = paused
-    ? { text: "已暂停", count: "0/4", tone: "block" }
-    : { text: "守护中", count: `${active}/4`, tone: active === 4 ? "allow" : "warn" };
+    ? { text: t("paused"), count: "0/4", tone: "block" }
+    : { text: t("protected"), count: `${active}/4`, tone: active === 4 ? "allow" : "warn" };
 
   return (
     <>
@@ -171,13 +183,13 @@ export function OverviewPage({
         <section className={`dash-hero ${paused ? "is-paused" : active < defenses.length ? "is-partial" : ""}`} data-tauri-drag-region>
           <GuardianKatana paused={paused} partial={active < defenses.length} />
           <div className="dash-hero-text">
-            <span className="status-pill">{paused ? "守护已暂停 · 现在没有保护" : active === defenses.length ? "守护中 · 四道防线都在工作" : `守护中 · ${active} / ${defenses.length} 道防线在工作`}</span>
-            <h1>{paused ? "主动防御已暂停" : "AI 主动防御"}</h1>
+            <span className="status-pill">{paused ? t("Protection is paused · You are not protected") : active === defenses.length ? t("Protection is on · All four defenses working") : t("Protection is on · {active} of {total} defenses working", { active, total: defenses.length })}</span>
+            <h1>{paused ? t("Active Defense Paused") : t("AI Active Defense")}</h1>
             <p className="dash-hero-lede">
-              {paused ? "刀已入鞘：现在运行的命令、下载的安装包、新装的扩展和 AI 工具都不会被检查。处理完手头的事，马上恢复。" : "陌生代码运行之前，离线规则和 AI 先替你看一眼：假面试项目、假会议软件、投毒的包和扩展、恶意 MCP 与 skill。"}
+              {paused ? t("The sword is sheathed: commands you run, installers you download, and new extensions and AI tools are not being checked. Resume as soon as you are done.") : t("Before unfamiliar code runs, offline rules and AI look at it for you: fake interview projects, fake meeting apps, poisoned packages and extensions, malicious MCP servers and skills.")}
             </p>
             {paused ? null : (
-              <button type="button" className="layer-checks" onClick={() => go("settings")} title="在设置里管理防线">
+              <button type="button" className="layer-checks" onClick={() => go("settings")} title={t("Manage defenses in Settings")}>
                 {defenses.map((d) => (
                   <span key={d.label} className={d.on ? "is-on" : "is-off"}>
                     {d.label}
@@ -189,17 +201,17 @@ export function OverviewPage({
               {paused ? (
                 <button className="cta cta-alarm" onClick={() => setPaused(false)}>
                   <Icon.play size={14} />
-                  恢复守护
+                  {t("Resume Protection")}
                 </button>
               ) : (
                 <button className="cta" disabled={!!checking} onClick={pickAndCheck}>
                   {checking ? <Spinner /> : <Icon.scan size={15} />}
-                  {checking ? `正在检查 ${checking}` : "检查一个文件夹"}
+                  {checking ? t("Checking {name}", { name: checking }) : t("Check a Folder")}
                 </button>
               )}
               <span className="hero-links">
                 <button className="link" onClick={() => go("scan")}>
-                  扫描
+                  {t("Scan")}
                 </button>
                 <button
                   className="link"
@@ -208,43 +220,43 @@ export function OverviewPage({
                     window.dispatchEvent(new Event("tsuba-run-doctor"));
                   }}
                 >
-                  体检
+                  {t("Health Check")}
                 </button>
                 {paused ? (
                   <button className="link" onClick={() => go("settings")}>
-                    设置
+                    {t("Settings")}
                   </button>
                 ) : (
                   <button className="link" onClick={() => setPaused(true)}>
-                    暂停
+                    {t("Pause")}
                   </button>
                 )}
               </span>
             </div>
-            <div className="dash-hero-meta">{dragging ? "松开就开始检查" : "也可以把安装包、项目文件夹或脚本直接拖进窗口"}</div>
+            <div className="dash-hero-meta">{dragging ? t("Release to start checking") : t("You can also drag installers, project folders or scripts into the window")}</div>
           </div>
         </section>
 
         {error && <Banner onClose={() => setError("")}>{error}</Banner>}
 
-        <section className="bento" aria-label="小结">
+        <section className="bento" aria-label={t("Summary")}>
           <button type="button" className={`cell cell-alert ${risky.length ? "" : "is-calm"}`} onClick={() => (risky[0] ? openEntry(risky[0].id) : go("history"))}>
-            <span className="cell-go">{risky.length ? "查看 →" : "记录 →"}</span>
+            <span className="cell-go">{risky.length ? t("View →") : t("History →")}</span>
             <span className="cell-num">{risky.length}</span>
-            <span className="cell-label">{risky.length ? "条需要你看一下" : "没有待处理的提醒"}</span>
+            <span className="cell-label">{risky.length === 0 ? t("No warnings to review") : t("Needs attention")}</span>
             {risky[0] && <span className="cell-last">{entryName(risky[0], 46)}</span>}
           </button>
           <button type="button" className="cell" onClick={() => go("history")}>
-            <span className="cell-num">{overview.recent.total.toLocaleString()}</span>
-            <span className="cell-label">次检查</span>
+            <span className="cell-num">{formatCount(overview.recent.total)}</span>
+            <span className="cell-label">{overview.recent.total === 1 ? t("check") : t("checks")}</span>
           </button>
           <button type="button" className="cell" onClick={() => go("scan")}>
             <span className="cell-num">{overview.quarantined}</span>
-            <span className="cell-label">在隔离区</span>
+            <span className="cell-label">{t("in quarantine")}</span>
           </button>
           <button type="button" className="cell cell-intel" onClick={() => go("settings")}>
-            <span className="cell-num">{intelCount >= 10000 ? `${(intelCount / 10000).toFixed(1)} 万` : intelCount.toLocaleString()}</span>
-            <span className="cell-label">威胁情报{intel?.updated ? ` · ${relativeTime(intel.updated)} 更新` : " · 还没有下载"}</span>
+            <span className="cell-num">{formatCompactCount(intelCount)}</span>
+            <span className="cell-label">{intel?.updated ? t("Threat intel · updated {time}", { time: relativeTime(intel.updated) }) : t("Threat intel · not downloaded yet")}</span>
           </button>
         </section>
       </div>
