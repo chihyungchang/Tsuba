@@ -4,7 +4,16 @@
 
 Tsuba (鍔, the hand guard of a Japanese sword) is a macOS menu bar app. Fake interview projects, fake meeting software, poisoned npm packages, malicious editor extensions: these attacks come in new packaging every time and use ordinary tools like node, curl and bash, so traditional antivirus software rarely flags them. Tsuba steps in at the entry points where they run for the first time: it works out what the code is about to do, where it came from and whether it looks like a known attack pattern, then decides whether to Allow, Warn or Block.
 
-For product background, goals and the roadmap, see docs/PRD.md (kept locally, not in the repository).
+## Install
+
+Download the DMG from [Releases](https://github.com/chihyungchang/Tsuba/releases) (macOS 13 or later, Apple silicon and Intel). It needs no account; for AI review it can use the Claude Code or Codex already signed in on your Mac.
+
+> [!WARNING]
+> **Builds are not yet signed or notarized by Apple.** macOS blocks the App the first time you open it: go to **System Settings → Privacy & Security** and click **Open Anyway**.
+>
+> Tsuba is open source, so you can check what you run: compare the DMG with the `SHA256SUMS.txt` attached to each release (`shasum -a 256 Tsuba_*.dmg`), read [the workflow](.github/workflows/release.yml) that built it, or build it yourself (see [Releasing](#releasing)).
+>
+> Please don't remove the quarantine flag with `xattr`: Tsuba warns about installers that ask you to, and its own shouldn't be the exception.
 
 ## What it checks
 

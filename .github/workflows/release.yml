@@ -104,7 +104,20 @@ jobs:
           releaseDraft: true
           prerelease: false
 
-      # GitHub writes the notes from the commits and pull requests since the previous release
+      # Checksums so anyone can confirm the DMG they downloaded is the one this workflow built from the public source
+      - name: Checksums
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd target/universal-apple-darwin/release/bundle/dmg
+          shasum -a 256 *.dmg > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --clobber
+
+      # GitHub writes the notes from the commits and pull requests since the previous release. An unsigned build says so
+      # first, and says how to open it without removing the quarantine flag: Tsuba itself warns about installers that
+      # ask for that, so its own release must not.
       - name: Release notes
         if: github.event_name == 'push'
         env:
@@ -112,6 +125,20 @@ jobs:
           RELEASE_ID: ${{ steps.tauri.outputs.releaseId }}
         run: |
           notes=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$GITHUB_REF_NAME" --jq .body)
+          if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+            notice=$(cat <<'NOTICE'
+          > [!WARNING]
+          > **This build is not signed or notarized by Apple yet.** macOS blocks it the first time you open it: go to **System Settings → Privacy & Security** and click **Open Anyway**.
+          >
+          > Tsuba is open source, so you can check what you run: compare the DMG with `SHA256SUMS.txt` below (`shasum -a 256 Tsuba_*.dmg`), read the workflow that built it, or build it yourself (see the README).
+          >
+          > Please don't remove the quarantine flag with `xattr`: Tsuba warns about installers that ask you to, and its own shouldn't be the exception.
+          >
+          > **尚未经过 Apple 签名和公证。** 第一次打开会被 macOS 拦下：到 **系统设置 → 隐私与安全性** 点 **仍要打开**。Tsuba 是开源的：可以用下面的 `SHA256SUMS.txt` 核对 DMG，或按 README 自己构建。请不要用 `xattr` 删除隔离标记，Tsuba 自己就会拦截要求你这么做的安装包。
+          NOTICE
+            )
+            notes=$(printf '%s\n\n%s' "$notice" "$notes")
+          fi
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -f body="$notes" > /dev/null
 
       - name: Keep the dry-run DMG
