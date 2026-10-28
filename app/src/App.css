@@ -2301,6 +2301,122 @@ button.link.is-armed {
   color: var(--block);
 }
 
+/* ---------- 动效 ---------- */
+
+/* 首页依次出现：主区 → 快速操作 → 四块磁贴，比整页一起冒出来更从容 */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.dashboard {
+  animation: none;
+}
+
+.dash-hero,
+.quick,
+.tiles > .tile {
+  animation: rise-in 0.42s var(--ease) both;
+}
+
+.quick {
+  animation-delay: 0.06s;
+}
+
+.tiles > .tile:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.tiles > .tile:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.tiles > .tile:nth-child(3) {
+  animation-delay: 0.18s;
+}
+
+.tiles > .tile:nth-child(4) {
+  animation-delay: 0.22s;
+}
+
+/* 磁贴和快速操作：悬停浮起一点，按下回落 */
+button.tile,
+button.quick-button {
+  transition:
+    transform 0.2s var(--ease),
+    box-shadow 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+button.tile:hover:not(:disabled),
+button.quick-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    var(--glass-shadow),
+    0 8px 20px rgba(0, 0, 0, 0.14);
+}
+
+button.tile:active:not(:disabled),
+button.quick-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+
+/* 守护中：状态点缓慢呼吸，表示一直在工作；暂停和部分防线时不呼吸 */
+@keyframes breathe {
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--hero-tone) 22%, transparent), 0 0 10px var(--hero-tone);
+  }
+}
+
+.dash-hero:not(.is-paused):not(.is-partial) .status-pill::before {
+  animation: breathe 2.8s ease-in-out infinite;
+}
+
+/* 主按钮悬停时光晕更亮 */
+button.cta:hover:not(:disabled) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 6px 20px color-mix(in srgb, var(--cta) 45%, transparent);
+}
+
+/* 返回：箭头悬停时往回挪一点 */
+.back-chevron {
+  transition: transform 0.2s var(--ease);
+}
+
+button.back:hover:not(:disabled) .back-chevron {
+  transform: rotate(180deg) translateX(2px);
+}
+
+/* 底栏的设置齿轮悬停时转一下 */
+button.footbar-settings svg {
+  transition: transform 0.4s var(--ease);
+}
+
+button.footbar-settings:hover:not(:disabled) svg {
+  transform: rotate(60deg);
+}
+
+/* 详情页头部卡片和检查卡片也依次出现 */
+.page-hero,
+.check-grid > .check-card {
+  animation: rise-in 0.38s var(--ease) both;
+}
+
+.check-grid > .check-card:nth-child(1) {
+  animation-delay: 0.06s;
+}
+
+.check-grid > .check-card:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.check-grid > .check-card:nth-child(3) {
+  animation-delay: 0.14s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
