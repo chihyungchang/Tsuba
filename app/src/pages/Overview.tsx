@@ -7,6 +7,7 @@ import { Icon } from "../icons";
 import { IntelManifest, LogEntry, Overview } from "../types";
 import { Banner, Spinner, baseName, errText, formatCompact, formatNumber, relativeTime } from "../ui";
 import { t } from "../i18n";
+import { useTask } from "../tasks";
 
 type Go = (page: "history" | "scan" | "doctor" | "settings") => void;
 
@@ -85,7 +86,9 @@ export function OverviewPage({
   onScanned,
   openEntry,
   go,
+  visible,
 }: {
+  visible: boolean;
   overview: Overview | null;
   reload: () => void;
   onScanned: (e: LogEntry) => void;
@@ -121,8 +124,11 @@ export function OverviewPage({
     }
   };
 
-  // Anything dropped anywhere on the window gets checked
+  useTask("check", t("Folder check"), "overview", !!checking);
+
+  // Anything dropped anywhere on the window gets checked, while the dashboard is showing (it stays mounted behind other pages)
   useEffect(() => {
+    if (!visible) return;
     const un = getCurrentWebview().onDragDropEvent((event) => {
       const p = event.payload;
       if (p.type === "enter" || p.type === "over") setDragging(true);
@@ -136,7 +142,7 @@ export function OverviewPage({
       un.then((f) => f());
     };
     // check only depends on onScanned, so resubscribe only when it changes
-  }, [onScanned]);
+  }, [onScanned, visible]);
 
   if (!overview) return null;
 

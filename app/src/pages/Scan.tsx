@@ -5,6 +5,7 @@ import { Icon } from "../icons";
 import { Config, FolderScan, LogEntry, QuarantineItem, ScanHit, TrustItem } from "../types";
 import { Banner, ConfirmButton, Empty, toastDone, FindingList, Group, PageHeader, Row, Section, Spinner, Toggle, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
 import { t } from "../i18n";
+import { useTask } from "../tasks";
 
 function kindLabel(kind: ScanHit["kind"]): string {
   switch (kind) {
@@ -35,6 +36,7 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
   const [trusted, setTrusted] = useState<TrustItem[]>([]);
   const [last, setLast] = useState<string | null>(null);
   const [error, setError] = useState("");
+  useTask("scan", t("Folder scan"), "scan", !!busy);
 
   const load = useCallback(() => {
     invoke<Config>("get_config").then(setCfg);

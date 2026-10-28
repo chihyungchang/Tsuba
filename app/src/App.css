@@ -446,6 +446,10 @@ select:focus {
   overflow: hidden;
 }
 
+.content-history > .page-host {
+  height: 100%;
+}
+
 .page {
   max-width: 880px;
   margin: 0 auto;
@@ -1069,6 +1073,26 @@ button.crumb:hover:not(:disabled) .crumb-chevron {
   color: var(--text-2);
 }
 
+/* A task still running on another page: at the top left beside the traffic lights, out of the centered title's way */
+button.titlebar-task {
+  position: absolute;
+  left: 82px;
+  height: 24px;
+  padding: 0 10px;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cta) 35%, transparent);
+  animation: rise-in 0.2s var(--ease);
+}
+
+button.titlebar-task:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--cta) 20%, transparent);
+}
+
 /* While paused, the title bar's top right becomes a red resume button, visible and clickable on every page */
 button.titlebar-status.is-paused,
 button.titlebar-status.is-paused:hover:not(:disabled) {
@@ -1126,7 +1150,9 @@ button.footbar-settings:hover:not(:disabled) {
 
 /* ---------- Overview (dashboard) ---------- */
 
-.content-overview {
+/* Pages stay mounted inside a .page-host; the dashboard's host is the column that pushes the log to the bottom */
+.content-overview > .page-host {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -2572,14 +2598,74 @@ button.icon-button.is-armed {
   color: var(--block);
 }
 
-/* Running: a light sweeping back and forth along the card's bottom edge, visible per card when several run at once */
+/*
+  Running has to look like scanning, not like a card that happens to say "Checking…": a gold outline, a band of light
+  passing down the card like a scanner, a ripple from the icon and a gold bar along the bottom. Idle cards stay
+  plain, so with several checks running it is clear which ones are.
+*/
+.check-card.is-running {
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0 0 1.5px color-mix(in srgb, var(--cta) 70%, transparent),
+    0 0 24px color-mix(in srgb, var(--cta) 18%, transparent);
+}
+
+.check-card.is-running .check-icon {
+  color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 16%, transparent);
+  animation: check-ripple 1.6s ease-out infinite;
+}
+
+@keyframes check-ripple {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--cta) 50%, transparent);
+  }
+
+  to {
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--cta) 0%, transparent);
+  }
+}
+
+.check-card.is-running .check-done {
+  color: var(--cta);
+  font-weight: 600;
+}
+
+.check-beam {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* A soft band with a bright leading edge */
+  background: linear-gradient(
+      180deg,
+      transparent,
+      color-mix(in srgb, var(--cta) 10%, transparent) 70%,
+      color-mix(in srgb, var(--cta) 22%, transparent) 97%,
+      color-mix(in srgb, var(--cta) 70%, transparent) 99%,
+      transparent
+    )
+    no-repeat;
+  background-size: 100% 90px;
+  animation: check-beam 2.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes check-beam {
+  from {
+    background-position: 0 -90px;
+  }
+
+  to {
+    background-position: 0 calc(100% + 90px);
+  }
+}
+
 .check-progress {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
   height: 3px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 45%, transparent), transparent) no-repeat;
+  background: linear-gradient(90deg, transparent, var(--cta), transparent) no-repeat;
   background-size: 40% 100%;
   animation: progress-sweep 1.3s ease-in-out infinite;
 }

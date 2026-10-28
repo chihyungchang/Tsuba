@@ -4,6 +4,7 @@ import { Icon, type IconName } from "../icons";
 import { AiScanItem, ExtensionScan, Finding } from "../types";
 import { Banner, FindingList, toastDone, Group, PageHeader, Row, Section, Spinner, VerdictBadge, errText, relativeTime } from "../ui";
 import { t } from "../i18n";
+import { useTask } from "../tasks";
 
 type Check = "doctor" | "exts" | "ai";
 
@@ -51,6 +52,7 @@ function CheckCard({
         {busy ? <Spinner /> : null}
         {busy ? t("Checking") : done || error ? t("Check Again") : t("Start")}
       </button>
+      {busy && <span className="check-beam" aria-hidden />}
       {busy && <span className="check-progress" />}
     </div>
   );
@@ -105,6 +107,7 @@ export function DoctorPage({ reload }: { reload: () => void }) {
     }
   };
   // Start everything that is not already running
+  useTask("doctor", t("Health Check"), "doctor", running.size > 0);
   const runAll = () => (Object.keys(CHECKS) as Check[]).filter((c) => !running.has(c)).forEach(run);
 
   // "Health Check" on the dashboard: jump to this page and start every check

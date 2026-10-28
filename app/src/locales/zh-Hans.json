@@ -91,6 +91,8 @@
   "File deleted": "文件已删除",
   "Files known attacks leave behind. Takes a few seconds.": "已知攻击留下的落地痕迹，几秒钟",
   "Find automatically": "自动查找",
+  "Folder check": "文件夹检查",
+  "Folder scan": "文件夹扫描",
   "Found 1 item to review": "这次发现 1 个需要看的",
   "Found 1 model": "找到 1 个模型",
   "Found 1 trace": "发现 1 处痕迹",
@@ -100,6 +102,7 @@
   "Found {n} traces": "发现 {n} 处痕迹",
   "Frontier model": "前沿模型",
   "GitHub token": "GitHub 令牌",
+  "Go to it": "回到这个任务",
   "Google API key": "Google API Key",
   "Guarding": "守护中",
   "H": "高",
@@ -228,6 +231,7 @@
   "Running Health Check…": "体检中…",
   "Running in Sandbox": "沙箱运行中",
   "Runs npm install to see what the install scripts do": "运行 npm install，看安装脚本做了什么",
+  "Sandbox run": "沙箱试运行",
   "Save": "保存",
   "Saved": "已保存",
   "Scan": "扫描",
@@ -326,6 +330,10 @@
   "{n} min ago": "{n} 分钟前",
   "{n} more": "还有 {n} 条",
   "{n} suspicious": "{n} 项可疑",
+  "{n} tasks running…": "{n} 个任务进行中…",
   "{n} · {suspicious} suspicious": "{n} 个 · {suspicious} 个可疑",
-  "{on} / 4": "{on} / 4 道"
+  "{on} / 4": "{on} / 4 道",
+  "{task} finished": "{task}已完成",
+  "{task} keeps running in the background. It's shown at the top left.": "{task}会在后台继续，进度在左上角。",
+  "{task} running…": "{task}进行中…"
 }

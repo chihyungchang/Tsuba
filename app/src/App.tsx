@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Splash } from "./brand";
@@ -10,7 +10,8 @@ import { OverviewPage } from "./pages/Overview";
 import { ScanPage } from "./pages/Scan";
 import { SettingsPage } from "./pages/Settings";
 import { LogEntry, Overview, QuarantineItem } from "./types";
-import { GoHome, Toaster } from "./ui";
+import { runningTasks, useRunningTasks } from "./tasks";
+import { GoHome, Spinner, Toaster, toast } from "./ui";
 import "./App.css";
 
 type Page = "overview" | "history" | "scan" | "doctor" | "settings";
@@ -38,10 +39,26 @@ export default function App() {
   const [quarantine, setQuarantine] = useState<QuarantineItem[]>([]);
   const [focusId, setFocusId] = useState<string | null>(null);
 
+  const pageRef = useRef(page);
   const setPage = useCallback((p: Page) => {
+    // Leaving a page whose task is still running: say it carries on, so leaving doesn't feel like cancelling
+    const left = runningTasks().filter((task) => task.page === pageRef.current && p !== pageRef.current);
+    for (const task of left) toast(t("{task} keeps running in the background. It's shown at the top left.", { task: task.label }));
+    pageRef.current = p;
     setPageState(p);
     history.replaceState(null, "", `#${p}`);
   }, []);
+
+  // Tell the user when a task finishes while they are on another page
+  const tasks = useRunningTasks();
+  const previousTasks = useRef(tasks);
+  useEffect(() => {
+    for (const task of previousTasks.current) {
+      if (!tasks.some((x) => x.id === task.id) && task.page !== pageRef.current) toast(t("{task} finished", { task: task.label }));
+    }
+    previousTasks.current = tasks;
+  }, [tasks]);
+  const elsewhere = tasks.filter((task) => task.page !== page);
 
   const reload = useCallback(() => {
     invoke<Overview>("get_overview").then(setOverview);
@@ -107,6 +124,12 @@ export default function App() {
     <div className={`shell ${paused ? "is-paused" : ""}`}>
       {/* Title bar: only the traffic lights, the centered page name and the sword mark on the right; going back lives in the breadcrumb inside the content */}
       <header className="titlebar" data-tauri-drag-region>
+        {elsewhere.length > 0 && (
+          <button className="titlebar-task" onClick={() => setPage(elsewhere[0].page as Page)} title={t("Go to it")}>
+            <Spinner />
+            {elsewhere.length === 1 ? t("{task} running…", { task: elsewhere[0].label }) : t("{n} tasks running…", { n: elsewhere.length })}
+          </button>
+        )}
         <span className="titlebar-title" data-tauri-drag-region>
           {page === "overview" ? "" : current?.label}
         </span>
@@ -123,10 +146,16 @@ export default function App() {
         )}
       </header>
       <main className={`content content-${page}`}>
-        {page === "overview" && <OverviewPage overview={overview} reload={reload} onScanned={onScanned} openEntry={openEntry} go={setPage} />}
-        {page === "history" && <HistoryPage focusId={focusId} quarantine={quarantine} reload={reload} />}
-        {page === "scan" && <ScanPage quarantine={quarantine} reload={reload} onScanned={onScanned} />}
-        {/* A Health Check can take tens of seconds: keep it mounted while on other pages so progress and results are still there on return */}
+        {/* Pages with long tasks stay mounted behind the others: switching away must not drop a running check's result */}
+        <div className="page-host" hidden={page !== "overview"}>
+          <OverviewPage overview={overview} reload={reload} onScanned={onScanned} openEntry={openEntry} go={setPage} visible={page === "overview"} />
+        </div>
+        <div className="page-host" hidden={page !== "history"}>
+          <HistoryPage focusId={focusId} quarantine={quarantine} reload={reload} />
+        </div>
+        <div className="page-host" hidden={page !== "scan"}>
+          <ScanPage quarantine={quarantine} reload={reload} onScanned={onScanned} />
+        </div>
         <div className="page-host" hidden={page !== "doctor"}>
           <DoctorPage reload={reload} />
         </div>

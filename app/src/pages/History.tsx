@@ -5,6 +5,7 @@ import { Icon } from "../icons";
 import { LogEntry, QuarantineItem, SandboxResult } from "../types";
 import { BackLink, Banner, ConfirmButton, Empty, MenuButton, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
 import { lang, t } from "../i18n";
+import { useTask } from "../tasks";
 
 /** Sources whose entry title is a path on disk: can be quarantined, marked safe and shown in Finder */
 const PATH_SOURCES: LogEntry["source"][] = ["download", "extension", "scan"];
@@ -157,6 +158,7 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
   const [error, setError] = useState("");
   const [sandbox, setSandbox] = useState<SandboxResult | null>(null);
   const [sandboxing, setSandboxing] = useState(false);
+  useTask("sandbox", t("Sandbox run"), "history", sandboxing);
 
   useEffect(() => {
     setSandbox(null);
