@@ -98,15 +98,48 @@ pub(crate) fn agent(timeout_secs: u64) -> ureq::Agent {
 }
 
 /// GitHub 仓库某个分支最新提交的 sha，用来判断要不要重新下载。
+///
+/// 走 git 协议（v2 的 ls-refs，等于 `git ls-remote`），不走 api.github.com：
+/// 匿名调 API 每个 IP 每小时只有 60 次，点几次“立即更新”、或同一网络下别人也在用，就会 403。
 pub(crate) fn github_head(repo: &str, branch: &str) -> Result<String, String> {
-    agent(15)
-        .get(&format!("https://api.github.com/repos/{repo}/commits/{branch}"))
-        .set("Accept", "application/vnd.github.sha")
-        .call()
+    let body = agent(15)
+        .post(&format!("https://github.com/{repo}.git/git-upload-pack"))
+        .set("Git-Protocol", "version=2")
+        .set("Content-Type", "application/x-git-upload-pack-request")
+        .send_bytes(&ls_refs_request(branch))
         .map_err(|e| e.to_string())?
         .into_string()
-        .map(|s| s.trim().to_string())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    find_branch_sha(&body, branch).ok_or_else(|| format!("{repo} 没有 {branch} 分支"))
+}
+
+/// git 的 pkt-line：每行前面是 4 位十六进制长度（含这 4 位本身）；0001 分隔参数，0000 结束。
+fn ls_refs_request(branch: &str) -> Vec<u8> {
+    let pkt = |s: &str| format!("{:04x}{s}", s.len() + 4);
+    format!("{}0001{}0000", pkt("command=ls-refs\n"), pkt(&format!("ref-prefix refs/heads/{branch}\n"))).into_bytes()
+}
+
+/// 回包每行是 “<长度><sha> refs/heads/<分支>”；ref-prefix 是前缀匹配，所以要比对完整的分支名。
+fn find_branch_sha(body: &str, branch: &str) -> Option<String> {
+    let want = format!("refs/heads/{branch}");
+    let mut rest = body;
+    while rest.len() >= 4 {
+        let len = usize::from_str_radix(&rest[..4], 16).ok()?;
+        if len < 4 {
+            rest = &rest[4..];
+            continue;
+        }
+        let line = rest.get(4..len)?;
+        rest = &rest[len..];
+        if let Some((sha, name)) = line.trim_end().split_once(' ')
+            && name == want
+            && sha.len() == 40
+            && sha.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            return Some(sha.to_string());
+        }
+    }
+    None
 }
 
 /// 下载一个 GitHub 仓库的 tar.gz，对每个文件调用 f(仓库内路径, 内容)。不落盘，边下边解。
@@ -196,4 +229,24 @@ pub(crate) fn file_mtime(p: &Path) -> String {
         .ok()
         .map(|t| chrono::DateTime::<chrono::Local>::from(t).format("%Y-%m-%dT%H:%M:%S").to_string())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ls_refs_request_is_valid_pkt_lines() {
+        assert_eq!(ls_refs_request("main"), b"0014command=ls-refs\n0001001fref-prefix refs/heads/main\n0000");
+    }
+
+    #[test]
+    fn find_branch_sha_skips_branches_sharing_the_prefix() {
+        // ref-prefix refs/heads/v3 也会返回 v3-dev 这类分支
+        let other = "1111111111111111111111111111111111111111 refs/heads/v3-dev\n";
+        let wanted = "884e662df4e83d78d0c90c7f6783d5f332863d3d refs/heads/v3\n";
+        let body = format!("{:04x}{other}{:04x}{wanted}0000", other.len() + 4, wanted.len() + 4);
+        assert_eq!(find_branch_sha(&body, "v3").as_deref(), Some("884e662df4e83d78d0c90c7f6783d5f332863d3d"));
+        assert_eq!(find_branch_sha("0000", "main"), None);
+    }
 }
