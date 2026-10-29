@@ -49,6 +49,7 @@ export interface Config {
   watch_ai_tools: boolean;
   notify_warn: boolean;
   notify_scheduled_scan: boolean;
+  notify_sound: boolean;
   intel: { auto_update: boolean; abusech_key: string; online_lookup: boolean; rules_url: string; virustotal_key: string };
   scan: { scheduled: boolean; folders: string[]; interval_days: number };
 }

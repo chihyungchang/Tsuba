@@ -114,6 +114,7 @@ const config = {
   watch_ai_tools: true,
   notify_warn: true,
   notify_scheduled_scan: true,
+  notify_sound: true,
   intel: { auto_update: true, abusech_key: "", online_lookup: true, rules_url: "", virustotal_key: "" },
   scan: { scheduled: true, folders: ["~/Downloads", "/Users/oliver/code"], interval_days: 7 },
 };

@@ -169,6 +169,8 @@ pub struct Config {
     pub notify_warn: bool,
     /// System notification when a scheduled scan finds problems
     pub notify_scheduled_scan: bool,
+    /// A short, low sound with Block notifications
+    pub notify_sound: bool,
     pub intel: IntelConfig,
     pub scan: ScanConfig,
     /// The language chosen in the App: empty follows the system, otherwise "en" or "zh-Hans". Stored here rather than
@@ -189,6 +191,7 @@ impl Default for Config {
             watch_ai_tools: true,
             notify_warn: true,
             notify_scheduled_scan: true,
+            notify_sound: true,
             intel: IntelConfig::default(),
             scan: ScanConfig::default(),
             language: String::new(),

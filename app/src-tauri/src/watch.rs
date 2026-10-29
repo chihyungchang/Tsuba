@@ -54,10 +54,14 @@ pub(crate) fn paused() -> bool {
 
 /// Shows a macOS notification. Callers build the text with `tr!` right before calling, so it is in the language
 /// current at send time even when sent from a background watcher.
-pub(crate) fn notify_user(title: &str, body: &str) {
+/// `is_urgent` adds a sound. Only Block uses it, and only Pop: soft, not high, and over in under a tenth of a second
+/// (picked by ear over Basso, which sounded harsh).
+/// Warnings stay silent, since a sound on every one would be the kind of daily nagging that gets Tsuba uninstalled.
+pub(crate) fn notify_user(title: &str, body: &str, is_urgent: bool) {
     let esc = |s: &str| s.replace('\\', "\\\\").replace('"', "'");
     let body: String = body.chars().take(240).collect();
-    let script = format!("display notification \"{}\" with title \"{}\"", esc(&body), esc(title));
+    let sound = if is_urgent && Config::load().notify_sound { " sound name \"Pop\"" } else { "" };
+    let script = format!("display notification \"{}\" with title \"{}\"{sound}", esc(&body), esc(title));
     let _ = std::process::Command::new("osascript").args(["-e", &script]).output();
 }
 
@@ -82,7 +86,7 @@ pub(crate) fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Optio
                 _ => tr!("Don't open it yet."),
             };
             let title = if r.verdict == Verdict::Block { tr!("Tsuba: block recommended for {name}", name = name) } else { tr!("Tsuba: {name} needs attention", name = name) };
-            notify_user(&title, &format!("{} {next_step}", r.summary));
+            notify_user(&title, &format!("{} {next_step}", r.summary), r.verdict == Verdict::Block);
             if entry.action.is_empty() {
                 entry.action = "notified".into();
             }

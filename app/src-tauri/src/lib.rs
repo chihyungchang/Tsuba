@@ -492,7 +492,7 @@ fn start_scan_scheduler(app: AppHandle, config: Arc<Mutex<Config>>) {
             scan::mark_scheduled_run();
             if found > 0 {
                 if Config::load().notify_scheduled_scan {
-                    watch::notify_user(&tr!("Tsuba: the scheduled scan found problems"), &tr!("{count} files need a look. Open Check History in Tsuba to see them.", count = found));
+                    watch::notify_user(&tr!("Tsuba: the scheduled scan found problems"), &tr!("{count} files need a look. Open Check History in Tsuba to see them.", count = found), false);
                 }
                 let _ = app.emit("history-updated", ());
             }

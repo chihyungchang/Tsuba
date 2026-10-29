@@ -945,6 +945,11 @@ export function SettingsPage({ overview, reload, tab, onTab }: { overview: Overv
             trailing={<Toggle label={t("Notify About Warnings")} on={cfg.notify_warn} onChange={(v) => saveNow({ ...cfg, notify_warn: v })} />}
           />
           <Row
+            title={t("Play a Sound for Blocks")}
+            detail={t("A short, low sound with Block Recommended notifications. Warnings stay silent.")}
+            trailing={<Toggle label={t("Play a Sound for Blocks")} on={cfg.notify_sound} onChange={(v) => saveNow({ ...cfg, notify_sound: v })} />}
+          />
+          <Row
             title={t("Notify After Scheduled Scans")}
             detail={t("A notification when the regular rescan of your folders finds something")}
             trailing={<Toggle label={t("Notify After Scheduled Scans")} on={cfg.notify_scheduled_scan} onChange={(v) => saveNow({ ...cfg, notify_scheduled_scan: v })} />}
