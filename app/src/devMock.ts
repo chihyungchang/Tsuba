@@ -112,6 +112,8 @@ const config = {
   watch_extensions: true,
   auto_quarantine: true,
   watch_ai_tools: true,
+  notify_warn: true,
+  notify_scheduled_scan: true,
   intel: { auto_update: true, abusech_key: "", online_lookup: true, rules_url: "", virustotal_key: "" },
   scan: { scheduled: true, folders: ["~/Downloads", "/Users/oliver/code"], interval_days: 7 },
 };
@@ -137,6 +139,7 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
     downloads_dir: "/Users/oliver/Downloads",
     extension_dirs: ["/Users/oliver/.vscode/extensions", "/Users/oliver/.cursor/extensions"],
     provider: "claude_cli",
+    provider_preset: "ollama",
     provider_label: "Claude Code account · claude-opus-5-5",
     ai_available: true,
     sandbox_available: true,

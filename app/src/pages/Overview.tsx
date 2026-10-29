@@ -168,7 +168,7 @@ export function OverviewPage({
     { label: t("AI Coding Tools"), on: overview.watch_ai_tools },
   ];
   const active = defenses.filter((d) => d.on).length;
-  const risky = entries.filter((e) => e.report.verdict !== "allow");
+  const risky = entries.filter((e) => e.report.verdict !== "allow" && !e.dismissed);
   const intelCount = intel?.sources.reduce((n, s) => n + s.count, 0) ?? 0;
   const status = paused
     ? { text: t("paused"), count: "0/4", tone: "block" }

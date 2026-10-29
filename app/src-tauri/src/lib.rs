@@ -6,6 +6,7 @@ macro_rules! tr {
 }
 
 mod shell_hook;
+mod update;
 mod watch;
 mod watch_ai;
 
@@ -81,6 +82,8 @@ struct Overview {
     downloads_dir: String,
     extension_dirs: Vec<String>,
     provider: store::Provider,
+    /// The OpenAI-compatible preset ID (openai, gemini, deepseek…), so the UI can show the right logo without parsing the label
+    provider_preset: String,
     provider_label: String,
     ai_available: bool,
     sandbox_available: bool,
@@ -109,6 +112,7 @@ fn get_overview(state: State<AppState>) -> Overview {
         downloads_dir: watch::downloads_dir().to_string_lossy().to_string(),
         extension_dirs: extension::extension_dirs().iter().map(|p| p.to_string_lossy().to_string()).collect(),
         provider: cfg.provider,
+        provider_preset: cfg.openai_compatible.preset.clone(),
         provider_label: match cfg.provider {
             store::Provider::ClaudeCli => tr!("Claude Code account · {model}", model = cfg.claude.model),
             store::Provider::CodexCli => {
@@ -122,8 +126,8 @@ fn get_overview(state: State<AppState>) -> Overview {
         sandbox_available: sandbox_available(),
         recent: RecentCounts {
             total: log.len(),
-            warned: log.iter().filter(|e| e.report.verdict == Verdict::Warn).count(),
-            blocked: log.iter().filter(|e| e.report.verdict == Verdict::Block).count(),
+            warned: log.iter().filter(|e| e.report.verdict == Verdict::Warn && !e.dismissed).count(),
+            blocked: log.iter().filter(|e| e.report.verdict == Verdict::Block && !e.dismissed).count(),
         },
         quarantined: quarantine::list().len(),
         trusted: trust::list().len(),
@@ -365,6 +369,33 @@ fn delete_entry_file(app: AppHandle, entry_id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// "Ignore" in the check history: the record stays, but it no longer counts as risky. `dismissed: false` undoes it.
+#[tauri::command]
+fn set_entry_dismissed(app: AppHandle, entry_id: String, dismissed: bool) -> Result<(), String> {
+    let mut entry = store::read_log(2000).into_iter().find(|e| e.id == entry_id).ok_or_else(|| tr!("This check record no longer exists"))?;
+    entry.dismissed = dismissed;
+    store::append_log(&entry);
+    let _ = app.emit("history-updated", ());
+    let _ = app.emit("status-changed", ());
+    Ok(())
+}
+
+/// "Don't Warn Again" for a terminal command: the next time the same command turns up the same findings, it runs without asking.
+/// Looked up by record id so the UI can't invent a command, and refused for Block, which should keep asking every time.
+#[tauri::command]
+fn ignore_command_warning(app: AppHandle, entry_id: String) -> Result<(), String> {
+    let mut entry = store::read_log(2000).into_iter().find(|e| e.id == entry_id).ok_or_else(|| tr!("This check record no longer exists"))?;
+    if !["terminal", "paste"].contains(&entry.source.as_str()) || entry.report.verdict != Verdict::Warn {
+        return Err(tr!("Only warnings about terminal commands can be ignored"));
+    }
+    trust::ignore_command(&entry.title, &entry.report.findings);
+    entry.dismissed = true;
+    store::append_log(&entry);
+    let _ = app.emit("history-updated", ());
+    let _ = app.emit("status-changed", ());
+    Ok(())
+}
+
 #[tauri::command]
 fn trusted_list() -> Vec<trust::TrustItem> {
     trust::list()
@@ -460,7 +491,9 @@ fn start_scan_scheduler(app: AppHandle, config: Arc<Mutex<Config>>) {
             }
             scan::mark_scheduled_run();
             if found > 0 {
-                watch::notify_user(&tr!("Tsuba: the scheduled scan found problems"), &tr!("{count} files need a look. Open Check History in Tsuba to see them.", count = found));
+                if Config::load().notify_scheduled_scan {
+                    watch::notify_user(&tr!("Tsuba: the scheduled scan found problems"), &tr!("{count} files need a look. Open Check History in Tsuba to see them.", count = found));
+                }
                 let _ = app.emit("history-updated", ());
             }
         }
@@ -471,6 +504,16 @@ fn start_scan_scheduler(app: AppHandle, config: Arc<Mutex<Config>>) {
 #[tauri::command]
 fn reveal_in_finder(path: String) {
     let _ = std::process::Command::new("open").args(["-R", &path]).spawn();
+}
+
+/// Opens a help or sign-up page in the browser. Only https: `open` would also launch apps and local files,
+/// and nothing the UI links to needs that.
+#[tauri::command]
+fn open_link(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err(tr!("Only https links can be opened"));
+    }
+    std::process::Command::new("open").arg(&url).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -521,10 +564,11 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let history = MenuItem::with_id(app, "history", tr!("Check History"), true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", pause_label(is_paused()), true, None::<&str>)?;
     let doctor = MenuItem::with_id(app, "doctor", tr!("Health Check"), true, None::<&str>)?;
+    let updates = MenuItem::with_id(app, "updates", tr!("Check for Updates…"), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", tr!("Quit Tsuba"), true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&open, &history, &sep1, &pause, &doctor, &sep2, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &history, &sep1, &pause, &doctor, &sep2, &updates, &quit])?;
     *app.state::<AppState>().pause_item.lock().unwrap() = Some(pause);
     Ok(menu)
 }
@@ -582,6 +626,11 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                 show_window(app);
                 let _ = app.emit("navigate", event.id.as_ref());
             }
+            // Opens Settings › About & Updates, which checks as soon as it shows
+            "updates" => {
+                show_window(app);
+                let _ = app.emit("open-settings", "about");
+            }
             "pause" => {
                 let _ = set_paused_flag(app, !is_paused());
             }
@@ -600,6 +649,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(update::PendingUpdate::default())
         .manage(AppState {
             config: Arc::new(Mutex::new(Config::load())),
             watchers: Mutex::new(None),
@@ -656,6 +707,12 @@ pub fn run() {
             scan_folder,
             scan_schedule_status,
             reveal_in_finder,
+            open_link,
+            update::app_version,
+            update::check_update,
+            update::install_update,
+            set_entry_dismissed,
+            ignore_command_warning,
             sandbox_script,
         ])
         .build(tauri::generate_context!())

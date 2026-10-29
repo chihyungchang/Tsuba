@@ -1,60 +1,33 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Icon, type IconName } from "../icons";
+import { Icon } from "../icons";
 import { AiScanItem, ExtensionScan, Finding } from "../types";
-import { Banner, FindingList, toastDone, Group, PageHeader, Row, Section, Spinner, VerdictBadge, errText, relativeTime } from "../ui";
+import { BackLink, Banner, FindingList, toastDone, Group, Row, Section, Spinner, VerdictBadge, errText, relativeTime } from "../ui";
 import { t } from "../i18n";
 import { useTask } from "../tasks";
 
 type Check = "doctor" | "exts" | "ai";
 
-function CheckCard({
-  icon,
-  title,
-  detail,
-  done,
-  issue,
-  points,
-  error,
-  busy,
-  onRun,
-}: {
-  icon: IconName;
-  title: string;
-  detail: string;
-  points: string[];
-  done: string | null;
-  issue?: boolean;
-  error?: string;
-  busy: boolean;
-  onRun: () => void;
-}) {
-  const I = Icon[icon];
-  const state = busy ? "is-running" : error ? "is-failed" : done ? (issue ? "is-issue" : "is-ok") : "";
+type CheckState = "idle" | "running" | "ok" | "issue" | "failed";
+
+/** One line of the checklist: what it looks at, then its state and result on the right */
+function CheckRow({ title, detail, state, result, onRun }: { title: string; detail: string; state: CheckState; result?: string; onRun: () => void }) {
   return (
-    <div className={`check-card ${state}`} aria-busy={busy}>
-      <span className="check-icon">
-        <I size={18} />
+    <li className={`checklist-row is-${state}`} aria-busy={state === "running"}>
+      <span className="checklist-mark" aria-hidden>
+        {state === "running" ? <Spinner /> : state === "ok" ? <Icon.check size={14} /> : state === "issue" || state === "failed" ? <Icon.alert size={14} /> : null}
       </span>
-      <div className="check-text">
-        <h3>{title}</h3>
-        <p>{detail}</p>
-        <ul className="check-points">
-          {points.map((x) => (
-            <li key={x}>{x}</li>
-          ))}
-        </ul>
-        {busy && <div className="check-done muted">{t("Checking…")}</div>}
-        {!busy && error && <div className="check-done tone-block">{t("Did not finish: {error}", { error })}</div>}
-        {!busy && !error && done && <div className={`check-done ${issue ? "tone-warn" : "tone-allow"}`}>{done}</div>}
+      <div className="checklist-text">
+        <strong>{title}</strong>
+        <span>{detail}</span>
       </div>
-      <button disabled={busy} onClick={onRun}>
-        {busy ? <Spinner /> : null}
-        {busy ? t("Checking") : done || error ? t("Check Again") : t("Start")}
-      </button>
-      {busy && <span className="check-beam" aria-hidden />}
-      {busy && <span className="check-progress" />}
-    </div>
+      <span className="checklist-result">{state === "running" ? t("Checking…") : result}</span>
+      {state !== "running" && state !== "idle" && (
+        <button className="link checklist-again" onClick={onRun}>
+          {t("Check Again")}
+        </button>
+      )}
+    </li>
   );
 }
 
@@ -133,7 +106,6 @@ export function DoctorPage({ reload }: { reload: () => void }) {
 
   const risky = exts?.filter((x) => x.verdict !== "allow") ?? [];
   const aiRisky = ai?.filter((x) => x.verdict !== "allow") ?? [];
-  const aiCount = (k: AiScanItem["kind"]) => ai?.filter((x) => x.kind === k).length ?? 0;
   const issues = (doctor?.findings.length ?? 0) + risky.length + aiRisky.length;
   const allDone = !!(doctor && exts && ai) && running.size === 0;
 
@@ -160,63 +132,53 @@ export function DoctorPage({ reload }: { reload: () => void }) {
           : t("No Health Check yet");
   const tone = running.size > 0 ? "neutral" : allDone ? (issues === 0 ? "allow" : "warn") : lastRun && lastRun.issues > 0 ? "warn" : "neutral";
 
+  const stateOf = (which: Check, done: boolean, issue: boolean): CheckState => (running.has(which) ? "running" : failed[which] ? "failed" : done ? (issue ? "issue" : "ok") : "idle");
+  const failedText = (which: Check) => (failed[which] ? t("Did not finish: {error}", { error: failed[which] }) : undefined);
+  const heroState = running.size > 0 ? "is-running" : allDone ? (issues === 0 ? "is-ok" : "is-issue") : "";
+
   return (
-    <div className="page">
-      <PageHeader
-        title={t("Health Check")}
-        subtitle={t("Already compromised? Looks for traces of known attacks and checks installed extensions and AI tools.")}
-        icon="doctor"
-        tone={tone}
-        status={status}
-        stats={[
-          { label: t("Infection Traces"), value: doctor ? (doctor.findings.length === 0 ? t("None") : t("{n} found", { n: doctor.findings.length })) : "—", tone: doctor ? (doctor.findings.length ? "block" : "allow") : undefined },
-          { label: t("Editor Extensions"), value: exts ? t("{n} · {suspicious} suspicious", { n: exts.length, suspicious: risky.length }) : "—", tone: exts ? (risky.length ? "warn" : "allow") : undefined },
-          { label: t("AI Coding Tools"), value: ai ? `${t("{mcp} MCP · {skills} skill", { mcp: aiCount("mcp"), skills: aiCount("skill") })}${aiRisky.length ? ` · ${t("{n} suspicious", { n: aiRisky.length })}` : ""}` : "—", tone: ai ? (aiRisky.length ? "warn" : "allow") : undefined },
-        ]}
-      >
-        <button className="primary" disabled={running.size === 3} onClick={runAll}>
-          {running.size > 0 ? <Spinner /> : <Icon.doctor size={14} />}
-          {running.size === 0 ? t("Check All") : running.size === 3 ? t("Checking") : t("Check Remaining {n}", { n: 3 - running.size })}
+    <div className="page doctor-page">
+      <div className="doctor-top" data-tauri-drag-region>
+        <BackLink />
+      </div>
+
+      {/* One big button does the whole check; the list below says what is looked at and fills in as each part finishes */}
+      <section className={`doctor-hero ${heroState}`} data-tauri-drag-region>
+        <button className="doctor-start" disabled={running.size > 0} onClick={runAll} aria-label={t("Start Health Check")}>
+          <span className="doctor-ring" aria-hidden />
+          {running.size > 0 ? <Icon.doctor size={34} /> : allDone && issues > 0 ? <Icon.alert size={34} /> : allDone ? <Icon.check size={34} /> : <Icon.doctor size={34} />}
+          <span className="doctor-start-label">{running.size > 0 ? t("Checking") : allDone || lastRun ? t("Check Again") : t("Start")}</span>
         </button>
-      </PageHeader>
+        <h1 data-tauri-drag-region>{t("Health Check")}</h1>
+        <p className={`doctor-status tone-${tone}`}>{status}</p>
+        <p className="doctor-lede">{t("Already compromised? Looks for traces of known attacks and checks installed extensions and AI tools.")}</p>
+      </section>
 
       {error && <Banner onClose={() => setError("")}>{error}</Banner>}
 
-      <div className="check-grid">
-        <CheckCard
-          icon="overview"
+      <ul className="checklist panel">
+        <CheckRow
           title={t("Infection Traces")}
-          detail={t("Files known attacks leave behind. Takes a few seconds.")}
-          points={[t("Drop folders attack groups favor in your home folder, such as ~/.node_modules, ~/.task and ~/.n2"), t("Suspicious commands in login items (node, curl, base64 decoding)"), t("The trace list updates daily with the rule pack")]}
-          done={doctor ? (doctor.findings.length === 0 ? t("No known traces found") : doctor.findings.length === 1 ? t("Found 1 trace") : t("Found {n} traces", { n: doctor.findings.length })) : null}
-          issue={!!doctor && doctor.findings.length > 0}
-          error={failed.doctor}
-          busy={running.has("doctor")}
+          detail={t("Files known attacks leave in your personal folder, and suspicious commands in login items")}
+          state={stateOf("doctor", !!doctor, !!doctor && doctor.findings.length > 0)}
+          result={failedText("doctor") ?? (doctor ? (doctor.findings.length === 0 ? t("No known traces found") : doctor.findings.length === 1 ? t("Found 1 trace") : t("Found {n} traces", { n: doctor.findings.length })) : undefined)}
           onRun={() => run("doctor")}
         />
-        <CheckCard
-          icon="extension"
+        <CheckRow
           title={t("Editor Extensions")}
-          detail={t("Installed extensions, offline rules only. Takes a few seconds.")}
-          points={[t("Every extension in VS Code, Cursor, Windsurf and VSCodium"), t("Official malicious extension lists, code hidden in invisible characters"), t("Activation on startup, suspicious network and file access")]}
-          done={exts ? (risky.length === 0 ? t("{n} extensions, all clean", { n: exts.length }) : t("{n} extensions, {suspicious} suspicious", { n: exts.length, suspicious: risky.length })) : null}
-          issue={risky.length > 0}
-          error={failed.exts}
-          busy={running.has("exts")}
+          detail={t("Every extension in VS Code, Cursor, Windsurf and VSCodium, against the official malicious list and hidden-code checks")}
+          state={stateOf("exts", !!exts, risky.length > 0)}
+          result={failedText("exts") ?? (exts ? (risky.length === 0 ? t("{n} extensions, all clean", { n: exts.length }) : t("{n} extensions, {suspicious} suspicious", { n: exts.length, suspicious: risky.length })) : undefined)}
           onRun={() => run("exts")}
         />
-        <CheckCard
-          icon="plug"
+        <CheckRow
           title={t("AI Coding Tools")}
-          detail={t("Configuration and add-ons of AI coding tools")}
-          points={[t("MCP servers in Claude Code, Cursor, Codex and more"), t("Installed skills and plugin hooks"), t("Tool poisoning, instructions to hide things from you, reading private keys")]}
-          done={ai ? (aiRisky.length === 0 ? t("{n} items, all clean", { n: ai.length }) : t("{n} items, {suspicious} suspicious", { n: ai.length, suspicious: aiRisky.length })) : null}
-          issue={aiRisky.length > 0}
-          error={failed.ai}
-          busy={running.has("ai")}
+          detail={t("MCP servers, skills and plugin hooks in Claude Code, Cursor, Codex and more")}
+          state={stateOf("ai", !!ai, aiRisky.length > 0)}
+          result={failedText("ai") ?? (ai ? (aiRisky.length === 0 ? t("{n} items, all clean", { n: ai.length }) : t("{n} items, {suspicious} suspicious", { n: ai.length, suspicious: aiRisky.length })) : undefined)}
           onRun={() => run("ai")}
         />
-      </div>
+      </ul>
 
       {doctor && doctor.findings.length > 0 && (
         <Section title={t("Infection Traces")}>

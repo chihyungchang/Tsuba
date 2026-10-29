@@ -34,6 +34,8 @@ export interface LogEntry {
   report: Report;
   action: string;
   quarantine_id?: string | null;
+  /** Looked at and ignored: kept in history, no longer counted as risky */
+  dismissed?: boolean;
 }
 
 export interface Config {
@@ -45,6 +47,8 @@ export interface Config {
   watch_extensions: boolean;
   auto_quarantine: boolean;
   watch_ai_tools: boolean;
+  notify_warn: boolean;
+  notify_scheduled_scan: boolean;
   intel: { auto_update: boolean; abusech_key: string; online_lookup: boolean; rules_url: string; virustotal_key: string };
   scan: { scheduled: boolean; folders: string[]; interval_days: number };
 }
@@ -74,6 +78,7 @@ export interface Overview {
   downloads_dir: string;
   extension_dirs: string[];
   provider: Provider;
+  provider_preset: string;
   provider_label: string;
   ai_available: boolean;
   sandbox_available: boolean;

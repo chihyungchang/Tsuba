@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Icon } from "../icons";
 import { LogEntry, QuarantineItem, SandboxResult } from "../types";
-import { BackLink, Banner, ConfirmButton, Empty, MenuButton, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
+import { BackLink, Banner, ConfirmButton, Empty, MenuButton, toast, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
 import { lang, t } from "../i18n";
 import { useTask } from "../tasks";
 
@@ -151,6 +151,11 @@ function RanIn({ dir }: { dir: string }) {
   );
 }
 
+/** Needs a look: not allowed, and not ignored by the user */
+function isRisky(e: LogEntry) {
+  return e.report.verdict !== "allow" && !e.dismissed;
+}
+
 export function HistoryPage({ focusId, quarantine, reload }: { focusId: string | null; quarantine: QuarantineItem[]; reload: () => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(focusId);
@@ -184,7 +189,7 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
     }
   }, [focusId]);
 
-  const shown = useMemo(() => entries.filter((e) => filter === "all" || e.report.verdict !== "allow"), [entries, filter]);
+  const shown = useMemo(() => entries.filter((e) => filter === "all" || isRisky(e)), [entries, filter]);
   const groups = useMemo(() => {
     const out: { label: string; items: LogEntry[] }[] = [];
     for (const e of shown) {
@@ -197,7 +202,7 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
   }, [shown]);
   const current = entries.find((e) => e.id === selected) ?? shown[0];
   const qItem = current?.quarantine_id ? quarantine.find((q) => q.id === current.quarantine_id) : undefined;
-  const risky = entries.filter((e) => e.report.verdict !== "allow").length;
+  const risky = entries.filter(isRisky).length;
 
   const act = async (cmd: string, args: Record<string, unknown>) => {
     setError("");
@@ -206,9 +211,15 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
       toastDone(cmd);
       reload();
       load();
+      return true;
     } catch (e) {
       setError(errText(e));
+      return false;
     }
+  };
+
+  const setDismissed = async (id: string, dismissed: boolean) => {
+    if (await act("set_entry_dismissed", { entryId: id, dismissed })) toast(dismissed ? t("Ignored. It stays in history but no longer counts as risky.") : t("Back in the risky list"));
   };
 
   const runSandbox = async (path: string, install = false) => {
@@ -272,7 +283,7 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
                 <button
                   key={e.id}
                   id={`entry-${e.id}`}
-                  className={`list-item verdict-${e.report.verdict} ${current?.id === e.id ? "selected" : ""}`}
+                  className={`list-item verdict-${e.report.verdict} ${e.dismissed ? "is-dismissed" : ""} ${current?.id === e.id ? "selected" : ""}`}
                   onClick={() => setSelected(e.id)}
                 >
                   <span className="list-item-bar" />
@@ -280,7 +291,7 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
                     <div className={`list-item-title ${isCommand(e) ? "mono" : ""}`}>{isCommand(e) ? e.title : baseName(e.title)}</div>
                     <div className="list-item-meta">
                       <span>{sourceLabel(e.source)}</span>
-                      {actionLabel(e.action) && <span>{actionLabel(e.action)}</span>}
+                      {e.dismissed ? <span>{t("Ignored")}</span> : actionLabel(e.action) && <span>{actionLabel(e.action)}</span>}
                       <span className="list-item-time">{relativeTime(e.time, { short: true })}</span>
                     </div>
                   </div>
@@ -344,9 +355,34 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
                   <button className="primary" onClick={() => act("quarantine_path", { path: current.title, reason: current.report.summary, entryId: current.id })}>
                     {t("Move to Quarantine")}
                   </button>
-                  <button onClick={() => act("trust_item", { key: current.title })}>{t("Mark as Safe")}</button>
+                  <button
+                    onClick={async () => {
+                      // A file marked safe is settled, so it leaves the risky list too
+                      if (await act("trust_item", { key: current.title })) await invoke("set_entry_dismissed", { entryId: current.id, dismissed: true }).catch(() => {});
+                    }}
+                  >
+                    {t("Mark as Safe")}
+                  </button>
                 </>
               )}
+              {isCommand(current) && current.report.verdict === "warn" && !current.dismissed && (
+                <button title={t("Runs without asking next time, unless the check finds something different")} onClick={() => act("ignore_command_warning", { entryId: current.id })}>
+                  {t("Don't Warn Again")}
+                </button>
+              )}
+              {current.report.verdict !== "allow" &&
+                (current.dismissed ? (
+                  <span className="toolbar-note">
+                    <Icon.check size={14} /> {t("Ignored")}
+                    <button className="link" onClick={() => setDismissed(current.id, false)}>
+                      {t("Undo")}
+                    </button>
+                  </span>
+                ) : (
+                  <button title={t("Keeps the record but stops counting it as risky")} onClick={() => setDismissed(current.id, true)}>
+                    {t("Ignore")}
+                  </button>
+                ))}
               {current.source === "scan" && isScript && (
                 <button disabled={sandboxing} onClick={() => runSandbox(current.title)}>
                   {sandboxing ? <Spinner /> : null}

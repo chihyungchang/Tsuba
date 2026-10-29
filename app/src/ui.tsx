@@ -3,7 +3,7 @@
 import { Fragment, createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { lang, t } from "./i18n";
 import { Icon, type IconName } from "./icons";
-import { Finding, Report, Verdict, VERDICT_LABEL } from "./types";
+import { Finding, Overview, Report, Verdict, VERDICT_LABEL } from "./types";
 
 export function errText(e: unknown): string {
   return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
@@ -322,6 +322,7 @@ function doneMessage(cmd: string): string | undefined {
     delete_entry_file: t("File deleted"),
     trust_item: t("Added to the allowlist. You won't be warned again unless it changes."),
     untrust_item: t("Removed from the allowlist"),
+    ignore_command_warning: t("Got it. Next time this command runs without asking, unless something new turns up."),
     clear_history: t("History cleared"),
     install_shell_hook: t("Connected to zsh. Takes effect in new terminal windows."),
     uninstall_shell_hook: t("Removed from zsh"),
@@ -355,7 +356,7 @@ export function Toaster() {
     <div className="toaster" aria-live="polite">
       {items.map((item) => (
         <div key={item.id} className={`toast toast-${item.tone}`}>
-          {item.tone === "block" ? <Icon.alert size={14} strokeWidth={2} /> : <Icon.check size={14} strokeWidth={2} />}
+          <span className="toast-mark">{item.tone === "block" ? <Icon.alert size={12} strokeWidth={2} /> : <Icon.check size={12} strokeWidth={2} />}</span>
           {item.text}
         </div>
       ))}
@@ -430,4 +431,22 @@ export function MenuButton({ label, disabled, items }: { label: ReactNode; disab
       )}
     </span>
   );
+}
+
+/** A short name for how verdicts are made, for the footer button and the Settings nav */
+export function modeLabel(overview: Overview | null): string {
+  if (!overview) return t("Connecting…");
+  if (overview.provider === "offline") return t("Offline Only");
+  if (!overview.ai_available) return t("AI Not Set Up");
+  switch (overview.provider) {
+    case "claude_cli":
+      return "Claude Code";
+    case "codex_cli":
+      return "Codex";
+    case "claude":
+      return "Claude API";
+    default:
+      // "preset · model": the model is what people recognise
+      return overview.provider_label.split(" · ")[1] || t("Other Models");
+  }
 }

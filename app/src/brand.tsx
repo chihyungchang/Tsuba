@@ -103,6 +103,16 @@ const DUST = (() => {
 })();
 
 /**
+ * Stops for a halo that fades out like a soft light. A two-stop radial gradient fades linearly and leaves a visible rim
+ * and banding on the cream background; (1 - x²)² falls off smoothly and reaches zero with no edge.
+ */
+function softStops(inner: string, outer: string, peak: number) {
+  return [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1].map((x) => (
+    <stop key={x} offset={x} stopColor={x < 0.4 ? inner : outer} stopOpacity={(peak * (1 - x * x) ** 2).toFixed(3)} />
+  ));
+}
+
+/**
  * The dashboard's guardian: a living sword with a breathing halo behind it and gold dust drifting up.
  *
  * - Protecting: the sword floats gently and light keeps running along it; the halo is gold (amber when some defenses are off).
@@ -123,13 +133,10 @@ export function GuardianKatana({ paused, partial = false }: { paused: boolean; p
     <svg className={`guardian ${paused ? "is-paused" : ""} ${partial ? "is-partial" : ""}`} viewBox="0 0 280 280" role="img" aria-label={paused ? t("Protection is paused, sword sheathed") : t("Protection is on")}>
       <defs>
         <radialGradient id={`${id}halo`} cx=".5" cy=".5" r=".5">
-          <stop offset="0" stopColor={partial ? "#f0b44c" : "#f6c66a"} stopOpacity=".55" />
-          <stop offset=".45" stopColor="#e5532f" stopOpacity=".18" />
-          <stop offset="1" stopColor="#e5532f" stopOpacity="0" />
+          {softStops(partial ? "#f0b44c" : "#f6c66a", "#ec7a45", 0.5)}
         </radialGradient>
         <radialGradient id={`${id}haloRed`} cx=".5" cy=".5" r=".5">
-          <stop offset="0" stopColor="#7a1d16" stopOpacity=".5" />
-          <stop offset="1" stopColor="#7a1d16" stopOpacity="0" />
+          {softStops("#d2452f", "#b8322a", 0.32)}
         </radialGradient>
         <linearGradient id={`${id}slash`} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0" stopColor="#fff" stopOpacity="0" />
@@ -138,7 +145,7 @@ export function GuardianKatana({ paused, partial = false }: { paused: boolean; p
         </linearGradient>
       </defs>
       <circle className="guardian-halo" cx="140" cy="140" r="130" fill={`url(#${id}halo)`} />
-      <circle className="guardian-halo-red" cx="140" cy="140" r="120" fill={`url(#${id}haloRed)`} />
+      <circle className="guardian-halo-red" cx="140" cy="140" r="130" fill={`url(#${id}haloRed)`} />
       <g className="guardian-dust">
         {DUST.map((d, i) => (
           <circle
@@ -161,51 +168,45 @@ export function GuardianKatana({ paused, partial = false }: { paused: boolean; p
   );
 }
 
-/** The sword in a vermilion rounded square: for the splash and large brand marks (same look as the App icon) */
-export function KatanaIcon({ size = 120 }: { size?: number }) {
-  const id = useSvgId();
-  return (
-    <svg width={size} height={size} viewBox="0 0 1024 1024" aria-hidden>
-      <defs>
-        <linearGradient id={`${id}bg`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#e8582f" />
-          <stop offset="1" stopColor="#9c2411" />
-        </linearGradient>
-      </defs>
-      <rect x="40" y="40" width="944" height="944" rx="210" fill={`url(#${id}bg)`} />
-      <g transform="translate(530 494) rotate(35) scale(1.02) translate(-509 -512)">
-        <KatanaArt />
-      </g>
-    </svg>
-  );
-}
-
 /**
- * The opening splash (about 1.2 seconds): the sword mark pops in, the status types out below like a terminal, four segments light up in turn, then it fades.
+ * The opening splash (about 1.9 seconds), an iai draw: the sword appears sheathed, the scabbard snaps off, a slash of light
+ * cuts across the screen, and the splash splits along the cut to reveal the App. The content is drawn in both halves,
+ * so the sword and wordmark are cut too.
  * Not shown when the system has Reduce Motion on.
  */
 export function Splash({ status }: { status: string }) {
   const [gone, setGone] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [drawn, setDrawn] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setGone(true), 1500);
-    return () => clearTimeout(timer);
+    const draw = setTimeout(() => setDrawn(true), 380);
+    const done = setTimeout(() => setGone(true), 1950);
+    return () => {
+      clearTimeout(draw);
+      clearTimeout(done);
+    };
   }, []);
   if (gone) return null;
-  return (
-    <div className="splash" aria-hidden>
-      <div className="splash-icon">
-        <KatanaIcon size={132} />
-      </div>
+  const content = (
+    <div className="splash-content">
+      <svg className="splash-sword" viewBox="0 0 280 280">
+        <g transform="translate(140 140) rotate(35) scale(.3) translate(-509 -512)">
+          <KatanaArt sheathed={!drawn} />
+        </g>
+      </svg>
+      <div className="splash-word">TSUBA</div>
       <div className="splash-line">
         <span className="splash-prompt">tsuba ▸</span> <span className="splash-type">{status}</span>
-        <span className="splash-cursor" />
       </div>
-      <div className="splash-steps">
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
+    </div>
+  );
+  return (
+    <div className="splash" aria-hidden>
+      <div className="splash-half splash-half-top">{content}</div>
+      <div className="splash-half splash-half-bottom">{content}</div>
+      <svg className="splash-cut" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <line x1="-5" y1="63.2" x2="105" y2="36.8" pathLength={1} vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="splash-flash" />
     </div>
   );
 }
