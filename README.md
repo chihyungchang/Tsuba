@@ -1,17 +1,97 @@
-# Tsuba
+<p align="center">
+  <img src="app/src-tauri/icons/128x128@2x.png" width="104" alt="Tsuba" />
+</p>
 
-**Takes a look for you before unfamiliar code runs for the first time.**
+<h1 align="center">Tsuba</h1>
 
-Tsuba (鍔, the hand guard of a Japanese sword) is a macOS menu bar app. Fake interview projects, fake meeting software, poisoned npm packages, malicious editor extensions: these attacks come in new packaging every time and use ordinary tools like node, curl and bash, so traditional antivirus software rarely flags them. Tsuba steps in at the entry points where they run for the first time: it works out what the code is about to do, where it came from and whether it looks like a known attack pattern, then decides whether to Allow, Warn or Block.
+<p align="center">
+  <b>Takes a look for you before unfamiliar code runs for the first time.</b><br/>
+  A macOS menu bar app that catches fake interview projects, fake meeting apps, poisoned packages and malicious MCP servers before they run.
+</p>
+
+<p align="center">
+  <a href="https://oliverz.dev/products/tsuba">Website</a> ·
+  <a href="https://github.com/chihyungchang/Tsuba/releases/latest">Download</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#development">Build from source</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/chihyungchang/Tsuba/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/chihyungchang/Tsuba?style=flat&color=b4873a" /></a>
+  <a href="https://github.com/chihyungchang/Tsuba/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/chihyungchang/Tsuba/total?style=flat&color=1f8a50" /></a>
+  <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1f1c17?style=flat&logo=apple" />
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat" /></a>
+</p>
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/overview-dark.png" />
+  <img src="docs/screenshots/overview-light.png" alt="Tsuba's dashboard: protection status, what needs attention and recent checks" width="100%" />
+</picture>
+</p>
+
+---
+
+## What is Tsuba
+
+Tsuba (鍔, the hand guard of a Japanese sword) guards the moment unfamiliar code runs for the first time. Fake interview projects, fake meeting software, poisoned npm packages and malicious editor extensions come in new packaging every time and use ordinary tools like node, curl and bash, so traditional antivirus rarely flags them.
+
+Tsuba steps in at the entry points where they first run: it works out **what the code is about to do, where it came from and whether it looks like a known attack**, then decides to **Allow, Warn or Block**, and shows the file, line and rule behind every verdict.
+
+## Why Tsuba
+
+- 🛡️ **Before it runs, not after.** `curl | bash`, `npm install`, `git clone`, a new DMG in Downloads, a freshly installed extension or MCP server: each is checked at the moment it would first run.
+- 🧠 **Offline rules first, AI in context.** Local rules and threat intel always run. A frontier model then reads the evidence to cut false alarms and catch what no rule has seen yet, and it can never allow what the rules found high risk.
+- 🔑 **No new account.** It uses the Claude Code or Codex already signed in on your Mac, or any of 20-odd providers with your own key, or no model at all.
+- 🔒 **Read-only by design.** Code under check is parsed, never run: disk images are mounted read-only, remote scripts are downloaded but not executed, and the script that runs is the one Tsuba checked.
+- 🤫 **Quiet until it matters.** Warnings land in history without a sound; only Block notifies with a short tone. Anything confirmed as a false alarm can be ignored or marked safe.
+- 🔄 **Updates itself, safely.** New versions install from GitHub Releases only when their signature matches Tsuba's key.
+
+## Product tour
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/history-dark.png" />
+  <img src="docs/screenshots/history-light.png" alt="Check history: every verdict with the file, line and rule behind it" />
+</picture>
+      <br/><sub><b>Check history</b> — every Warn and Block with the file, the line and the rule that matched; ignore it, quarantine it or mark it safe</sub>
+    </td>
+    <td width="50%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/health-check-dark.png" />
+  <img src="docs/screenshots/health-check-light.png" alt="Health Check: one button, a checklist that fills in" />
+</picture>
+      <br/><sub><b>Health Check</b> — one click looks for traces of known attacks, then checks every editor extension and AI tool</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/judgment-dark.png" />
+  <img src="docs/screenshots/judgment-light.png" alt="Choosing how verdicts are made" />
+</picture>
+      <br/><sub><b>Judgment</b> — the Claude Code or Codex you are already signed in to, an API key for 20-odd providers, or offline rules only</sub>
+    </td>
+    <td width="50%" valign="top">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/threat-intel-dark.png" />
+  <img src="docs/screenshots/threat-intel-light.png" alt="Threat intel sources and their licences" />
+</picture>
+      <br/><sub><b>Threat intel</b> — public lists and signatures, downloaded daily and checked locally, each with where it comes from</sub>
+    </td>
+  </tr>
+</table>
 
 ## Install
 
-Download the DMG from [Releases](https://github.com/chihyungchang/Tsuba/releases) (macOS 13 or later): `Tsuba_*_aarch64.dmg` for Apple silicon Macs (M1 and later), `Tsuba_*_x64.dmg` for Intel Macs. It needs no account; for AI review it can use the Claude Code or Codex already signed in on your Mac.
+Download the DMG from [Releases](https://github.com/chihyungchang/Tsuba/releases) (macOS 13 or later): `Tsuba_*_aarch64.dmg` for Apple silicon Macs (M1 and later), `Tsuba_*_x64.dmg` for Intel Macs. It needs no account; for AI review it can use the Claude Code or Codex already signed in on your Mac. From 0.2.0 on, new versions install from inside the app (Settings → About & Updates, or Check for Updates… in the menu bar).
 
 > [!WARNING]
 > **Builds are not yet signed or notarized by Apple.** macOS blocks the App the first time you open it: go to **System Settings → Privacy & Security** and click **Open Anyway**.
 >
-> Tsuba is open source, so you can check what you run: compare the DMG with the `SHA256SUMS.txt` attached to each release (`shasum -a 256 Tsuba_*.dmg`), read [the workflow](.github/workflows/release.yml) that built it, or build it yourself (see [Releasing](#releasing)).
+> Tsuba is open source, so you can check what you run: compare the DMG with the `SHA256SUMS.txt` attached to each release (`shasum -a 256 Tsuba_*.dmg`), read [the workflow](.github/workflows/release.yml) that built it, or build it yourself (see Releasing under [Development](#development)).
 >
 > Please don't remove the quarantine flag with `xattr`: Tsuba warns about installers that ask you to, and its own shouldn't be the exception.
 
@@ -33,6 +113,23 @@ Anything confirmed to be a false positive can be "marked as safe", which records
 
 Extensions installed from the extension marketplace don't go through the terminal, so they can only be checked right after installation. Programs opened by double-clicking in Finder can't be blocked yet; that requires Apple's Endpoint Security entitlement (see PRD section 12).
 
+## AI judgment
+
+The offline rules always run first, and the AI then judges on top of them, taking context into account. You can choose in Settings:
+
+- **Coding tool account** (recommended): the Claude Code or Codex already signed in on your Mac. Frontier models, no API key to manage.
+- **API key**: Claude, OpenAI or Gemini, model vendors such as DeepSeek, Qwen, Kimi and GLM, platforms such as OpenRouter and SiliconFlow, local models through Ollama, LM Studio or vLLM, or any endpoint compatible with the OpenAI Chat Completions API.
+- **Offline rules only**: no network access, no model calls.
+
+Models fall into two trust tiers. Public research shows frontier models are clearly ahead at recognizing malicious code, while non-frontier models produce more false positives and are more easily fooled by prompt injection in the code:
+
+| | Frontier models (Claude, OpenAI / Codex, Gemini, or a model marked manually on a custom endpoint or platform) | Local and other models |
+| --- | --- | --- |
+| Can recommend Block on their own | Yes | No, Warn at most |
+| Can lower the risk found by the offline rules | Can lower Block to Warn, but cannot Allow outright | No |
+
+Code comments are stripped before anything reaches the model (to defeat prompt injection hidden in comments); when evidence is too long, the beginning and end of each text are kept, and offline rule hits are always kept in full. The model only receives the evidence this judgment needs; no other files, environment variables or secrets are uploaded. Configuration and check history live in `~/.tsuba`.
+
 ## Threat intel
 
 On top of the offline rules, Tsuba updates its threat intel from public sources once a day and stores it in `~/.tsuba/intel` (you can also run `tsuba intel update` in the terminal):
@@ -52,24 +149,31 @@ Rules are compiled and run with [YARA-X](https://github.com/VirusTotal/yara-x). 
 
 For development guidelines, see [CLAUDE.md](CLAUDE.md).
 
-## AI judgment
+## In the terminal
 
-The offline rules always run first, and the AI then judges on top of them, taking context into account. You can choose in Settings:
+```bash
+tskip npm install          # skip the check this one time
+export TSUBA_DISABLE=1     # turn it off for the current terminal window
+```
 
-- **Claude**: the best results; requires an Anthropic API key.
-- **Other models**: OpenAI, Google Gemini, DeepSeek, Qwen, Ollama, LM Studio, or any custom endpoint compatible with the OpenAI Chat Completions API.
-- **Offline rules only**: no network access, no model calls.
+Cancelled commands stay in your shell history; once you've verified them, press the up arrow to get them back.
 
-Models fall into two trust tiers. Public research shows frontier models are clearly ahead at recognizing malicious code, while non-frontier models produce more false positives and are more easily fooled by prompt injection in the code:
+### Sandbox trial run (prototype)
 
-| | Frontier models (Claude, OpenAI, Gemini, or a custom model marked manually) | Local and other models |
-| --- | --- | --- |
-| Can recommend Block on their own | Yes | No, Warn at most |
-| Can lower the risk found by the offline rules | Can lower Block to Warn, but cannot Allow outright | No |
+For a script you're unsure about, you can run it briefly in a sandbox and see what it actually does, instead of reading the code line by line:
 
-Code comments are stripped before anything reaches the model (to defeat prompt injection hidden in comments); when evidence is too long, the beginning and end of each text are kept, and offline rule hits are always kept in full. The model only receives the evidence this judgment needs; no other files, environment variables or secrets are uploaded. Configuration and check history live in `~/.tsuba`.
+```bash
+tsuba sandbox install.sh
+```
 
-## Directory layout
+The sandbox runs directly in macOS's built-in sandbox: the real home directory is locked down and the program only sees a fake home directory with decoys; every network request is recorded by a local proxy and never actually sent out; it runs for at most 60 seconds. Reading decoy secrets and sending them out, writing login items and connecting to bare IPs are all recorded. Note: seeing no bad behavior during a short run does not guarantee it's safe.
+
+You can also trial-run a project directory in the sandbox (`tsuba sandbox ~/code/interview-project`), which runs its start command and watches the behavior; malicious code in interview projects that "runs as soon as you open it" is exposed here. Add `--install` to try installing dependencies (`npm install`) in the sandbox and see what their install scripts do; in that mode only downloads from the official npm registry are let through, and every other connection is still only recorded. The virtual machine sandbox for DMGs / Apps isn't built yet.
+
+## Development
+
+<details>
+<summary><b>Directory layout</b></summary>
 
 ```
 Tsuba/
@@ -85,7 +189,7 @@ Tsuba/
     └── src-tauri/          App back end: tray, windows, background monitoring, terminal integration
 ```
 
-## Development
+</details>
 
 Requires Rust (`rustup`), Node.js and pnpm.
 
@@ -98,11 +202,12 @@ cargo run -p tsuba-cli -- eval <samples dir> # sample set acceptance: detection 
 
 The samples directory contains two subdirectories, `malicious/` and `benign/`; each file or subdirectory counts as one sample (projects, extensions, installers and scripts all work, and so do symlinks). Only the offline rules are used, so results are reproducible; if the targets aren't met, the exit code is 1, so it can go into CI. For a time-based split, put the older and newer samples into two directories and run them separately.
 
-During development the App looks for the terminal checker next to itself (`target/debug/tsuba`); set it up in one click under Overview → Connect Terminal, and it takes effect in newly opened terminal windows.
+During development the App looks for the terminal checker next to itself (`target/debug/tsuba`); set it up in one click under Settings → Protection → Connect to zsh, and it takes effect in newly opened terminal windows.
 
 Test samples are all inert: they only mimic the shape of attack code, their IPs belong to documentation ranges, and decoded content is harmless too.
 
-### Releasing
+<details>
+<summary><b>Releasing</b></summary>
 
 ```bash
 cd app && pnpm release --bundles app   # local release build for this Mac, terminal checker included
@@ -116,26 +221,7 @@ In-app updates come from the same releases: Settings → About & Updates checks 
 
 It signs and notarizes when these repository secrets are set: `APPLE_CERTIFICATE` (base64 .p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`. Without them the DMG is unsigned and Gatekeeper blocks it on download.
 
-## Sandbox trial run (prototype)
-
-For a script you're unsure about, you can run it briefly in a sandbox and see what it actually does, instead of reading the code line by line:
-
-```bash
-tsuba sandbox install.sh
-```
-
-The sandbox runs directly in macOS's built-in sandbox: the real home directory is locked down and the program only sees a fake home directory with decoys; every network request is recorded by a local proxy and never actually sent out; it runs for at most 60 seconds. Reading decoy secrets and sending them out, writing login items and connecting to bare IPs are all recorded. Note: seeing no bad behavior during a short run does not guarantee it's safe.
-
-You can also trial-run a project directory in the sandbox (`tsuba sandbox ~/code/interview-project`), which runs its start command and watches the behavior; malicious code in interview projects that "runs as soon as you open it" is exposed here. Add `--install` to try installing dependencies (`npm install`) in the sandbox and see what their install scripts do; in that mode only downloads from the official npm registry are let through, and every other connection is still only recorded. The virtual machine sandbox for DMGs / Apps isn't built yet.
-
-## Terminal tips
-
-```bash
-tskip npm install          # skip the check this one time
-export TSUBA_DISABLE=1     # turn it off for the current terminal window
-```
-
-Cancelled commands stay in your shell history; once you've verified them, press the up arrow to get them back.
+</details>
 
 ## License
 
