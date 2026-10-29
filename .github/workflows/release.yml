@@ -10,6 +10,8 @@
 # Running it by hand (Actions → Release → Run workflow) is a dry run: it tests and builds, keeping the DMGs as workflow
 # artifacts, without creating a release.
 #
+# In-app update packages and latest.json are made only when the TAURI_SIGNING_PRIVATE_KEY secret is set.
+#
 # Signing and notarization run only when the Apple secrets below are set. Without them the DMG is unsigned and the
 # release notes say so, with how to open and verify it.
 
@@ -143,15 +145,34 @@ jobs:
             echo "::warning::Apple signing secrets are not set: the DMG will be unsigned and not notarized."
           fi
 
+      # In-app updates: with the updater key set, the build also makes a signed Tsuba.app.tar.gz that installed copies
+      # download and verify against the public key in tauri.conf.json. Without it, releases work as before but installed
+      # copies won't see them as updates. The key has no password; an empty one must still be set or the signer prompts.
+      - name: Updater signing environment
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::add-mask::$TAURI_SIGNING_PRIVATE_KEY"
+            echo "TAURI_SIGNING_PRIVATE_KEY=$TAURI_SIGNING_PRIVATE_KEY" >> "$GITHUB_ENV"
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> "$GITHUB_ENV"
+            echo "UPDATER_CONFIG=--config src-tauri/tauri.updater.conf.json" >> "$GITHUB_ENV"
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set: no update packages, so installed copies won't update to this release."
+          fi
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: app
           tauriScript: pnpm tauri
-          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json
+          args: --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json ${{ env.UPDATER_CONFIG }}
           # Empty on a dry run, so nothing is uploaded to a release
           releaseId: ${{ needs.release.outputs.id }}
+          # The two architectures build at the same time and would overwrite each other's latest.json; the finish job
+          # writes one with both once they are done
+          includeUpdaterJson: false
 
       - name: Checksum
         run: |
@@ -184,11 +205,35 @@ jobs:
           pattern: sha256-*
           merge-multiple: true
 
-      # tauri-action also uploads each Tsuba.app as a .tar.gz; only the DMGs are for people to download
-      - name: Keep only the DMGs
+      # tauri-action also uploads each Tsuba.app as a .tar.gz. With a signature next to it, it is the in-app update
+      # package: latest.json points installed copies at it. Without one (no updater key) nothing can use it, so it goes.
+      - name: Update manifest
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.assets[] | select(.name | endswith(".app.tar.gz")) | .id' |
-            while read -r asset; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset"; done
+          assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.assets[] | [.id, .name] | @tsv')
+          if ! echo "$assets" | grep -q '\.app\.tar\.gz\.sig$'; then
+            echo "$assets" | awk -F'\t' '$2 ~ /\.app\.tar\.gz$/ {print $1}' |
+              while read -r asset; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset"; done
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          platforms='{}'
+          while IFS=$'\t' read -r id name; do
+            case "$name" in *.app.tar.gz.sig) ;; *) continue ;; esac
+            case "$name" in *aarch64*) platform=darwin-aarch64 ;; *x64*|*x86_64*) platform=darwin-x86_64 ;; *) continue ;; esac
+            signature=$(gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$id")
+            url="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/${name%.sig}"
+            platforms=$(jq --arg p "$platform" --arg s "$signature" --arg u "$url" '. + {($p): {signature: $s, url: $u}}' <<< "$platforms")
+          done <<< "$assets"
+          if [ "$(jq 'length' <<< "$platforms")" != 2 ]; then
+            echo "::error::Expected update packages for both architectures, found: $(jq -c 'keys' <<< "$platforms")"
+            exit 1
+          fi
+          jq -n --arg v "$version" --arg d "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson p "$platforms" \
+            '{version: $v, notes: "", pub_date: $d, platforms: $p}' > latest.json
+          cat latest.json
+          gh api --method POST -H "Content-Type: application/json" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=latest.json" \
+            --input latest.json > /dev/null
 
       # Checksums so anyone can confirm the DMG they downloaded is the one this workflow built from the public source
       - name: Checksums

@@ -49,5 +49,13 @@
       "minimumSystemVersion": "13.0"
     }
   },
-  "mainBinaryName": "tsuba-app"
+  "mainBinaryName": "tsuba-app",
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMyNDNCQTI0RTNBNEVFN0MKUldSODdxVGpKTHBETXVhQW56OUxlczg3L2pZdWdhNWpBblQ3emxKL2NLZ2hEV05yN1h5OS9VaVMK",
+      "endpoints": [
+        "https://github.com/chihyungchang/Tsuba/releases/latest/download/latest.json"
+      ]
+    }
+  }
 }

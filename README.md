@@ -112,6 +112,8 @@ A release bundle carries the terminal checker as `Tsuba.app/Contents/MacOS/tsuba
 
 To publish, run `scripts/release.sh X.Y.Z` on a clean `main`: it sets the version in the root `Cargo.toml` (the single source for the App, CLI and DMG), runs the pre-commit checks, commits, tags `vX.Y.Z` and asks before pushing. The tag starts `.github/workflows/release.yml`, which runs the tests and builds the Apple silicon and Intel DMGs on three runners at once, attaching them and `SHA256SUMS.txt` to a draft GitHub Release with notes generated from the commits; review it and publish. If any job fails, the draft is deleted and the tag stays. Running the workflow by hand (Actions → Release → Run workflow, or `gh workflow run release.yml`) is a dry run that keeps the DMGs as workflow artifacts instead.
 
+In-app updates come from the same releases: Settings → About & Updates checks the latest published release's `latest.json` (Tsuba also checks quietly at launch), downloads the package for this Mac and installs it only if its signature matches the public key in `tauri.conf.json`. CI makes the signed packages and `latest.json` when the `TAURI_SIGNING_PRIVATE_KEY` repository secret holds the updater private key (generated with `pnpm tauri signer generate`, no password). Keep a backup of that key: without it, installed copies can never be updated again.
+
 It signs and notarizes when these repository secrets are set: `APPLE_CERTIFICATE` (base64 .p12), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password) and `APPLE_TEAM_ID`. Without them the DMG is unsigned and Gatekeeper blocks it on download.
 
 ## Sandbox trial run (prototype)
