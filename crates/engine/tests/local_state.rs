@@ -41,6 +41,17 @@ fn trust_quarantine_and_folder_scan() {
     trust::remove(&trust::list()[0].key);
     assert!(trust::list().is_empty());
 
+    // Ignoring a command's warning covers exactly those findings: a new finding warns again
+    let warning = vec![tsuba_engine::rules::Finding::new(tsuba_engine::rules::Severity::Medium, "install script", "package.json")];
+    trust::ignore_command("npm install left-pad", &warning);
+    assert!(trust::is_ignored_command("npm install left-pad", &warning));
+    assert!(!trust::is_ignored_command("npm install other", &warning));
+    let mut changed = warning.clone();
+    changed.push(tsuba_engine::rules::Finding::new(tsuba_engine::rules::Severity::Medium, "new C2 address", "index.js"));
+    assert!(!trust::is_ignored_command("npm install left-pad", &changed), "a different warning should not stay ignored");
+    trust::remove("command:npm install left-pad");
+    assert!(trust::list().is_empty());
+
     // Quarantine: a single file can be quarantined, restored and deleted
     let item = quarantine::quarantine(&script, "test").unwrap();
     assert!(!script.exists() && Path::new(&item.stored).is_file());

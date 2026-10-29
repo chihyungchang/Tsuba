@@ -12,7 +12,7 @@ use std::path::Path;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrustItem {
-    /// path:<absolute path> or mcp:<client|config|name>
+    /// path:<absolute path>, mcp:<client|config|name> or command:<command line>
     pub key: String,
     pub fingerprint: String,
     /// Name for people to read
@@ -97,6 +97,27 @@ pub fn trust_mcp(server: &McpServer) -> TrustItem {
 
 pub fn is_trusted_mcp(server: &McpServer) -> bool {
     matches(&format!("mcp:{}", server.key()), || Some(server.fingerprint()))
+}
+
+/// What a command's warning consisted of. Ignoring a warning means ignoring exactly these findings:
+/// when the remote script, package or project changes and something new turns up, it warns again.
+fn findings_fingerprint(findings: &[crate::rules::Finding]) -> String {
+    let mut parts: Vec<String> = findings.iter().map(|f| format!("{:?}\u{1f}{}\u{1f}{}\u{1f}{}", f.severity, f.rule, f.location, f.snippet)).collect();
+    parts.sort();
+    net::hex(&Sha256::digest(parts.join("\u{1e}").as_bytes()))
+}
+
+/// "Don't warn again" for a terminal command the user has looked at. Only Warn can be ignored; the caller enforces that,
+/// because a Block should keep asking every time.
+pub fn ignore_command(command: &str, findings: &[crate::rules::Finding]) -> TrustItem {
+    let item = TrustItem { key: format!("command:{command}"), fingerprint: findings_fingerprint(findings), label: command.to_string(), time: store::now() };
+    upsert(item.clone());
+    item
+}
+
+/// The user chose to ignore this command's warning, and the check found the same things again.
+pub fn is_ignored_command(command: &str, findings: &[crate::rules::Finding]) -> bool {
+    matches(&format!("command:{command}"), || Some(findings_fingerprint(findings)))
 }
 
 pub fn remove(key: &str) {

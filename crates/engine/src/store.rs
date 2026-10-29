@@ -88,7 +88,7 @@ pub struct OpenAiCompatConfig {
     pub model: String,
     /// Local services usually don't need one
     pub api_key: String,
-    /// Provider chosen in the UI: openai / gemini / deepseek / qwen / ollama / lmstudio / custom
+    /// Preset ID chosen in the UI (openai, deepseek, openrouter, ollama, custom and so on; see `presets` in Settings.tsx)
     pub preset: String,
     /// Whether to trust it like a frontier model: a trusted model can lower an offline Block to Warn, and can Block on its own
     pub trusted: bool,
@@ -165,6 +165,10 @@ pub struct Config {
     pub auto_quarantine: bool,
     /// Watch AI coding tools for new MCP servers, skills and plugin hooks
     pub watch_ai_tools: bool,
+    /// System notifications for Warn results. Block always notifies: it needs the user's attention right away.
+    pub notify_warn: bool,
+    /// System notification when a scheduled scan finds problems
+    pub notify_scheduled_scan: bool,
     pub intel: IntelConfig,
     pub scan: ScanConfig,
     /// The language chosen in the App: empty follows the system, otherwise "en" or "zh-Hans". Stored here rather than
@@ -183,6 +187,8 @@ impl Default for Config {
             watch_extensions: true,
             auto_quarantine: true,
             watch_ai_tools: true,
+            notify_warn: true,
+            notify_scheduled_scan: true,
             intel: IntelConfig::default(),
             scan: ScanConfig::default(),
             language: String::new(),
@@ -239,6 +245,9 @@ pub struct LogEntry {
     pub action: String,
     #[serde(default)]
     pub quarantine_id: Option<String>,
+    /// The user looked at it and chose to ignore it: kept in history, but no longer counted as risky
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dismissed: bool,
 }
 
 impl LogEntry {
@@ -252,6 +261,7 @@ impl LogEntry {
             report,
             action: String::new(),
             quarantine_id: None,
+            dismissed: false,
         }
     }
 }

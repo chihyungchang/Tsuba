@@ -73,6 +73,8 @@ pub(crate) fn report_entry(app: &AppHandle, mut entry: LogEntry, previous: Optio
     let escalated = previous.is_none_or(|p| r.verdict > p);
     match r.verdict {
         Verdict::Allow if entry.action.is_empty() => entry.action = "allowed".into(),
+        // Warn notifications can be turned off in Settings; the entry still goes to history
+        Verdict::Warn if escalated && !Config::load().notify_warn => {}
         Verdict::Warn | Verdict::Block if escalated => {
             let next_step = match entry.action.as_str() {
                 "quarantined" => tr!("It has been moved to quarantine."),

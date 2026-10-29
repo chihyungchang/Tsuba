@@ -202,16 +202,24 @@ fn cmd_check(args: &[String]) -> i32 {
     let cfg = Config::load();
     let pasted = flag("--pasted");
     let (evidence, report) = tsuba_engine::evaluate_command(&cfg, cmd, &cwd, &targets, pasted);
+    // The user chose "Don't Warn Again" for this command in the App and nothing new turned up. Only Warn is ever ignored.
+    let is_ignored = report.verdict == Verdict::Warn && trust::is_ignored_command(cmd, &report.findings);
+    if is_ignored {
+        eprintln!("{}{}{}", s.dim, tr!("Tsuba: same warning as before, which you chose to ignore. Running it."), s.rst);
+    }
     if flag("--json") {
         println!("{}", serde_json::to_string_pretty(&json!({ "evidence": evidence, "report": report })).unwrap_or_default());
     }
-    print_report(&report, "");
+    if !is_ignored {
+        print_report(&report, "");
+    }
 
     let yes = flag("--yes");
     // When unsure, the user can try it in the sandbox first and decide after seeing what it does
-    let sbx = if yes || report.verdict == Verdict::Allow { None } else { sandbox_target(&evidence) };
+    let sbx = if yes || is_ignored || report.verdict == Verdict::Allow { None } else { sandbox_target(&evidence) };
     let go = match report.verdict {
         Verdict::Allow => true,
+        _ if is_ignored => true,
         _ if yes => true,
         Verdict::Warn if sbx.is_some() => confirm_with_sandbox(&s, &sbx.unwrap(), false),
         Verdict::Warn => matches!(ask(&format!("{}{}{}", s.yel, tr!("Run anyway? [y/N] "), s.rst)).to_lowercase().as_str(), "y" | "yes"),
@@ -221,6 +229,7 @@ fn cmd_check(args: &[String]) -> i32 {
 
     let mut entry = LogEntry::new(if pasted { "paste" } else { "terminal" }, cmd, &cwd.to_string_lossy(), report.clone());
     entry.action = if go { "executed" } else { "cancelled" }.into();
+    entry.dismissed = is_ignored;
     store::append_log(&entry);
 
     if !go {
