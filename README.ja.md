@@ -230,7 +230,7 @@ cd app && pnpm release --bundles app   # local release build for this Mac, termi
 
 リリースバンドルには、ターミナルチェッカーが `Tsuba.app/Contents/MacOS/tsuba` として含まれます。これを追加して `app/scripts/build-cli-sidecar.sh` を実行するのは `tauri.release.conf.json` です。`tauri.conf.json` に含めないのは、ファイルがないと Tauri がビルドを拒否し、`cargo test` が壊れるためです。
 
-公開するには、クリーンな `main` で `scripts/release.sh X.Y.Z` を実行します。ルートの `Cargo.toml` にバージョンを設定し（アプリ、CLI、DMG のバージョンの唯一の情報源です）、コミット前チェックを実行してコミットし、`vX.Y.Z` のタグを付け、プッシュする前に確認を求めます。タグによって `.github/workflows/release.yml` が起動し、テストを実行したうえで 3 つのランナーで同時に Apple シリコン版と Intel 版の DMG をビルドし、それらと `SHA256SUMS.txt` を、コミットから生成したノート付きの GitHub Release の下書きに添付します。内容を確認してから公開してください。いずれかのジョブが失敗すると下書きは削除され、タグは残ります。ワークフローを手動で実行した場合（Actions → Release → Run workflow、または `gh workflow run release.yml`）はドライランとなり、DMG はワークフローの成果物として保存されます。
+公開するには、クリーンな `main` で `scripts/release.sh X.Y.Z` を実行します。ルートの `Cargo.toml` にバージョンを設定し（アプリ、CLI、DMG のバージョンの唯一の情報源です）、コミット前チェックを実行してコミットし、`vX.Y.Z` のタグを付け、プッシュする前に確認を求めます。タグによって `.github/workflows/release.yml` が起動し、テストを実行したうえで 3 つのランナーで同時に Apple シリコン版と Intel 版の DMG をビルドし、それらと `SHA256SUMS.txt` を、コミットから生成したノート付きの GitHub Release の下書きに添付し、すべてのジョブが成功すると公開します（同時にウェブサイトも再ビルドされます）。いずれかのジョブが失敗すると下書きは削除され、タグは残ります。ワークフローを手動で実行した場合（Actions → Release → Run workflow、または `gh workflow run release.yml`）はドライランとなり、DMG はワークフローの成果物として保存されます。
 
 アプリ内アップデートも同じリリースから配信されます。設定 → 情報とアップデートで、最新の公開リリースの `latest.json` を確認し（Tsuba は起動時にも静かに確認します）、この Mac 用のパッケージをダウンロードして、署名が `tauri.conf.json` の公開鍵と一致する場合にのみインストールします。リポジトリのシークレット `TAURI_SIGNING_PRIVATE_KEY` にアップデーター用の秘密鍵（`pnpm tauri signer generate` で生成、パスワードなし）が設定されていれば、CI が署名済みパッケージと `latest.json` を作成します。この鍵は必ずバックアップしてください。失うと、インストール済みのコピーを二度とアップデートできなくなります。
 

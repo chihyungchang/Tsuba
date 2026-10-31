@@ -1,6 +1,6 @@
 #!/bin/sh
 # Cuts a release: sets the version, runs the pre-commit checks, commits, tags, and pushes after asking.
-# The tag push starts .github/workflows/release.yml, which builds the DMG into a draft GitHub Release to review.
+# The tag push starts .github/workflows/release.yml, which builds the DMGs and publishes the GitHub Release once every job passes.
 #
 #   scripts/release.sh 0.2.0
 set -eu

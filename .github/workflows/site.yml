@@ -1,6 +1,7 @@
 # Rebuilds oliverz.dev when a release is published, so the product page picks up the new version, downloads,
 # checksums and changelog. The site reads them from the GitHub API at build time and only sees published releases,
-# which is why this runs on `published` and not when release.yml finishes building the draft.
+# which is why it runs only after publishing. release.yml calls it once it publishes; the `published` trigger covers a
+# release published by hand.
 #
 # Needs the CLOUDFLARE_DEPLOY_HOOK secret (Cloudflare Pages → the site's project → Settings → Builds → Deploy hooks).
 # Without it the job does nothing.
@@ -10,6 +11,7 @@ name: Update website
 on:
   release:
     types: [published]
+  workflow_call:
   # Run it by hand (Actions → Update website → Run workflow) to test the hook
   workflow_dispatch:
 

@@ -230,7 +230,7 @@ cd app && pnpm release --bundles app   # local release build for this Mac, termi
 
 릴리스 번들에는 터미널 검사 프로그램이 `Tsuba.app/Contents/MacOS/tsuba`로 들어 있습니다. `tauri.release.conf.json`이 이를 추가하고 `app/scripts/build-cli-sidecar.sh`를 실행합니다. `tauri.conf.json`에 넣지 않은 이유는 파일이 없으면 Tauri가 빌드를 거부해 `cargo test`가 깨지기 때문입니다.
 
-배포하려면 깨끗한 `main`에서 `scripts/release.sh X.Y.Z`를 실행하세요. 루트 `Cargo.toml`의 버전(앱, CLI, DMG의 단일 출처)을 설정하고, 커밋 전 검사를 실행하고, 커밋하고, `vX.Y.Z` 태그를 붙인 뒤 푸시 전에 확인을 묻습니다. 태그가 `.github/workflows/release.yml`을 시작하며, 이 워크플로는 테스트를 실행하고 세 러너에서 동시에 Apple silicon과 Intel DMG를 빌드해 커밋으로부터 생성한 노트와 함께 `SHA256SUMS.txt`를 초안 GitHub Release에 첨부합니다. 검토한 뒤 게시하세요. 작업이 하나라도 실패하면 초안은 삭제되고 태그는 남습니다. 워크플로를 직접 실행하면(Actions → Release → Run workflow 또는 `gh workflow run release.yml`) 시험 실행이 되어 DMG를 워크플로 아티팩트로만 보관합니다.
+배포하려면 깨끗한 `main`에서 `scripts/release.sh X.Y.Z`를 실행하세요. 루트 `Cargo.toml`의 버전(앱, CLI, DMG의 단일 출처)을 설정하고, 커밋 전 검사를 실행하고, 커밋하고, `vX.Y.Z` 태그를 붙인 뒤 푸시 전에 확인을 묻습니다. 태그가 `.github/workflows/release.yml`을 시작하며, 이 워크플로는 테스트를 실행하고 세 러너에서 동시에 Apple silicon과 Intel DMG를 빌드해 커밋으로부터 생성한 노트와 함께 `SHA256SUMS.txt`를 초안 GitHub Release에 첨부하고, 모든 작업이 통과하면 게시합니다(웹사이트도 함께 다시 빌드됩니다). 작업이 하나라도 실패하면 초안은 삭제되고 태그는 남습니다. 워크플로를 직접 실행하면(Actions → Release → Run workflow 또는 `gh workflow run release.yml`) 시험 실행이 되어 DMG를 워크플로 아티팩트로만 보관합니다.
 
 앱 내 업데이트도 같은 릴리스에서 받습니다. 설정 → 정보 및 업데이트에서 최신 게시 릴리스의 `latest.json`을 확인하고(Tsuba는 시작할 때도 조용히 확인합니다), 이 Mac용 패키지를 다운로드해 서명이 `tauri.conf.json`의 공개 키와 일치할 때만 설치합니다. `TAURI_SIGNING_PRIVATE_KEY` 저장소 시크릿에 업데이터 개인 키(`pnpm tauri signer generate`로 생성, 암호 없음)가 있으면 CI가 서명된 패키지와 `latest.json`을 만듭니다. 이 키는 꼭 백업하세요. 키가 없으면 설치된 사본을 다시는 업데이트할 수 없습니다.
 

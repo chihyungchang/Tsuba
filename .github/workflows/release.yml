@@ -1,7 +1,8 @@
-# Builds macOS DMGs and attaches them to a draft GitHub Release when a version tag is pushed.
+# Builds macOS DMGs into a GitHub Release when a version tag is pushed, and publishes it once every job has passed.
 #
-#   1. scripts/release.sh 0.2.0   (sets the version in the root Cargo.toml, runs the checks, commits, tags, pushes)
-#   2. Review the draft release, with notes generated from the commits, then publish it.
+#   scripts/release.sh 0.2.0   (sets the version in the root Cargo.toml, runs the checks, commits, tags, pushes)
+#
+# The release stays a draft while building so nobody downloads, and no installed copy updates to, a half-uploaded one.
 #
 # The tests and the two architectures run on separate runners at the same time: a universal build compiled both
 # architectures one after the other on one 3-core runner and took over 40 minutes. If any job fails, the draft is
@@ -275,6 +276,16 @@ jobs:
           fi
           # Uploads leave the draft showing "untagged-…": set the tag again so publishing uses the pushed tag
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -f body="$notes" -f tag_name="$GITHUB_REF_NAME" > /dev/null
+
+      - name: Publish
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false > /dev/null
+
+  # A release published with GITHUB_TOKEN doesn't fire site.yml's `published` trigger (GitHub never lets that token
+  # start other workflows), so the website rebuild is called from here.
+  website:
+    needs: finish
+    uses: ./.github/workflows/site.yml
+    secrets: inherit
 
   # A failed test or build leaves no draft behind: re-pushing the tag (or fixing and tagging a new version) starts clean
   discard:

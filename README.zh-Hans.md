@@ -230,7 +230,7 @@ cd app && pnpm release --bundles app   # local release build for this Mac, termi
 
 发布版的 bundle 会以 `Tsuba.app/Contents/MacOS/tsuba` 的形式带上终端检查程序。这由 `tauri.release.conf.json` 加入，并运行 `app/scripts/build-cli-sidecar.sh`；它没有放进 `tauri.conf.json`，因为缺少这个文件时 Tauri 会拒绝构建，那样会让 `cargo test` 跑不起来。
 
-要发布时，在干净的 `main` 上运行 `scripts/release.sh X.Y.Z`：它会设置根目录 `Cargo.toml` 里的版本号（App、CLI 和 DMG 唯一的版本来源），运行提交前检查、提交、打上 `vX.Y.Z` 标签，并在推送前先询问。标签会触发 `.github/workflows/release.yml`，在三台 runner 上同时运行测试并构建 Apple 芯片和 Intel 的 DMG，把它们和 `SHA256SUMS.txt` 附加到一个 GitHub Release 草稿上，并根据提交记录生成说明；检查无误后再发布。任何一个 job 失败，草稿都会被删除，标签则保留。手动运行 workflow（Actions → Release → Run workflow，或 `gh workflow run release.yml`）是一次试运行，DMG 会保留为 workflow artifact。
+要发布时，在干净的 `main` 上运行 `scripts/release.sh X.Y.Z`：它会设置根目录 `Cargo.toml` 里的版本号（App、CLI 和 DMG 唯一的版本来源），运行提交前检查、提交、打上 `vX.Y.Z` 标签，并在推送前先询问。标签会触发 `.github/workflows/release.yml`，在三台 runner 上同时运行测试并构建 Apple 芯片和 Intel 的 DMG，把它们和 `SHA256SUMS.txt` 附加到一个 GitHub Release 草稿上，并根据提交记录生成说明，所有 job 通过后自动发布（同时重建网站）。任何一个 job 失败，草稿都会被删除，标签则保留。手动运行 workflow（Actions → Release → Run workflow，或 `gh workflow run release.yml`）是一次试运行，DMG 会保留为 workflow artifact。
 
 App 内更新来自同样的 Releases：“设置 → 关于与更新”会检查最新已发布版本的 `latest.json`（Tsuba 启动时也会悄悄检查一次），下载适合这台 Mac 的包，只有签名与 `tauri.conf.json` 里的公钥匹配才会安装。当仓库 secret `TAURI_SIGNING_PRIVATE_KEY` 存有更新用的私钥（用 `pnpm tauri signer generate` 生成，不设密码）时，CI 会生成已签名的包和 `latest.json`。请备份好这把密钥：没有它，已安装的版本就再也无法更新。
 
