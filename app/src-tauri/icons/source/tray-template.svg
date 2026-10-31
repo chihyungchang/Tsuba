@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Menu bar template master: black on transparent, the system tints it. The guard fills the canvas so it reads at 18pt. -->
+  <g transform="translate(512 512) scale(1.26) translate(-512 -512)">
+    <path d="M319.2 319.2A205 205 0 0 1 704.8 319.2A205 205 0 0 1 704.8 704.8A205 205 0 0 1 319.2 704.8A205 205 0 0 1 319.2 319.2Z M497 420Q512 398 527 420L548 598Q512 616 476 598Z M426 430C370 452 370 572 426 594Z M598 430C642 440 654 482 636 504Q630 512 636 520C654 542 642 584 598 594Z" fill="#000" fill-rule="evenodd"/>
+  </g>
+</svg>

@@ -24,28 +24,19 @@ function Svg({ size = 18, children, ...rest }: IconProps & { children: React.Rea
   );
 }
 
-/**
- * Silhouette of a katana laid diagonally (64 × 64): curved blade, round guard (tsuba), handle.
- * The same sword as the App icon; the menu bar template icon icons/tray-template.png has this shape too.
- */
-export function KatanaGlyph({ fill }: { fill: string }) {
-  return (
-    <g transform="rotate(35 32 32)" fill={fill}>
-      <path d="M28.6 36Q27.2 21 31.8 8.4L34.6 4.8Q33.4 21 34.4 36Z" />
-      <ellipse cx="31.5" cy="38.4" rx="10.5" ry="5.4" />
-      <path d="M28.4 41.6Q28.3 50 29.8 59.4L33.8 59.4Q35 50 35 41.6Z" />
-    </g>
-  );
-}
+/** The guard's three holes (1024 space): the tang hole in the middle, the kozuka and kogai holes either side. Same as icons/source/tray-template.svg */
+export const GUARD_HOLES =
+  "M499 424Q512 404 525 424L544 596Q512 612 480 596ZM432 444C392 462 392 562 432 580ZM592 444C624 452 634 484 620 504Q615 512 620 520C634 540 624 572 592 580Z";
 
-/** Brand mark: a white sword in a vermilion rounded square, same look as the App icon. */
+/** The guard's four-lobed outline with its holes */
+const GUARD_PATH = "M319.2 319.2A205 205 0 0 1 704.8 319.2A205 205 0 0 1 704.8 704.8A205 205 0 0 1 319.2 704.8A205 205 0 0 1 319.2 319.2Z" + GUARD_HOLES;
+
+/** Brand mark: a white four-lobed guard, pierced, in a vermilion rounded square, same look as the App icon. */
 export function TsubaMark({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
       <rect x="1" y="1" width="62" height="62" rx="15" fill="var(--brand)" />
-      <g transform="translate(32 32) scale(.8) translate(-32 -32)">
-        <KatanaGlyph fill="#fff" />
-      </g>
+      <path d={GUARD_PATH} transform="translate(32 32) scale(.064) translate(-512 -512)" fill="#fff" fillRule="evenodd" />
     </svg>
   );
 }
