@@ -2065,8 +2065,16 @@ button.term-line:active:not(:disabled) {
 .term-time {
   width: 74px;
   flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   text-align: left;
   color: var(--text-3);
+}
+
+/* "il y a 42 min", "42 мин назад": other languages' relative times run up to 13 characters of mono, English's "42 min ago" to 10 */
+:root:not(:lang(en)) .term-time {
+  width: 104px;
 }
 
 .term-tag {
