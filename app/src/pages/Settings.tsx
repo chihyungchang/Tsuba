@@ -5,7 +5,7 @@ import { Icon, TsubaMark, type IconName } from "../icons";
 import { LANGS, loadLangPreference, setLangPreference, t, type LangPreference } from "../i18n";
 import { loadThemePreference, setThemePreference, type ThemePreference } from "../theme";
 import { Config, IntelManifest, Overview } from "../types";
-import { BackLink, Banner, Group, Row, modeLabel, Section, Spinner, Toggle, errText, formatNumber, interpolate, listSeparator, relativeTime, shortPath, toast, toastDone } from "../ui";
+import { BackLink, Banner, Group, Row, modeLabel, Section, Spinner, Toggle, errText, formatNumber, interpolate, listSeparator, relativeTime, shortPath, toast, toastDone, PageSeal } from "../ui";
 
 type PresetGroup = "frontier" | "cloud" | "router" | "local" | "custom";
 
@@ -653,7 +653,10 @@ export function SettingsPage({ overview, reload, tab, onTab }: { overview: Overv
       <aside className="list-pane settings-nav">
         <div className="list-head" data-tauri-drag-region>
           <BackLink />
-          <h1 data-tauri-drag-region>{t("Settings")}</h1>
+          <h1 data-tauri-drag-region>
+          <PageSeal glyph="settings" />
+          {t("Settings")}
+        </h1>
           {overview && (
             <span className={`settings-state ${overview.paused ? "tone-block" : "tone-allow"}`}>
               <span className="status-dot" />

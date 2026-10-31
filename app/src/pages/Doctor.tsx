@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "../icons";
 import { AiScanItem, ExtensionScan, Finding } from "../types";
-import { BackLink, Banner, FindingList, toastDone, Group, Row, Section, Spinner, VerdictBadge, errText, relativeTime } from "../ui";
+import { BackLink, Banner, FindingList, toastDone, Group, Row, Section, Spinner, VerdictBadge, errText, relativeTime, PageSeal } from "../ui";
 import { t } from "../i18n";
 import { useTask } from "../tasks";
 
@@ -149,7 +149,10 @@ export function DoctorPage({ reload }: { reload: () => void }) {
           {running.size > 0 ? <Icon.doctor size={34} /> : allDone && issues > 0 ? <Icon.alert size={34} /> : allDone ? <Icon.check size={34} /> : <Icon.doctor size={34} />}
           <span className="doctor-start-label">{running.size > 0 ? t("Checking") : allDone || lastRun ? t("Check Again") : t("Start")}</span>
         </button>
-        <h1 data-tauri-drag-region>{t("Health Check")}</h1>
+        <h1 data-tauri-drag-region>
+          <PageSeal glyph="doctor" />
+          {t("Health Check")}
+        </h1>
         <p className={`doctor-status tone-${tone}`}>{status}</p>
         <p className="doctor-lede">{t("Already compromised? Looks for traces of known attacks and checks installed extensions and AI tools.")}</p>
       </section>

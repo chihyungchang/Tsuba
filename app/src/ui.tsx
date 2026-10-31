@@ -3,6 +3,7 @@
 import { Fragment, createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { lang, t } from "./i18n";
 import { Icon, type IconName } from "./icons";
+import { Seal, type SealGlyph } from "./seals";
 import { Finding, Overview, Report, Verdict, VERDICT_LABEL } from "./types";
 
 export function errText(e: unknown): string {
@@ -93,6 +94,7 @@ export function PageHeader({
   title,
   subtitle,
   icon,
+  seal,
   tone = "neutral",
   status,
   stats,
@@ -101,6 +103,7 @@ export function PageHeader({
   title: string;
   subtitle?: ReactNode;
   icon?: IconName;
+  seal?: SealGlyph;
   tone?: "neutral" | "allow" | "warn" | "block";
   status?: ReactNode;
   stats?: HeaderStat[];
@@ -118,7 +121,10 @@ export function PageHeader({
         )}
         <div className="page-hero-text" data-tauri-drag-region>
           {status && <span className="page-hero-status">{status}</span>}
-          <h1 data-tauri-drag-region>{title}</h1>
+          <h1 data-tauri-drag-region>
+            {seal && <PageSeal glyph={seal} />}
+            {title}
+          </h1>
           {subtitle && <p className="page-subtitle">{subtitle}</p>}
         </div>
         {children && <div className="page-header-actions">{children}</div>}
@@ -218,16 +224,22 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
   );
 }
 
-const VERDICT_ICON: Record<Verdict, IconName> = { allow: "check", warn: "alert", block: "stop" };
+/** 通 pass, 警 warn, 止 stop: always beside the localized label */
+const VERDICT_SEAL: Record<Verdict, SealGlyph> = { allow: "pass", warn: "warn", block: "stop" };
 
 export function VerdictBadge({ v, large }: { v: Verdict; large?: boolean }) {
-  const I = Icon[VERDICT_ICON[v]];
+  // A block is a solid stamp, the others an outline: the heaviest verdict looks heaviest at a glance
   return (
     <span className={`badge badge-${v} ${large ? "badge-large" : ""}`}>
-      <I size={large ? 15 : 12} strokeWidth={2} />
+      <Seal glyph={VERDICT_SEAL[v]} filled={v === "block"} isWorn={large} size={large ? 24 : 14} />
       {VERDICT_LABEL[v]}
     </span>
   );
+}
+
+/** A vermilion seal before a page title, like the stamp on a samurai house's document. Decoration only: the title says it */
+export function PageSeal({ glyph }: { glyph: SealGlyph }) {
+  return <Seal glyph={glyph} filled isWorn size={22} className="page-seal" />;
 }
 
 export function Spinner() {

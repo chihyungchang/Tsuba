@@ -120,6 +120,7 @@ export function ScanPage({ quarantine, reload, onScanned }: { quarantine: Quaran
     <div className="page">
       <PageHeader
         title={t("Scan")}
+        seal="scan"
         subtitle={t("Installers, scripts, extensions and projects in Downloads, external drives and code folders. Photos, videos and dependency folders are skipped.")}
         icon="scan"
         tone={scanning ? "neutral" : result ? (result.hits.length ? "warn" : "allow") : "neutral"}

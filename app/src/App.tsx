@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Splash } from "./brand";
 import { t, useLang } from "./i18n";
-import { Icon, TsubaMark, type IconName } from "./icons";
+import { Icon, Kamon, type IconName } from "./icons";
 import { DoctorPage } from "./pages/Doctor";
 import { HistoryPage } from "./pages/History";
 import { OverviewPage } from "./pages/Overview";
@@ -152,7 +152,7 @@ export default function App() {
       {/* Title bar: the traffic lights, the mark centered and the bell at the right; each page carries its own heading, and going back lives in the breadcrumb inside the content. Running tasks show in the footer. */}
       <header className="titlebar" data-tauri-drag-region>
         <span className="titlebar-status" data-tauri-drag-region>
-          <TsubaMark size={16} />
+          <Kamon size={17} />
           Tsuba
         </span>
         <button className="titlebar-bell" title={t("Needs attention")} aria-label={t("Needs attention")} onClick={() => setPage("history")}>

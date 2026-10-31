@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Icon } from "../icons";
 import { LogEntry, QuarantineItem, SandboxResult } from "../types";
-import { BackLink, Banner, ConfirmButton, Empty, MenuButton, toast, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, listSeparator, relativeTime, shortPath } from "../ui";
+import { BackLink, Banner, ConfirmButton, Empty, MenuButton, toast, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, listSeparator, relativeTime, shortPath, PageSeal } from "../ui";
 import { t } from "../i18n";
 import { useTask } from "../tasks";
 
@@ -259,7 +259,10 @@ export function HistoryPage({ focusId, quarantine, reload }: { focusId: string |
       <aside className="list-pane">
         <div className="list-head" data-tauri-drag-region>
           <BackLink />
-          <h1 data-tauri-drag-region>{t("History")}</h1>
+          <h1 data-tauri-drag-region>
+          <PageSeal glyph="history" />
+          {t("History")}
+        </h1>
           <div className="segmented" role="tablist">
             <button role="tab" aria-selected={filter === "risky"} className={filter === "risky" ? "on" : ""} onClick={() => setFilter("risky")}>
               {t("Risky")}{risky > 0 && <span className="segmented-count">{risky}</span>}

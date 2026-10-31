@@ -31,6 +31,16 @@ export const GUARD_HOLES =
 /** The guard's four-lobed outline with its holes */
 const GUARD_PATH = "M319.2 319.2A205 205 0 0 1 704.8 319.2A205 205 0 0 1 704.8 704.8A205 205 0 0 1 319.2 704.8A205 205 0 0 1 319.2 319.2Z" + GUARD_HOLES;
 
+/** The family crest (kamon): the guard's silhouette in a ring, in one color like a crest. Title bar and status bar */
+export function Kamon({ size = 18 }: { size?: number }) {
+  return (
+    <svg className="kamon" width={size} height={size} viewBox="0 0 64 64" aria-hidden>
+      <circle cx="32" cy="32" r="29.5" fill="none" stroke="currentColor" strokeWidth="3.5" />
+      <path d={GUARD_PATH} transform="translate(32 32) scale(.064) translate(-512 -512)" fill="currentColor" fillRule="evenodd" />
+    </svg>
+  );
+}
+
 /** Brand mark: a white four-lobed guard, pierced, in a vermilion rounded square, same look as the App icon. */
 export function TsubaMark({ size = 28 }: { size?: number }) {
   return (

@@ -73,6 +73,9 @@
   --r-sm: 4px;
   --r-pill: 999px;
 
+  /* Fukurin: the gold rim of a sword guard, as a hairline around the cards that matter (page headers, the bento) */
+  --fukurin: inset 0 0 0 1px var(--gold-line);
+
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   /* Titles only, like the heading of a samurai house's document; both fonts ship with macOS. Chinese UI uses Songti for Chinese letterforms */
@@ -327,15 +330,24 @@ select:focus-visible {
     0 0 0 3px var(--focus);
 }
 
-button.primary {
-  background: var(--cta);
+/* Gold fittings: a metal plate lit from above, with a darker gold edge, rather than a flat fill */
+button.primary,
+button.cta {
   color: var(--cta-text);
-  font-weight: 600;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.15);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cta) 78%, #fff) 0%, var(--cta) 48%, color-mix(in srgb, var(--cta) 86%, #000) 100%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--cta) 70%, #000),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.18);
 }
 
-button.primary:hover:not(:disabled) {
-  background: var(--cta-hover);
+button.primary {
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled),
+button.cta:hover:not(:disabled) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cta-hover) 72%, #fff) 0%, var(--cta-hover) 48%, color-mix(in srgb, var(--cta-hover) 88%, #000) 100%);
 }
 
 button.large {
@@ -544,7 +556,7 @@ select:focus {
   padding: 22px 24px 0;
   border-radius: var(--r-lg);
   background: var(--panel);
-  box-shadow: var(--glass-shadow);
+  box-shadow: var(--glass-shadow), var(--fukurin);
   --hero-tone: var(--cta);
   --hero-soft: color-mix(in srgb, var(--cta) 16%, transparent);
 }
@@ -1018,20 +1030,69 @@ select:focus {
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   height: 20px;
-  padding: 0 8px 0 6px;
-  border-radius: var(--r-pill);
+  padding: 0 8px 0 3px;
+  border-radius: var(--r-sm);
   font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .badge-large {
-  height: 26px;
-  padding: 0 12px 0 9px;
+  height: 32px;
+  padding: 0 14px 0 4px;
   font-size: 13px;
-  gap: 6px;
+  gap: 8px;
+}
+
+/* The report's verdict is stamped: the seal drops in large and tilted and lands; a block lands harder */
+.badge-large .seal {
+  transform: rotate(-4deg);
+  animation: seal-stamp 0.34s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+
+.badge-large.badge-block .seal {
+  animation-name: seal-stamp-hard;
+}
+
+@keyframes seal-stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.7) rotate(-14deg);
+  }
+}
+
+@keyframes seal-stamp-hard {
+  0% {
+    opacity: 0;
+    transform: scale(2.1) rotate(-16deg);
+  }
+
+  60% {
+    opacity: 1;
+    transform: scale(0.92) rotate(-3deg);
+  }
+}
+
+.seal {
+  flex: none;
+  display: block;
+}
+
+/* Page titles: a small vermilion seal before the title */
+h1 .page-seal {
+  display: inline-block;
+  margin-right: 10px;
+  vertical-align: -3px;
+  color: var(--brand);
+  transform: rotate(-4deg);
+}
+
+/* The crest in the title bar */
+.kamon {
+  flex: none;
+  color: var(--brand);
 }
 
 .badge-allow {
@@ -1344,20 +1405,17 @@ button.cta {
   padding: 0 24px;
   font-size: 13.5px;
   font-weight: 650;
-  background: var(--cta);
-  color: var(--cta-text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 14px color-mix(in srgb, var(--cta) 30%, transparent);
 }
 
-button.cta:hover:not(:disabled) {
-  background: var(--cta-hover);
-}
-
+/* Resume Protection: a vermilion seal plate, the one red button that matters */
 button.cta.cta-alarm,
 button.cta.cta-alarm:hover:not(:disabled) {
-  background: var(--alarm);
   color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 16px color-mix(in srgb, var(--alarm) 40%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--alarm) 80%, #fff) 0%, var(--alarm) 50%, color-mix(in srgb, var(--alarm) 82%, #000) 100%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--alarm) 65%, #000),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 4px 16px color-mix(in srgb, var(--alarm) 40%, transparent);
 }
 
 .dash-hero-meta {
@@ -1796,7 +1854,7 @@ button.cell {
   white-space: normal;
   border-radius: var(--r-lg);
   background: var(--panel);
-  box-shadow: var(--glass-shadow);
+  box-shadow: var(--glass-shadow), var(--fukurin);
   font-weight: 400;
   transition:
     transform 0.2s var(--ease),
@@ -1809,6 +1867,7 @@ button.cell:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow:
     var(--glass-shadow),
+    inset 0 0 0 1px color-mix(in srgb, var(--cta) 55%, transparent),
     0 8px 20px rgba(0, 0, 0, 0.14);
 }
 
