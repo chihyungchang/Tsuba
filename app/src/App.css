@@ -40,7 +40,7 @@
   --dash: rgba(150, 110, 40, 0.4);
   --hover: rgba(60, 45, 20, 0.05);
 
-  /* Primary action: gold, matching the katana's habaki and the guard's gold rim; clearly distinct from the red "Block" and the vermilion brand */
+  /* Primary action: gold, matching the guard's gold rim; clearly distinct from the red "Block" and the vermilion brand */
   --cta: #b4873a;
   --cta-hover: #a07630;
   --cta-text: #fffaf0;
@@ -1334,18 +1334,41 @@ button.cta.cta-alarm:hover:not(:disabled) {
   background: color-mix(in srgb, var(--cta) 8%, transparent);
 }
 
-/* ---------- Home guardian art: halo and gold dust (left side of home) ---------- */
+/* ---------- Home guardian: the guard on a laptop's screen, with a halo (left side of home) ---------- */
 
 .guardian {
+  position: relative;
+  flex: none;
   width: 280px;
   height: 280px;
+}
+
+.guardian-halo-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: visible;
+}
+
+/* The render's frame is 1.4x the laptop's box (laptop.py MARGIN), so its shadow can fade out: the stage overhangs by 20% */
+.guardian-stage {
+  position: absolute;
+  inset: -20%;
+}
+
+.guardian-laptop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
 }
 
 /* Halo: breathes slowly; leans amber when some defenses are off (color set in the component); dark red when paused */
 .guardian-halo {
-  transform-box: view-box;
-  transform-origin: 140px 140px;
+  transform-box: fill-box;
+  transform-origin: center;
   animation: halo-breathe 4.5s ease-in-out infinite;
   transition: opacity 0.7s var(--ease);
 }
@@ -1371,182 +1394,320 @@ button.cta.cta-alarm:hover:not(:disabled) {
   opacity: 1;
 }
 
-/* Gold dust: drifts up from near the guard; fades out as a group when paused (each mote's animated opacity overrides normal styles, so the whole group fades) */
-.guardian-dust {
-  transition: opacity 0.6s var(--ease);
+/*
+  The screen: the rectangle laptop.py prints for the render (SCREEN left 27.77% top 26.96% width 44.46% height 26.94%),
+  pulled in a little so the bezel hides the edge. The background is the rendered screen's color.
+*/
+.guardian-screen {
+  position: absolute;
+  left: 28%;
+  top: 27.2%;
+  width: 44%;
+  height: 26.5%;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #262833;
 }
 
-.guardian-dust circle {
-  opacity: 0;
-  animation: dust-rise var(--d) linear infinite;
-  animation-delay: var(--delay);
+/* Code running on the screen: scrolls up forever (the rows are drawn twice, so -50% is a seamless loop) */
+.guardian-code {
+  position: absolute;
+  inset: 0 0 auto;
+  padding: 0 9%;
+  animation: code-scroll 16s linear infinite;
 }
 
-@keyframes dust-rise {
-  0% {
-    transform: translate(0, 0);
-    opacity: 0;
-  }
-
-  15% {
-    opacity: var(--o);
-  }
-
-  100% {
-    transform: translate(var(--dx), -150px);
-    opacity: 0;
-  }
-}
-
-.guardian.is-paused .guardian-dust {
-  opacity: 0;
-}
-
-.guardian.is-paused .guardian-dust circle {
-  animation-play-state: paused;
-}
-
-/* Katana: floats and sways slightly while protecting; sinks and dims when paused */
-.guardian-sword {
-  transform-box: view-box;
-  transform-origin: 140px 150px;
-  animation: sword-float 5.5s ease-in-out infinite;
-  transition: filter 0.7s var(--ease);
-}
-
-@keyframes sword-float {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0);
-  }
-
-  30% {
-    transform: translateY(-4px) rotate(-1.2deg);
-  }
-
-  65% {
-    transform: translateY(2px) rotate(0.8deg);
-  }
-}
-
-.guardian.is-paused .guardian-sword {
-  animation: sword-settle 0.7s var(--ease) both;
-  filter: saturate(0.5) brightness(0.75);
-}
-
-@keyframes sword-settle {
+@keyframes code-scroll {
   from {
-    transform: translateY(-3px);
+    transform: translateY(0);
   }
 
   to {
-    transform: translateY(4px);
+    transform: translateY(-50%);
   }
 }
 
-/* Blade glint: flows continuously from the base to the tip; the hamon pulses bright and dim */
-.katana-glint {
-  animation: katana-glint 3.2s cubic-bezier(0.3, 0.6, 0.4, 1) infinite;
+.guardian-code-row {
+  display: flex;
+  gap: 4px;
+  height: 10px;
+  align-items: center;
 }
 
-@keyframes katana-glint {
-  0% {
-    transform: translateY(40px);
-    opacity: 0;
-  }
-
-  15% {
-    opacity: 1;
-  }
-
-  70% {
-    opacity: 0.9;
-  }
-
-  100% {
-    transform: translateY(-560px);
-    opacity: 0;
-  }
+.guardian-code-row span {
+  height: 3.5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
 }
 
-.katana-hamon {
-  animation: katana-hamon 2.6s ease-in-out infinite;
+.guardian-code-row .is-key {
+  background: rgba(216, 179, 106, 0.45);
 }
 
-@keyframes katana-hamon {
-  50% {
-    stroke-opacity: 0.25;
-  }
-}
-
-.guardian.is-paused .katana-glint,
-.guardian.is-paused .katana-hamon {
-  animation: none;
-  opacity: 0;
+.guardian-code-row .is-risk {
+  background: rgba(229, 83, 47, 0.55);
 }
 
 /*
-  Scabbard: hidden beyond the tip while protecting;
-  - Drawing (resume): 1.1 s, slow then fast then settling, like really drawing the sword;
-  - Sheathing (pause): 0.6 s sliding down, with a stop at the bottom.
+  Pause and resume are told as cause and effect. Transitions on the paused state time the pause; transitions on the normal
+  state time the resume. Opacity always moves by transition (removing an animation would make it jump); animations only
+  flicker filter and clip-path.
+
+  Pause:  0 s the guard drops off the bottom of the screen like a lowered shield (0.45 s), the scan and the glow go out;
+          0.35 s the screen flickers red; 0.6 s the hacker glitches in; then the red pulses slowly.
+  Resume: 0 s the guard springs up from below and overshoots; 0.28 s as it lands a gold ring bursts out, the hacker is
+          knocked out and the red drains away; then the glow and the scan come back.
 */
-.katana-sheath {
-  transform: translateY(-720px);
+
+/* A gold line scanning the code from top to bottom, with a soft band of light trailing above it */
+.guardian-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 22px;
+  background: linear-gradient(to bottom, transparent, rgba(246, 217, 139, 0.16));
+  border-bottom: 1.5px solid rgba(246, 217, 139, 0.9);
+  box-shadow: 0 2px 8px rgba(246, 217, 139, 0.5);
+  animation: screen-scan 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  transition: opacity 0.3s var(--ease) 0.5s;
+}
+
+@keyframes screen-scan {
+  from {
+    transform: translateY(-24px);
+  }
+
+  to {
+    transform: translateY(110px);
+  }
+}
+
+.guardian.is-paused .guardian-scan {
   opacity: 0;
-  transition:
-    transform 1.1s cubic-bezier(0.55, 0, 0.25, 1),
-    opacity 0.35s var(--ease) 0.8s;
+  transition: opacity 0.15s var(--ease);
 }
 
-.katana-sheath.is-on {
-  transform: translateY(0);
+/* The red screen: the code keeps running under it, unchecked */
+.guardian-alarm {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(90% 90% at 50% 60%, rgba(214, 60, 38, 0.45), rgba(120, 18, 12, 0.75));
+  opacity: 0;
+  transition: opacity 0.45s var(--ease) 0.28s;
+}
+
+.guardian.is-paused .guardian-alarm {
   opacity: 1;
-  transition:
-    transform 0.6s cubic-bezier(0.45, 0, 0.2, 1),
-    opacity 0.15s var(--ease);
+  transition: opacity 0.08s linear 0.35s;
+  animation:
+    alarm-flicker 0.45s steps(1) 0.35s,
+    alarm-pulse 2.4s ease-in-out 0.8s infinite;
 }
 
-.katana-sheath.is-on .katana-sheath-body {
-  animation: sheath-click 0.9s var(--ease) 0.6s both;
-}
-
-@keyframes sheath-click {
-  0% {
-    transform: translateY(0);
+@keyframes alarm-flicker {
+  0%,
+  45% {
+    filter: brightness(1.6);
   }
 
-  12% {
-    transform: translateY(10px);
-  }
-
-  30% {
-    transform: translateY(-3px);
+  20%,
+  60% {
+    filter: brightness(0.3);
   }
 
   100% {
-    transform: translateY(0);
+    filter: none;
   }
 }
 
-/* An arc of light when drawing: it sweeps only as the scabbard is about to clear */
-.guardian-slash {
+@keyframes alarm-pulse {
+  50% {
+    filter: brightness(0.75);
+  }
+}
+
+/* The hacker: glitches into the red screen and glitches now and then while it stays; knocked out when the guard returns */
+.guardian-hacker {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  height: 92%;
+  aspect-ratio: 1;
   opacity: 0;
-  animation: guardian-slash 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) 0.75s both;
+  transform: translate(-50%, 30%);
+  transition:
+    opacity 0.12s linear 0.28s,
+    transform 0.3s cubic-bezier(0.5, 0, 0.8, 0.4) 0.28s;
 }
 
-@keyframes guardian-slash {
-  0% {
-    opacity: 0;
-    stroke-dashoffset: 420;
+.guardian.is-paused .guardian-hacker {
+  opacity: 1;
+  transform: translate(-50%, 6%);
+  transition:
+    opacity 0.05s linear 0.6s,
+    transform 0.6s cubic-bezier(0.2, 0.8, 0.3, 1) 0.6s;
+  animation:
+    hacker-glitch 0.45s steps(1) 0.6s,
+    hacker-glitch 3.6s steps(1) 2.2s infinite;
+}
+
+@keyframes hacker-glitch {
+  0%,
+  86%,
+  100% {
+    filter: none;
+    clip-path: none;
   }
 
-  25% {
+  88% {
+    filter: drop-shadow(-3px 0 0 rgba(255, 60, 40, 0.8)) drop-shadow(3px 0 0 rgba(60, 200, 255, 0.5));
+    clip-path: inset(30% 0 40% 0);
+  }
+
+  90% {
+    filter: drop-shadow(2px 0 0 rgba(255, 60, 40, 0.8));
+    clip-path: inset(0 0 55% 0);
+  }
+
+  92% {
+    filter: none;
+    clip-path: inset(60% 0 0 0);
+  }
+}
+
+.guardian-hacker-eyes {
+  filter: drop-shadow(0 0 2px #ff3b1f) drop-shadow(0 0 5px #ff3b1f);
+  animation: hacker-eyes 2.4s ease-in-out infinite;
+}
+
+@keyframes hacker-eyes {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Protecting: a gold glow behind the guard, so it reads as a shield held up in front of the screen */
+.guardian-shield {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 120%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(246, 217, 139, 0.42), rgba(246, 217, 139, 0.12) 60%, transparent);
+  transform: translate(-50%, -50%);
+  animation: shield-pulse 3s ease-in-out infinite;
+  transition: opacity 0.4s var(--ease) 0.35s;
+}
+
+@keyframes shield-pulse {
+  50% {
+    transform: translate(-50%, -50%) scale(0.88);
+    opacity: 0.7;
+  }
+}
+
+.guardian.is-paused .guardian-shield {
+  opacity: 0;
+  animation-play-state: paused;
+  transition: opacity 0.2s var(--ease);
+}
+
+/*
+  The guard: the transition (dropping out and springing back) is on the box and the float is on its children: both
+  animate transform, and on one element removing the animation would skip the transition.
+*/
+.guardian-guard {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 86%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  perspective: 300px;
+  transition: transform 0.55s cubic-bezier(0.25, 1.45, 0.5, 1);
+}
+
+.guardian.is-paused .guardian-guard {
+  transform: translate(-50%, 80%) rotateX(30deg);
+  transition: transform 0.45s cubic-bezier(0.5, 0, 0.75, 0);
+}
+
+.guardian-guard > * {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  animation: guard-float 6s ease-in-out infinite;
+}
+
+.guardian-guard img {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.55));
+}
+
+@keyframes guard-float {
+  0%,
+  100% {
+    transform: translateY(1px) rotateY(-12deg) rotateX(5deg);
+  }
+
+  50% {
+    transform: translateY(-2px) rotateY(12deg) rotateX(-4deg);
+  }
+}
+
+.guardian.is-paused .guardian-guard > * {
+  animation-play-state: paused;
+}
+
+/* A band of light sweeping across the guard, masked to its shape in the component */
+.guard-sheen {
+  background: linear-gradient(115deg, transparent 42%, rgba(255, 244, 214, 0.5) 50%, transparent 58%) 0 0 / 300% 100% no-repeat;
+  mix-blend-mode: screen;
+}
+
+.guardian-guard .guard-sheen {
+  animation:
+    guard-float 6s ease-in-out infinite,
+    guard-sheen 4.2s cubic-bezier(0.4, 0, 0.3, 1) infinite;
+}
+
+@keyframes guard-sheen {
+  0% {
+    background-position: 100% 0;
+  }
+
+  45%,
+  100% {
+    background-position: 0 0;
+  }
+}
+
+/* The gold ring bursting out as the guard lands on resume */
+.guardian-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 80%;
+  aspect-ratio: 1;
+  border: 2px solid #f6d98b;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(246, 217, 139, 0.7);
+  opacity: 0;
+  animation: guard-ring 0.8s var(--ease) 0.28s both;
+}
+
+@keyframes guard-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
     opacity: 1;
   }
 
   100% {
+    transform: translate(-50%, -50%) scale(2.4);
     opacity: 0;
-    stroke-dashoffset: 0;
   }
 }
 
@@ -1899,81 +2060,62 @@ button.footbar-key:hover:not(:disabled) {
 /* ---------- Onboarding ---------- */
 
 /*
-  Splash timeline: 0–0.4 s the sheathed sword rises out of the dark; 0.38 s the scabbard snaps off; 1.05 s the slash cuts
-  across; 1.3 s the two halves part along the cut and the App shows through. The cut runs from 62% height on the left
-  to 38% on the right, and the halves' clip paths and the slash line share those numbers.
+  Splash timeline: 0–0.5 s the guard rises out of the dark, the App already showing through its holes; 1.05 s the view
+  rushes into the tang hole (the guard and the dark zoom together, 170×); by 1.7 s the hole fills the window and the
+  splash fades. The zoom centers on the tang hole: 50% across, 49.6% down the guard's 1024 canvas.
 */
 .splash {
   position: fixed;
   inset: 0;
   z-index: 100;
+  overflow: hidden;
   pointer-events: none;
-}
-
-.splash-half {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(60% 50% at 50% 42%, #2a1d17 0%, #141216 60%, #0d0c0f 100%);
   color: #f3efe6;
-  will-change: transform;
+  animation: splash-fade-out 0.15s linear 1.68s forwards;
 }
 
-.splash-half-top {
-  clip-path: polygon(0 0, 100% 0, 100% 38%, 0 62%);
-  animation: splash-part-top 0.6s cubic-bezier(0.6, 0, 0.2, 1) 1.3s both;
-}
-
-.splash-half-bottom {
-  clip-path: polygon(0 62%, 100% 38%, 100% 100%, 0 100%);
-  animation: splash-part-bottom 0.6s cubic-bezier(0.6, 0, 0.2, 1) 1.3s both;
-}
-
-@keyframes splash-part-top {
-  to {
-    transform: translate(-6vw, -75vh);
-  }
-}
-
-@keyframes splash-part-bottom {
-  to {
-    transform: translate(6vw, 75vh);
-  }
-}
-
-.splash-content {
+.splash-guard {
   position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.splash-sword {
-  width: 230px;
-  height: 230px;
+  left: calc(50% - 125px);
+  top: calc(42% - 125px);
+  width: 250px;
+  height: 250px;
   overflow: visible;
-  filter: drop-shadow(0 0 28px rgba(229, 83, 47, 0.28));
-  animation: splash-rise 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  transform-origin: 50% 49.6%;
+  /* Keep the zoom on the GPU at the original size: re-rasterizing a 170× SVG would stall the first frame of the App */
+  will-change: transform;
+  animation: splash-dive 0.62s cubic-bezier(0.7, 0, 0.95, 0.45) 1.05s forwards;
 }
 
-/* A faster draw than the dashboard's: the splash has no time for a slow, deliberate one */
-.splash .katana-sheath {
-  transition:
-    transform 0.5s cubic-bezier(0.7, 0, 0.2, 1),
-    opacity 0.2s var(--ease) 0.32s;
+@keyframes splash-dive {
+  to {
+    transform: scale(170);
+  }
 }
 
-.splash .katana-sheath.is-on .katana-sheath-body {
-  animation: none;
+.splash-art {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: splash-rise 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
 
 @keyframes splash-rise {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.92);
+    transform: translateY(14px) scale(0.86);
   }
+}
+
+.splash-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(42% + 140px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  animation: splash-fade-out 0.2s var(--ease) 0.95s forwards;
 }
 
 .splash-word {
@@ -2027,57 +2169,8 @@ button.footbar-key:hover:not(:disabled) {
   }
 }
 
-/* The slash: drawn left to right in a blink, glowing gold, then gone as the halves part */
-.splash-cut {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  filter: drop-shadow(0 0 6px #ffd98a) drop-shadow(0 0 18px rgba(229, 83, 47, 0.8));
-}
-
-.splash-cut line {
-  stroke: #fff8e6;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation:
-    splash-slash 0.2s cubic-bezier(0.5, 0, 0.1, 1) 1.05s forwards,
-    splash-fade-out 0.35s var(--ease) 1.35s forwards;
-}
-
-@keyframes splash-slash {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
 @keyframes splash-fade-out {
   to {
-    opacity: 0;
-  }
-}
-
-.splash-flash {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(70% 60% at 50% 50%, rgba(255, 244, 214, 0.55), transparent 70%);
-  opacity: 0;
-  animation: splash-flash 0.4s ease-out 1.15s both;
-}
-
-@keyframes splash-flash {
-  0% {
-    opacity: 0;
-  }
-
-  25% {
-    opacity: 1;
-  }
-
-  100% {
     opacity: 0;
   }
 }

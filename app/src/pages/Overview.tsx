@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { GuardianKatana } from "../brand";
+import { GuardianTsuba } from "../brand";
 import { Icon } from "../icons";
 import { IntelManifest, LogEntry, Overview } from "../types";
 import { Banner, Spinner, baseName, errText, formatCompact, formatNumber, relativeTime } from "../ui";
@@ -178,7 +178,7 @@ export function OverviewPage({
     <>
       <div className={`dashboard ${dragging ? "is-dragging" : ""}`}>
         <section className={`dash-hero ${paused ? "is-paused" : active < defenses.length ? "is-partial" : ""}`} data-tauri-drag-region>
-          <GuardianKatana paused={paused} partial={active < defenses.length} />
+          <GuardianTsuba paused={paused} partial={active < defenses.length} />
           <div className="dash-hero-text">
             {/* A quiet label, not a capsule: the checks below already say which defenses are on */}
             <span className="hero-status" role="status">
@@ -186,7 +186,7 @@ export function OverviewPage({
             </span>
             <h1>{paused ? t("Active Defense Paused") : t("AI Active Defense")}</h1>
             <p className="dash-hero-lede">
-              {paused ? t("The sword is sheathed: commands you run, installers you download, and new extensions and AI tools are not being checked. Resume as soon as you are done.") : t("Before unfamiliar code runs, offline rules and AI look at it for you: fake interview projects, fake meeting apps, poisoned packages and extensions, malicious MCP servers and skills.")}
+              {paused ? t("Protection is paused: commands you run, installers you download, and new extensions and AI tools are not being checked. Resume as soon as you are done.") : t("Before unfamiliar code runs, offline rules and AI look at it for you: fake interview projects, fake meeting apps, poisoned packages and extensions, malicious MCP servers and skills.")}
             </p>
             {paused ? null : (
               <button type="button" className="layer-checks" onClick={() => go("settings")} title={t("Manage defenses in Settings")}>
