@@ -46,8 +46,9 @@ pub fn handle(req: &Value, src: &Sources) -> Option<Value> {
     Some(json!({ "jsonrpc": "2.0", "id": id, "result": result }))
 }
 
+// Annotations are written out per tool, not shared through a variable: directory scanners read them statically,
+// and OpenAI's directory rejects a tool missing any of the four hints.
 fn tools() -> Value {
-    let read_only = json!({ "readOnlyHint": true, "destructiveHint": false, "openWorldHint": false });
     json!([
         {
             "name": "recent_checks",
@@ -60,21 +61,21 @@ fn tools() -> Value {
                     "risky_only": { "type": "boolean", "description": "Only warnings and blocks, true by default" }
                 }
             },
-            "annotations": read_only,
+            "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
         },
         {
             "name": "explain_check",
             "title": "Explain a Check",
             "description": "Give the verdict, reasons, advice and evidence (which file, what matched) of one check. The id comes from recent_checks.",
             "inputSchema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] },
-            "annotations": read_only,
+            "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
         },
         {
             "name": "quarantine_list",
             "title": "Quarantine",
             "description": "List the files in quarantine: original location, when and why they were quarantined.",
             "inputSchema": { "type": "object", "properties": {} },
-            "annotations": read_only,
+            "annotations": { "readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false },
         },
     ])
 }
@@ -179,7 +180,15 @@ mod tests {
                 entry("2", Verdict::Allow, "npm install left-pad"),
             ]
         };
-        let quarantine = Vec::new;
+        let quarantine = || {
+            vec![QuarantineItem {
+                id: "q1".into(),
+                original: "/Users/me/Downloads/ZeffMeet.dmg".into(),
+                stored: "/Users/me/.tsuba/quarantine/q1".into(),
+                time: "2026-10-30T09:00:00Z".into(),
+                reason: "Fake meeting app".into(),
+            }]
+        };
         f(&Sources { history: &history, quarantine: &quarantine })
     }
 
@@ -196,7 +205,12 @@ mod tests {
             let list = handle(&json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }), s).unwrap();
             let tools = list["result"]["tools"].as_array().unwrap();
             assert_eq!(tools.len(), 3);
-            assert!(tools.iter().all(|t| t["annotations"]["readOnlyHint"] == true), "every tool is read-only");
+            for tool in tools {
+                let hints = &tool["annotations"];
+                assert!(["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"].iter().all(|h| hints[h].is_boolean()), "all four hints set: {tool}");
+                assert_eq!(hints["readOnlyHint"], true, "every tool is read-only: {tool}");
+                assert_eq!(hints["destructiveHint"], false, "no tool changes anything: {tool}");
+            }
             let unknown = handle(&json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/list" }), s).unwrap();
             assert_eq!(unknown["error"]["code"], -32601);
         });
@@ -218,5 +232,13 @@ mod tests {
 
         let missing = call_tool("explain_check", json!({ "id": "nope" }));
         assert_eq!(missing["result"]["isError"], true);
+    }
+
+    #[test]
+    fn quarantine_list_shows_where_and_why_without_the_stored_path() {
+        let r = call_tool("quarantine_list", json!({}));
+        let text = r["result"]["content"][1]["text"].as_str().unwrap();
+        assert!(text.contains("ZeffMeet.dmg") && text.contains("Fake meeting app"), "lists original location and reason: {text}");
+        assert!(!text.contains(".tsuba/quarantine"), "the stored path stays private: {text}");
     }
 }

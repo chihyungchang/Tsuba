@@ -623,7 +623,7 @@ fn sandbox_enforces_least_privilege() {
 #[test]
 fn sandbox_outbound_secret_scan() {
     // Stealing the decoy key from env vars: recognized by its marker
-    let (leaked, secrets) = sandbox::scan_outbound("POST /c HTTP/1.1\r\n\r\nk=sk-proj-TSUBADECOYOPENAI7f3kQ9xLm2Vb8Nc4Rt6Yw1Zp5Hs0Jd");
+    let (leaked, secrets) = sandbox::scan_outbound(concat!("POST /c HTTP/1.1\r\n\r\nk=sk-", "proj-TSUBADECOYOPENAI7f3kQ9xLm2Vb8Nc4Rt6Yw1Zp5Hs0Jd"));
     assert_eq!(leaked, vec!["TSUBADECOYOPENAI"]);
     assert!(secrets.is_empty(), "the decoy itself should not also count as another secret: {secrets:?}");
     // A real-format secret that isn't a decoy: record only its kind
