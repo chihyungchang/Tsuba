@@ -195,7 +195,7 @@ Tsuba/
 Requires Rust (`rustup`), Node.js and pnpm.
 
 ```bash
-cd app && pnpm install && pnpm tauri dev     # start the app
+pnpm app                                     # start the app (installs front-end dependencies first)
 cargo test                                   # run the engine tests
 cargo run -p tsuba-cli -- scan <path>        # check a file or directory directly, without the app
 cargo run -p tsuba-cli -- eval <samples dir> # sample set acceptance: detection and false positive rates against the targets in PRD section 4

@@ -1,0 +1,7 @@
+{
+  "name": "tsuba",
+  "private": true,
+  "scripts": {
+    "app": "pnpm --dir app install --frozen-lockfile && pnpm --dir app tauri dev"
+  }
+}
