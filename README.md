@@ -17,6 +17,10 @@
 </p>
 
 <p align="center">
+  <b>English</b> · <a href="README.zh-Hans.md">简体中文</a> · <a href="README.zh-Hant.md">繁體中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.de.md">Deutsch</a> · <a href="README.pt-BR.md">Português</a> · <a href="README.ru.md">Русский</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/chihyungchang/Tsuba/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/chihyungchang/Tsuba?style=flat&color=b4873a" /></a>
   <a href="https://github.com/chihyungchang/Tsuba/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/chihyungchang/Tsuba/total?style=flat&color=1f8a50" /></a>
   <img alt="macOS 13+" src="https://img.shields.io/badge/macOS-13%2B-1f1c17?style=flat&logo=apple" />
@@ -47,6 +51,7 @@ Tsuba steps in at the entry points where they first run: it works out **what the
 - 🔒 **Read-only by design.** Code under check is parsed, never run: disk images are mounted read-only, remote scripts are downloaded but not executed, and the script that runs is the one Tsuba checked.
 - 🤫 **Quiet until it matters.** Warnings land in history without a sound; only Block notifies with a short tone. Anything confirmed as a false alarm can be ignored or marked safe.
 - 🔄 **Updates itself, safely.** New versions install from GitHub Releases only when their signature matches Tsuba's key.
+- 🌏 **Speaks your language.** The app, notifications, terminal checks, rule explanations and AI answers come in English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português and Русский. It follows macOS, or pick one in Settings → Appearance.
 
 ## Product tour
 
@@ -159,6 +164,8 @@ export TSUBA_DISABLE=1     # turn it off for the current terminal window
 
 Cancelled commands stay in your shell history; once you've verified them, press the up arrow to get them back.
 
+Every `tsuba` command takes `--lang <code>` (`en`, `zh-Hans`, `zh-Hant`, `ja`, `ko`, `es`, `fr`, `de`, `pt-BR`, `ru`); without it, the terminal uses the language chosen in the app.
+
 ### Sandbox trial run (prototype)
 
 For a script you're unsure about, you can run it briefly in a sandbox and see what it actually does, instead of reading the code line by line:
@@ -206,6 +213,10 @@ The samples directory contains two subdirectories, `malicious/` and `benign/`; e
 During development the App looks for the terminal checker next to itself (`target/debug/tsuba`); set it up in one click under Settings → Protection → Connect to zsh, and it takes effect in newly opened terminal windows.
 
 Test samples are all inert: they only mimic the shape of attack code, their IPs belong to documentation ranges, and decoded content is harmless too.
+
+Code holds English text; translations live in one catalog per language (`locales/<code>.json` in `app/src`, `app/src-tauri`, `crates/engine` and `crates/cli`), and each rule in the rule pack carries its own `message_<lang>`. The catalog tests and `pnpm check:i18n` fail when a string is missing from any language or a translation drops a `{placeholder}`.
+
+The app icon, the dashboard's laptop and the guard are Blender renders: `app/src-tauri/icons/source/` holds the scripts and the steps to regenerate them.
 
 <details>
 <summary><b>Releasing</b></summary>
