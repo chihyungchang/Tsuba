@@ -3,8 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Icon } from "../icons";
 import { LogEntry, QuarantineItem, SandboxResult } from "../types";
-import { BackLink, Banner, ConfirmButton, Empty, MenuButton, toast, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, relativeTime, shortPath } from "../ui";
-import { lang, t } from "../i18n";
+import { BackLink, Banner, ConfirmButton, Empty, MenuButton, toast, toastDone, FindingList, ReportView, Spinner, VerdictBadge, baseName, errText, listSeparator, relativeTime, shortPath } from "../ui";
+import { t } from "../i18n";
 import { useTask } from "../tasks";
 
 /** Sources whose entry title is a path on disk: can be quarantined, marked safe and shown in Finder */
@@ -69,7 +69,6 @@ function actionLabel(action: string): string {
   }
 }
 
-const listSeparator = () => (lang() === "zh-Hans" ? "、" : ", ");
 
 function dayLabel(iso: string): string {
   const time = new Date(iso.replace(" ", "T"));

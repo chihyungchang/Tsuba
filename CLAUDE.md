@@ -46,11 +46,12 @@ Tsuba is security software: its mistakes either let an attack slip through, or b
 - Names say clearly "what it is", without abbreviations: `find_project_root`, `wait_complete`, not `fpr`, `wc`.
 - Booleans start with `is_` / `has_`; functions that return an `Option` use `find_` / `lookup`.
 - Code, comments, docs, test names and commit messages are in English. Comments explain "why" (why we judge it this way, which pitfalls we hit), not restate what the code does.
-- User-visible text is never hard-coded:
-  - Rust: `tr!("English", name = value)`, with a Simplified Chinese entry in that crate's `locales/zh-Hans.json`.
-  - UI: `t("English", { name })`, with a Simplified Chinese entry in `app/src/locales/zh-Hans.json`.
-  - Rule pack rules carry `message` plus `message_zh`.
-- Every new user-visible string gets a Chinese entry; the catalog tests (`zh_hans_catalog_matches_sources`) and `pnpm check:i18n` must pass.
+- User-visible text is never hard-coded. Tsuba speaks ten languages: en, zh-Hans, zh-Hant, ja, ko, es, fr, de, pt-BR, ru (`Lang::ALL` in Rust, `LANGS` in the UI).
+  - Rust: `tr!("English", name = value)`, with an entry in each of that crate's `locales/<code>.json`.
+  - UI: `t("English", { name })`, with an entry in each of `app/src/locales/<code>.json`.
+  - Rule pack rules carry `message` plus `message_zh`, `message_zh_hant`, `message_ja`, `message_ko`, `message_es`, `message_fr`, `message_de`, `message_pt_br`, `message_ru`.
+  - Dates, times, numbers and lists go through `Intl` with the current language, never a hand-built format.
+- Every new user-visible string gets an entry in every language; the catalog tests (`catalogs_match_sources`) and `pnpm check:i18n` must pass, and they also fail when a translation drops a `{placeholder}`.
 - Never decide logic by matching user-visible text; use an ID, enum or field instead.
 - User-facing messages state three things clearly: what was found, why it is dangerous, and what to do next.
 
@@ -67,7 +68,7 @@ Tsuba is security software: its mistakes either let an attack slip through, or b
 cargo test                       # all tests
 cargo clippy --workspace         # no warnings left
 cd app && pnpm exec tsc --noEmit # front-end type check
-pnpm -s check:i18n               # (in app/) every UI string has a zh-Hans entry, none unused
+pnpm -s check:i18n               # (in app/) every UI string has an entry in every language, none unused
 ```
 
 When you change detection rules, also measure false positives on real extensions and skills (see above).

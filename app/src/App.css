@@ -187,9 +187,25 @@ h1,
   letter-spacing: 0.02em;
 }
 
-:root:lang(zh) h1,
-:root:lang(zh) .report-summary {
+/* Each script in its own Mincho / Song / Myeongjo; Cyrillic in the system serif (New York), which Hiragino draws poorly */
+:root:lang(zh-Hans) h1,
+:root:lang(zh-Hans) .report-summary {
   font-family: "Songti SC", "STSong", var(--serif);
+}
+
+:root:lang(zh-Hant) h1,
+:root:lang(zh-Hant) .report-summary {
+  font-family: "Songti TC", "Songti SC", var(--serif);
+}
+
+:root:lang(ko) h1,
+:root:lang(ko) .report-summary {
+  font-family: "AppleMyungjo", var(--serif);
+}
+
+:root:lang(ru) h1,
+:root:lang(ru) .report-summary {
+  font-family: ui-serif, "New York", Georgia, serif;
 }
 
 p {
@@ -395,6 +411,10 @@ select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%238a8893' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 4.75 2.5-2.5 2.5 2.5M3.5 7.25l2.5 2.5 2.5-2.5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
+}
+
+.lang-select {
+  width: 180px;
 }
 
 input::placeholder {

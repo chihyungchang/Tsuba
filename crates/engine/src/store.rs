@@ -173,7 +173,7 @@ pub struct Config {
     pub notify_sound: bool,
     pub intel: IntelConfig,
     pub scan: ScanConfig,
-    /// The language chosen in the App: empty follows the system, otherwise "en" or "zh-Hans". Stored here rather than
+    /// The language chosen in the App: empty follows the system, otherwise a language code ("en", "zh-Hans", "ja", ...). Stored here rather than
     /// only in the window, so the terminal check and AI answers in every process match the App.
     pub language: String,
 }

@@ -5,7 +5,7 @@
 
 /// User-facing text in this crate: `tr!("Found {n} files", n = count)`. Defined before the modules so they can all use it.
 macro_rules! tr {
-    ($($args:tt)*) => { $crate::tr_in!($crate::i18n_catalog::ZH_HANS, $($args)*) };
+    ($($args:tt)*) => { $crate::tr_in!($crate::i18n_catalog::CATALOG, $($args)*) };
 }
 
 pub mod agents;
@@ -27,13 +27,13 @@ pub mod store;
 pub mod trust;
 
 mod i18n_catalog {
-    pub static ZH_HANS: crate::i18n::Catalog = crate::i18n::Catalog::new(|| crate::i18n::parse_catalog(include_str!("../locales/zh-Hans.json")));
+    pub static CATALOG: crate::i18n::Catalog = crate::catalog!("../locales");
 
     #[test]
-    fn zh_hans_catalog_matches_sources() {
+    fn catalogs_match_sources() {
         let sources = crate::i18n::read_sources(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
         let sources: Vec<&str> = sources.iter().map(String::as_str).collect();
-        if let Err(e) = crate::i18n::check_catalog(&ZH_HANS, &sources, &[]) {
+        if let Err(e) = crate::i18n::check_catalog(&CATALOG, &sources, &[]) {
             panic!("{e}");
         }
     }

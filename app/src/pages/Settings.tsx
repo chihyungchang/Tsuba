@@ -2,10 +2,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Icon, TsubaMark, type IconName } from "../icons";
-import { lang, loadLangPreference, setLangPreference, t, type LangPreference } from "../i18n";
+import { LANGS, loadLangPreference, setLangPreference, t, type LangPreference } from "../i18n";
 import { loadThemePreference, setThemePreference, type ThemePreference } from "../theme";
 import { Config, IntelManifest, Overview } from "../types";
-import { BackLink, Banner, Group, Row, modeLabel, Section, Spinner, Toggle, errText, formatNumber, interpolate, relativeTime, shortPath, toast, toastDone } from "../ui";
+import { BackLink, Banner, Group, Row, modeLabel, Section, Spinner, Toggle, errText, formatNumber, interpolate, listSeparator, relativeTime, shortPath, toast, toastDone } from "../ui";
 
 type PresetGroup = "frontier" | "cloud" | "router" | "local" | "custom";
 
@@ -153,7 +153,7 @@ function DefenseSection({ overview, reload }: { overview: Overview; reload: () =
   const editors = overview.extension_dirs
     .map((d) => d.split("/").slice(-2, -1)[0].replace(/^\./, ""))
     .map((n) => ({ vscode: "VS Code", cursor: "Cursor", windsurf: "Windsurf", "vscode-oss": "VSCodium" })[n] ?? n);
-  const editorList = editors.join(lang() === "zh-Hans" ? "、" : ", ");
+  const editorList = editors.join(listSeparator());
   return (
     <Section title={t("Defenses")}>
       {error && <Banner onClose={() => setError("")}>{error}</Banner>}
@@ -241,12 +241,6 @@ const themes = (): { id: ThemePreference; label: string }[] => [
   { id: "dark", label: t("Dark") },
 ];
 
-// Language names stay in their own language, so people can find theirs whatever is showing now
-const langs = (): { id: LangPreference; label: string }[] => [
-  { id: "system", label: t("System") },
-  { id: "en", label: "English" },
-  { id: "zh-Hans", label: "简体中文" },
-];
 
 function Segmented<T extends string>({ label, options, value, onChange }: { label: string; options: { id: T; label: string }[]; value: T; onChange: (v: T) => void }) {
   return (
@@ -285,15 +279,24 @@ function AppearanceSection() {
           title={t("Language")}
           detail={t("Also used for notifications, the menu bar menu and new check results. Past results keep the language they were checked in.")}
           trailing={
-            <Segmented
-              label={t("Language")}
-              options={langs()}
+            // Ten languages don't fit a segmented control; language names stay in their own language (LANGS)
+            <select
+              className="lang-select"
+              aria-label={t("Language")}
               value={lang}
-              onChange={(v) => {
+              onChange={(e) => {
+                const v = e.target.value as LangPreference;
                 setLang(v);
                 setLangPreference(v);
               }}
-            />
+            >
+              <option value="system">{t("System")}</option>
+              {LANGS.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
           }
         />
       </Group>

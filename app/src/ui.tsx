@@ -31,11 +31,18 @@ export function formatNumber(n: number): string {
   return n.toLocaleString(lang());
 }
 
-/** A large count kept short: "23.4K" in English, "2.3 万" in Chinese (Chinese groups by ten thousand) */
+/** A large count kept short in the language's own way: "23.4K", "2.3万" (Chinese and Japanese group by ten thousand), "2,3 Mio." */
 export function formatCompact(n: number): string {
   if (n < 10000) return formatNumber(n);
-  if (lang() === "zh-Hans") return `${(n / 10000).toFixed(1)} 万`;
-  return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  return new Intl.NumberFormat(lang(), { notation: "compact", maximumFractionDigits: 1 }).format(n);
+}
+
+/** Chinese, Japanese and Korean: short dates and clocks, and no need to drop words to fit narrow columns */
+const isCompactScript = () => ["zh-Hans", "zh-Hant", "ja", "ko"].includes(lang());
+
+/** Joins short items in running text: the ideographic comma in Chinese and Japanese, a comma elsewhere */
+export function listSeparator(): string {
+  return ["zh-Hans", "zh-Hant", "ja"].includes(lang()) ? "、" : ", ";
 }
 
 /**
@@ -46,20 +53,17 @@ export function formatCompact(n: number): string {
 export function relativeTime(iso: string, { short = false } = {}): string {
   const time = new Date(iso.replace(" ", "T"));
   if (Number.isNaN(time.getTime())) return iso;
-  const isChinese = lang() === "zh-Hans";
   const diff = (Date.now() - time.getTime()) / 1000;
-  // Chinese keeps the 24-hour clock it always had; English follows the usual "2:20 PM"
-  const clock = isChinese
-    ? `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`
-    : time.toLocaleTimeString("en", { hour: "numeric", minute: "2-digit" });
+  // Each language's usual clock: "2:20 PM" in English, "14:20" in Chinese and most of Europe
+  const clock = time.toLocaleTimeString(lang(), { hour: "numeric", minute: "2-digit" });
   if (diff < 60) return t("just now");
   if (diff < 3600) return t("{n} min ago", { n: Math.floor(diff / 60) });
   const today = new Date();
   const yesterday = new Date(today.getTime() - 86400_000);
   const isToday = time.toDateString() === today.toDateString();
   const isYesterday = time.toDateString() === yesterday.toDateString();
-  const date = isChinese ? `${time.getMonth() + 1}月${time.getDate()}日` : time.toLocaleDateString("en", { month: "short", day: "numeric" });
-  if (short && !isChinese) return isToday ? clock : isYesterday ? "Yesterday" : date;
+  const date = time.toLocaleDateString(lang(), { month: "short", day: "numeric" });
+  if (short && !isCompactScript()) return isToday ? clock : isYesterday ? t("Yesterday") : date;
   if (isToday) return t("today at {time}", { time: clock });
   if (isYesterday) return t("yesterday at {time}", { time: clock });
   return t("{date} at {time}", { date, time: clock });

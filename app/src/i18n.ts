@@ -1,29 +1,54 @@
-// User-facing text in English and Simplified Chinese.
+// User-facing text in English and nine other languages.
 //
-// Components write the English text: t("Scan a folder"), t("{n} checks", { n }). The Chinese
-// catalog maps that English text to Chinese (gettext style); a missing entry falls back to
-// English. `pnpm check:i18n` fails when a t() string has no entry or an entry is unused.
+// Components write the English text: t("Scan a folder"), t("{n} checks", { n }). Each language's
+// catalog (locales/<code>.json) maps that English text to the translation (gettext style); a missing
+// entry falls back to English. `pnpm check:i18n` fails when a t() string has no entry in some
+// language, an entry is unused, or a translation drops a {placeholder}.
 //
 // The backend is told about every change and saves it to the config, so notifications, the tray menu,
 // new findings, AI answers and the terminal check all come out in the same language as the window.
 
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import de from "./locales/de.json";
+import es from "./locales/es.json";
+import fr from "./locales/fr.json";
+import ja from "./locales/ja.json";
+import ko from "./locales/ko.json";
+import ptBR from "./locales/pt-BR.json";
+import ru from "./locales/ru.json";
 import zhHans from "./locales/zh-Hans.json";
+import zhHant from "./locales/zh-Hant.json";
 
-export type Lang = "en" | "zh-Hans";
+/** Every supported language with its name in that language, so people can find theirs whatever is showing now. Same set as the engine's Lang */
+export const LANGS = [
+  { id: "en", name: "English" },
+  { id: "zh-Hans", name: "简体中文" },
+  { id: "zh-Hant", name: "繁體中文" },
+  { id: "ja", name: "日本語" },
+  { id: "ko", name: "한국어" },
+  { id: "es", name: "Español" },
+  { id: "fr", name: "Français" },
+  { id: "de", name: "Deutsch" },
+  { id: "pt-BR", name: "Português (Brasil)" },
+  { id: "ru", name: "Русский" },
+] as const;
+
+export type Lang = (typeof LANGS)[number]["id"];
 export type LangPreference = "system" | Lang;
 
 const STORAGE_KEY = "tsuba-lang";
-const ZH_HANS: Record<string, string> = zhHans;
+const CATALOGS: Partial<Record<Lang, Record<string, string>>> = { "zh-Hans": zhHans, "zh-Hant": zhHant, ja, ko, es, fr, de, "pt-BR": ptBR, ru };
 // No Tauri backend when previewing in a plain browser
 const isNativeWindow = "__TAURI_INTERNALS__" in window;
 
-/** Same rule as the engine's Lang::parse: Simplified Chinese tags → zh-Hans; Traditional Chinese and everything else → en. */
+/** Same rule as the engine's Lang::parse: by the language subtag; Chinese splits by script or region, any Portuguese → pt-BR, the rest → en. */
 export function parseLang(tag: string): Lang {
   const t = tag.toLowerCase().replace(/_/g, "-");
-  const isTraditional = ["hant", "-tw", "-hk", "-mo"].some((m) => t.includes(m));
-  return (t === "zh" || t.startsWith("zh-")) && !isTraditional ? "zh-Hans" : "en";
+  const primary = t.split(/[-.@]/)[0];
+  if (primary === "zh") return ["hant", "-tw", "-hk", "-mo"].some((m) => t.includes(m)) ? "zh-Hant" : "zh-Hans";
+  if (primary === "pt") return "pt-BR";
+  return LANGS.find((l) => l.id === primary)?.id ?? "en";
 }
 
 function systemLang(): Lang {
@@ -33,7 +58,7 @@ function systemLang(): Lang {
 export function loadLangPreference(): LangPreference {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    if (v === "en" || v === "zh-Hans") return v;
+    if (LANGS.some((l) => l.id === v)) return v as Lang;
   } catch {
     // Storage unavailable: follow the system
   }
@@ -89,7 +114,7 @@ export function useLang(): Lang {
 
 /** The text in the current language, with `{name}` placeholders filled. Named, because word order differs between languages. */
 export function t(en: string, vars?: Record<string, string | number>): string {
-  let text = current === "zh-Hans" ? (ZH_HANS[en] ?? en) : en;
+  let text = CATALOGS[current]?.[en] ?? en;
   if (vars) for (const [k, v] of Object.entries(vars)) text = text.split(`{${k}}`).join(String(v));
   return text;
 }

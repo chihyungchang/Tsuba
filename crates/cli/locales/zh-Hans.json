@@ -45,7 +45,7 @@
   "Until you know what it is, don't open it in VS Code, Cursor or an AI coding tool. If you must look, open it in VS Code's Restricted Mode.": "在弄清楚之前，先不要用 VS Code、Cursor 或 AI 编程工具打开它；一定要看，用 VS Code 的受限模式（Restricted Mode）打开。",
   "Updated: {time}": "更新时间：{time}",
   "Updating {step} …": "更新 {step} …",
-  "Usage: tsuba check -- <command> | tsuba scan <path> | tsuba doctor | tsuba mcp (read-only MCP tools for Claude Code and others) [--lang en|zh-Hans]": "用法：tsuba check -- <命令> | tsuba scan <路径> | tsuba doctor | tsuba mcp（给 Claude Code 等用的只读 MCP 工具）[--lang en|zh-Hans]",
+  "Usage: tsuba check -- <command> | tsuba scan <path> | tsuba doctor | tsuba mcp (read-only MCP tools for Claude Code and others) [--lang en|zh-Hans|zh-Hant|ja|ko|es|fr|de|pt-BR|ru]": "用法：tsuba check -- <命令> | tsuba scan <路径> | tsuba doctor | tsuba mcp（给 Claude Code 等用的只读 MCP 工具）[--lang en|zh-Hans|zh-Hant|ja|ko|es|fr|de|pt-BR|ru]",
   "Usage: tsuba eval <sample folder> (with malicious/ and benign/ subfolders; each file or subfolder is one sample)": "用法：tsuba eval <样本目录>（目录下放 malicious/ 和 benign/ 两个子目录，每个文件或子目录算一个样本）",
   "Usage: tsuba intel update [--force] | tsuba intel status": "用法：tsuba intel update [--force] | tsuba intel status",
   "Usage: tsuba rules keygen <private key file> | tsuba rules sign --key <private key file> <rules folder> | tsuba rules verify <rules folder>": "用法：tsuba rules keygen <私钥文件> | tsuba rules sign --key <私钥文件> <规则目录> | tsuba rules verify <规则目录>",

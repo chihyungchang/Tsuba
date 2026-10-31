@@ -37,8 +37,9 @@ pub struct Lists {
 struct RuleMeta {
     severity: Severity,
     message: String,
-    /// The rule pack carries its own translation: packs update without a release, so the app's catalog can't know new rules.
-    message_zh: Option<String>,
+    /// The rule pack carries its own translations (`message_zh`, `message_ja`, ...): packs update without a release,
+    /// so the app's catalogs can't know new rules. A language a pack doesn't cover falls back to English.
+    translations: HashMap<crate::i18n::Lang, String>,
     skip_quoted: bool,
     doc_keep: bool,
     skip_well_known: bool,
@@ -46,10 +47,7 @@ struct RuleMeta {
 
 impl RuleMeta {
     fn localized_message(&self) -> String {
-        match (crate::i18n::lang(), &self.message_zh) {
-            (crate::i18n::Lang::ZhHans, Some(zh)) => zh.clone(),
-            _ => self.message.clone(),
-        }
+        self.translations.get(&crate::i18n::lang()).cloned().unwrap_or_else(|| self.message.clone())
     }
 }
 
@@ -89,7 +87,10 @@ fn compile(yar: &str, toml_text: &str, origin: Origin) -> Result<Pack, String> {
             RuleMeta {
                 severity,
                 message: meta_str(&m, "message").unwrap_or(r.identifier()).to_string(),
-                message_zh: meta_str(&m, "message_zh").map(str::to_string),
+                translations: crate::i18n::Lang::ALL[1..]
+                    .iter()
+                    .filter_map(|lang| meta_str(&m, lang.rule_message_key()).map(|text| (*lang, text.to_string())))
+                    .collect(),
                 skip_quoted: meta_bool(&m, "skip_quoted"),
                 doc_keep: meta_bool(&m, "doc_keep"),
                 skip_well_known: meta_bool(&m, "skip_well_known"),
@@ -264,12 +265,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_bundled_rule_has_a_chinese_message() {
+    fn every_bundled_rule_has_a_message_in_every_language() {
         let pack = compile(BUNDLED_YAR, BUNDLED_TOML, Origin::Bundled).unwrap();
         assert!(!pack.meta.is_empty());
         for (id, m) in &pack.meta {
             assert!(m.message != *id && !m.message.trim().is_empty(), "{id} has no message");
-            assert!(m.message_zh.as_deref().is_some_and(|zh| !zh.trim().is_empty()), "{id} has no message_zh");
+            for lang in &crate::i18n::Lang::ALL[1..] {
+                let key = lang.rule_message_key();
+                assert!(m.translations.get(lang).is_some_and(|text| !text.trim().is_empty()), "{id} has no {key}");
+            }
         }
     }
 }

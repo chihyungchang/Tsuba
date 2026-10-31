@@ -2,7 +2,7 @@
 
 /// User-facing text in the App backend: `tr!("Found {n} files", n = count)`. Defined before the modules so they can use it.
 macro_rules! tr {
-    ($($args:tt)*) => { tsuba_engine::tr_in!(crate::ZH_HANS, $($args)*) };
+    ($($args:tt)*) => { tsuba_engine::tr_in!(crate::CATALOG, $($args)*) };
 }
 
 mod shell_hook;
@@ -21,7 +21,7 @@ use tsuba_engine::rules::{Finding, Verdict};
 use tsuba_engine::store::{self, Config, LogEntry};
 use tsuba_engine::{doctor, extension, judge, quarantine, scan, trust};
 
-static ZH_HANS: tsuba_engine::i18n::Catalog = tsuba_engine::i18n::Catalog::new(|| tsuba_engine::i18n::parse_catalog(include_str!("../locales/zh-Hans.json")));
+static CATALOG: tsuba_engine::i18n::Catalog = tsuba_engine::catalog!("../locales");
 
 struct AppState {
     config: Arc<Mutex<Config>>,
@@ -573,7 +573,7 @@ fn tray_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Ok(menu)
 }
 
-/// The window's language setting. `preference` is "system", "en" or "zh-Hans"; `lang` is what the window resolved it to.
+/// The window's language setting. `preference` is "system" or a language code; `lang` is what the window resolved it to.
 /// It is saved to the config so the terminal check and every AI answer use it too, not only this process.
 #[tauri::command]
 fn set_lang(app: AppHandle, state: State<AppState>, preference: String, lang: String) -> Result<(), String> {
@@ -730,10 +730,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn zh_hans_catalog_matches_sources() {
+    fn catalogs_match_sources() {
         let sources = tsuba_engine::i18n::read_sources(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
         let sources: Vec<&str> = sources.iter().map(String::as_str).collect();
-        if let Err(e) = tsuba_engine::i18n::check_catalog(&ZH_HANS, &sources, &[]) {
+        if let Err(e) = tsuba_engine::i18n::check_catalog(&CATALOG, &sources, &[]) {
             panic!("{e}");
         }
     }

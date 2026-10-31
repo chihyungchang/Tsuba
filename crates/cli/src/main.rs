@@ -19,11 +19,11 @@
 //! tsuba mcp                                              Read-only MCP tools so Claude Code and others can query check history
 //!                                                        (claude mcp add tsuba -- tsuba mcp)
 //!
-//! Every command also takes `--lang en|zh-Hans`.
+//! Every command also takes `--lang <code>`: en, zh-Hans, zh-Hant, ja, ko, es, fr, de, pt-BR or ru.
 
 /// User-facing text in the CLI: `tr!("Found {n} files", n = count)`. Defined before the modules so they can use it.
 macro_rules! tr {
-    ($($args:tt)*) => { tsuba_engine::tr_in!(crate::ZH_HANS, $($args)*) };
+    ($($args:tt)*) => { tsuba_engine::tr_in!(crate::CATALOG, $($args)*) };
 }
 
 mod mcp;
@@ -36,9 +36,9 @@ use tsuba_engine::rules::{Finding, Severity, Verdict};
 use tsuba_engine::store::{self, Config, LogEntry};
 use tsuba_engine::{Report, collect, doctor, scan, trust};
 
-static ZH_HANS: tsuba_engine::i18n::Catalog = tsuba_engine::i18n::Catalog::new(|| tsuba_engine::i18n::parse_catalog(include_str!("../locales/zh-Hans.json")));
+static CATALOG: tsuba_engine::i18n::Catalog = tsuba_engine::catalog!("../locales");
 
-/// `--lang en|zh-Hans` anywhere on the command line wins; otherwise the language chosen in the App, which falls back to
+/// `--lang <code>` anywhere on the command line wins; otherwise the language chosen in the App, which falls back to
 /// the system language. Removes the flag from args.
 fn take_lang(args: &mut Vec<String>) -> tsuba_engine::i18n::Lang {
     use tsuba_engine::i18n::Lang;
@@ -829,7 +829,7 @@ fn main() {
             0
         }
         _ => {
-            eprintln!("{}", tr!("Usage: tsuba check -- <command> | tsuba scan <path> | tsuba doctor | tsuba mcp (read-only MCP tools for Claude Code and others) [--lang en|zh-Hans]"));
+            eprintln!("{}", tr!("Usage: tsuba check -- <command> | tsuba scan <path> | tsuba doctor | tsuba mcp (read-only MCP tools for Claude Code and others) [--lang en|zh-Hans|zh-Hant|ja|ko|es|fr|de|pt-BR|ru]"));
             2
         }
     };
@@ -841,10 +841,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn zh_hans_catalog_matches_sources() {
+    fn catalogs_match_sources() {
         let sources = tsuba_engine::i18n::read_sources(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
         let sources: Vec<&str> = sources.iter().map(String::as_str).collect();
-        if let Err(e) = tsuba_engine::i18n::check_catalog(&ZH_HANS, &sources, &[]) {
+        if let Err(e) = tsuba_engine::i18n::check_catalog(&CATALOG, &sources, &[]) {
             panic!("{e}");
         }
     }

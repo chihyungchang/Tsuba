@@ -5,7 +5,6 @@
 //! - Services compatible with the OpenAI Chat Completions API: local models through Ollama, LM Studio, llama.cpp, vLLM and
 //!   the like, plus other cloud models
 
-use crate::i18n::Lang;
 use crate::rules::Verdict;
 use crate::store::{Config, Provider};
 use serde::{Deserialize, Serialize};
@@ -38,10 +37,7 @@ summary states the conclusion in one sentence, reasons lists the 1 to 5 most imp
 /// The system prompt plus the language to answer in: summary, reasons and advice are shown to the user as they are.
 /// The verdict stays an English enum value, so parsing the answer doesn't depend on the language.
 fn system_prompt() -> String {
-    let language = match crate::i18n::lang() {
-        Lang::En => "English",
-        Lang::ZhHans => "Simplified Chinese (简体中文)",
-    };
+    let language = crate::i18n::lang().english_name();
     format!("{SYSTEM_PROMPT}\n\nWrite summary, reasons and advice in {language}. The verdict value stays one of allow, warn or block.")
 }
 
