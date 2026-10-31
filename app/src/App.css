@@ -1,5 +1,6 @@
 /*
-  Tsuba UI styles: black lacquer and washi paper, colors taken from the tsuba mark (vermilion, black lacquer, gold, steel white). Standard: app/DESIGN.md.
+  Tsuba UI styles: samurai armor, held back. Black lacquer and hammered iron (dark) or washi and sumi ink (light), gold
+  rims from the tsuba mark, vermilion seals. Materials and craft only: no cherry blossoms, brush fonts or ninjas. Standard: app/DESIGN.md.
 
   - A one-screen dashboard plus detail pages entered from its tiles; panels are opaque solid colors, depth comes from light/dark and hairlines, not transparency and shadows.
   - Light is :root, dark is :root[data-theme="dark"], switched by src/theme.ts; the two only swap tokens, never structure.
@@ -10,12 +11,13 @@
 :root {
   --gold-line: rgba(150, 110, 40, 0.35);
   --ring-off: #d9d1c2;
-  --window: #f6f2ea;
-  --bar: #ece6da;
-  --band: #efe9de;
-  --panel: #fffdf8;
-  --raised: #ffffff;
-  --well: #f1ece2;
+  /* Washi: unbleached kinari paper, a shade warmer than before */
+  --window: #f3eee3;
+  --bar: #e9e2d3;
+  --band: #ece5d8;
+  --panel: #fcf9f2;
+  --raised: #fffdf8;
+  --well: #eee7d9;
   --fill: rgba(60, 45, 20, 0.06);
   /* The chosen option in a segmented control */
   --selected: var(--raised);
@@ -32,8 +34,9 @@
   --float-shadow: 0 0 0 1px rgba(20, 20, 30, 0.08), 0 12px 32px rgba(20, 20, 30, 0.14);
   --control-shadow: 0 0 0 1px rgba(20, 20, 30, 0.1), 0 1px 1px rgba(20, 20, 30, 0.04);
 
-  --text: #1f1c17;
-  --text-2: #4e483e;
+  /* Sumi ink */
+  --text: #1b1915;
+  --text-2: #4b453b;
   --text-3: #857d70;
   --line: rgba(60, 45, 20, 0.1);
   --line-strong: rgba(60, 45, 20, 0.17);
@@ -52,24 +55,30 @@
   --brand-soft: rgba(201, 64, 31, 0.1);
   --focus: rgba(180, 135, 58, 0.45);
 
-  --allow: #1f8a50;
-  --allow-soft: rgba(31, 138, 80, 0.1);
-  --warn: #a96400;
+  /* Pine-needle green, yamabuki yellow, hi scarlet: traditional dyes, still the same three meanings */
+  --allow: #2a7a47;
+  --allow-soft: rgba(42, 122, 71, 0.1);
+  --warn: #a46500;
   --warn-soft: rgba(204, 128, 10, 0.13);
-  --block: #c42a1d;
-  --block-soft: rgba(196, 42, 29, 0.1);
+  --block: #b8261b;
+  --block-soft: rgba(184, 38, 27, 0.1);
   /* White-on-red buttons get their own deeper red: dark mode's --block is too light for white text to read */
   --alarm: #c42a1d;
   --intel: linear-gradient(180deg, #68b844, #4f9a33);
 
-  --r-xl: 14px;
-  --r-lg: 12px;
-  --r-md: 10px;
-  --r-sm: 8px;
+  /* Lacquer boxes and iron plates: tight corners, not soft app cards */
+  --r-xl: 8px;
+  --r-lg: 6px;
+  --r-md: 5px;
+  --r-sm: 4px;
   --r-pill: 999px;
 
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  /* Titles only, like the heading of a samurai house's document; both fonts ship with macOS. Chinese UI uses Songti for Chinese letterforms */
+  --serif: "Hiragino Mincho ProN", "Songti SC", "STSong", serif;
+  /* Washi fibers: long faint streaks over the window background */
+  --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.35 0.09' numOctaves='3' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.33 0 0 0 0 0.18 0 0 0 0.13 -0.035'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
 
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", sans-serif;
   font-size: 13px;
@@ -82,12 +91,13 @@
 :root[data-theme="dark"] {
   --gold-line: rgba(216, 179, 106, 0.3);
   --ring-off: #34323a;
-  --window: #141317;
-  --bar: #0f0e11;
-  --band: #1d1c21;
-  --panel: #232228;
-  --raised: #2e2d34;
-  --well: #0e0d10;
+  /* Black lacquer, with a hint of the warm brown under it */
+  --window: #131114;
+  --bar: #0d0c0e;
+  --band: #1c1a1d;
+  --panel: #211e22;
+  --raised: #2c292d;
+  --well: #0c0b0d;
   --fill: rgba(0, 0, 0, 0.25);
   /* Lighter than --raised: on the dark track the chosen option must stand out at a glance */
   --selected: #3d3c44;
@@ -116,14 +126,16 @@
   --brand-soft: rgba(229, 83, 47, 0.16);
   --focus: rgba(216, 179, 106, 0.5);
 
-  --allow: #6fd18f;
-  --allow-soft: rgba(111, 209, 143, 0.13);
-  --warn: #f0b44c;
-  --warn-soft: rgba(240, 180, 76, 0.14);
-  --block: #ff6b5e;
-  --block-soft: rgba(255, 107, 94, 0.14);
+  --allow: #7ccb8f;
+  --allow-soft: rgba(124, 203, 143, 0.13);
+  --warn: #f2b441;
+  --warn-soft: rgba(242, 180, 65, 0.14);
+  --block: #ff6a57;
+  --block-soft: rgba(255, 106, 87, 0.14);
   --alarm: #c42a1d;
   --intel: linear-gradient(180deg, #7cc456, #5ea83c);
+  /* Hammered iron: a fine, even grain over the lacquer */
+  --texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 0.93 0 0 0 0 0.8 0 0 0 0.09 -0.025'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
 
   color-scheme: dark;
 }
@@ -166,6 +178,18 @@ h2,
 h3 {
   margin: 0;
   font-weight: 600;
+}
+
+/* Page titles and the verdict in Mincho: the one place the samurai style touches the text. Body, commands and evidence stay in the system font */
+h1,
+.report-summary {
+  font-family: var(--serif);
+  letter-spacing: 0.02em;
+}
+
+:root:lang(zh) h1,
+:root:lang(zh) .report-summary {
+  font-family: "Songti SC", "STSong", var(--serif);
 }
 
 p {
@@ -409,7 +433,7 @@ select:focus {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--window);
+  background: var(--texture), var(--window);
   /* Its own stacking context, so the paused red glow (z-index: -1) lands above the background and below the content */
   position: relative;
   isolation: isolate;
@@ -479,8 +503,6 @@ select:focus {
 .page-header h1 {
   font-size: 24px;
   line-height: 30px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
 }
 
 .page-subtitle {
@@ -1242,8 +1264,6 @@ button.footbar-settings:hover:not(:disabled) {
   margin: 12px 0 8px;
   font-size: 30px;
   line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.015em;
 }
 
 .dash-hero.is-paused h1 {
@@ -2281,8 +2301,6 @@ button.settings-tab.selected:hover:not(:disabled) {
 
 .list-head h1 {
   font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
 }
 
 .list-scroll {
@@ -2990,8 +3008,6 @@ button.doctor-start:disabled {
 .doctor-hero h1 {
   margin-top: 22px;
   font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
 }
 
 .doctor-status {

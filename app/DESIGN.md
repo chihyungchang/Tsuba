@@ -1,6 +1,6 @@
 # Tsuba UI Style Guide
 
-v4, 2026-10-28. Style: **black lacquer and washi paper**. The palette follows the tsuba mark: vermilion, black iron, gold (the guard's rim) and steel white. The home page combines four directions: the dashboard skeleton (U1) + the guardian tsuba (U4) + the bento summary (U6) + the terminal log at the bottom (U3), and the App opens through the guard in the splash. Details follow the Apple Human Interface Guidelines (macOS).
+v4, 2026-10-28. Style: **samurai armor, held back**: black lacquer and hammered iron (dark) or washi and sumi ink (light), gold rims, vermilion seals. Only the materials and craft of armor and sword fittings; no cherry blossoms, brush fonts or ninjas, and evidence stays as readable as ever. The palette follows the tsuba mark: vermilion, black iron, gold (the guard's rim) and steel white. The home page combines four directions: the dashboard skeleton (U1) + the guardian tsuba (U4) + the bento summary (U6) + the terminal log at the bottom (U3), and the App opens through the guard in the splash. Details follow the Apple Human Interface Guidelines (macOS).
 
 Implementation: all styles are tokens in `src/App.css`; components only reference tokens and never use raw color values. Brand graphics (the guardian, the splash) are in `src/brand.tsx`.
 
@@ -56,11 +56,11 @@ The App ships in English and Simplified Chinese. UI copy quoted below is given i
 
 | token | Dark (black lacquer) | Light (washi) | Use |
 |---|---|---|---|
-| `--window` | `#17161a` | `#f6f2ea` | Window and content area background |
-| `--bar` | `#111013` | `#ece6da` | Title bar, bottom bar, History list column |
-| `--panel` | `#222126` | `#fffdf8` | Cards, grouped lists, bento grid |
-| `--raised` | `#2b2a30` | `#ffffff` | Buttons, hovered cells, selected items |
-| `--well` | `#0e0d10` | `#f1ece2` | Terminal log, commands, code snippets, input fields (wells) |
+| `--window` | `#131114` | `#f3eee3` | Window and content area background, under `--texture` (hammered iron grain / washi fibers, inline SVG noise) |
+| `--bar` | `#0d0c0e` | `#e9e2d3` | Title bar, bottom bar, History list column |
+| `--panel` | `#211e22` | `#fcf9f2` | Cards, grouped lists, bento grid |
+| `--raised` | `#2c292d` | `#fffdf8` | Buttons, hovered cells, selected items |
+| `--well` | `#0c0b0d` | `#eee7d9` | Terminal log, commands, code snippets, input fields (wells) |
 
 In dark mode, panels have a 1px 5% white inner highlight on top and a 1px black border all around. Light mode only uses a faint 1px border.
 
@@ -81,9 +81,9 @@ All text has a slightly warm tint to go with black lacquer and washi; no pure bl
 | token | Dark | Light | Use |
 |---|---|---|---|
 | `--cta` | `#d8b36a` (dark text `#1d1408`) | `#b4873a` (white text) | Main action, selection, keyboard focus; matches the guard's gold rim |
-| `--allow` | `#6fd18f` | `#1f8a50` | Allow, Protection is on, switch on |
-| `--warn` | `#f0b44c` | `#a96400` | Warn, defense off |
-| `--block` | `#ff6b5e` | `#c42a1d` | Block, delete, paused (text and icons) |
+| `--allow` | `#7ccb8f` | `#2a7a47` (pine needle) | Allow, Protection is on, switch on |
+| `--warn` | `#f2b441` | `#a46500` (yamabuki) | Warn, defense off |
+| `--block` | `#ff6a57` | `#b8261b` (hi scarlet) | Block, delete, paused (text and icons) |
 | `--alarm` | `#c42a1d` | `#c42a1d` | White-on-red buttons (Resume Protection, confirm delete) |
 | `--brand` | `#e5532f` | `#c9401f` | Brand mark only |
 
@@ -91,7 +91,7 @@ All text has a slightly warm tint to go with black lacquer and washi; no pure bl
 
 ## 3. Typography
 
-System font: SF Pro + PingFang. Monospace: SF Mono. Base size 13px.
+System font: SF Pro + PingFang. Monospace: SF Mono. Base size 13px. Titles (every `h1`) and the report verdict use Mincho (`--serif`: Hiragino Mincho ProN; Songti SC when the UI is Chinese), weight 600 with +0.02em tracking; both ship with macOS. Nothing else changes font: body, commands and evidence stay in the system fonts.
 
 | Style | Size / line height | Weight | Use |
 |---|---|---|---|
@@ -108,12 +108,12 @@ Numbers always use `tabular-nums`. Commands, paths and error messages are never 
 
 ## 4. Corner radius and spacing
 
-| Value | token | Used for |
+| Value | token | Used for (tight corners: lacquer boxes and iron plates, not soft app cards) |
 |---|---|---|
-| 14px | `--r-xl` | Drop target when dragging files in |
-| 12px | `--r-lg` | Grouped lists, cards, bento grid |
-| 10px | `--r-md` | Code blocks, banners, list items |
-| 8px | `--r-sm` | Buttons, input fields, icon tiles |
+| 8px | `--r-xl` | Drop target when dragging files in |
+| 6px | `--r-lg` | Grouped lists, cards, bento grid |
+| 5px | `--r-md` | Code blocks, banners, list items |
+| 4px | `--r-sm` | Buttons, input fields, icon tiles |
 | Pill | `--r-pill` | Status pill, verdict tags, switches, the Resume button in the title bar |
 
 Spacing follows a 4px rhythm: 4 / 8 / 12 / 16 / 20 / 24 / 32. 18 between dashboard sections, 10 between bento cells, 28 between detail page sections, 24–40 for the page's left and right margins.
