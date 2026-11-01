@@ -238,6 +238,10 @@ cd app && pnpm release --bundles app   # local release build for this Mac, termi
 
 </details>
 
+## 개인정보
+
+Tsuba 앱은 하루 한 번까지 개발자에게 익명 집계를 보냅니다: 버전, 칩, 화면 언어, 출처별 검사 횟수와 그 판정 및 뒤의 처리, 설정된 AI 검토 종류, 그리고 무작위 설치 ID. 명령, 파일 이름, 경로, 발견 내용, 설정, API 키는 절대 보내지 않으며 IP 주소도 저장하지 않습니다. 처음 실행할 때 먼저 알려 드리고, 답하기 전에는 아무것도 보내지 않으며, **설정 → 개인정보 보호**에서 끌 수 있습니다. 소스에서 빌드한 버전은 보내지 않습니다([`app/src-tauri/src/usage_stats.rs`](app/src-tauri/src/usage_stats.rs)). Tsuba가 무엇을 어디로 보내는지는 [개인정보 안내](https://oliverz.dev/ko/products/tsuba/privacy)에 모두 있습니다.
+
 ## 라이선스
 
 Tsuba는 [Apache License 2.0](LICENSE)으로 배포됩니다. 실행 중에 다운로드하는 위협 인텔리전스는 각자의 라이선스를 따르며, [위협 인텔리전스](#threat-intel)에 나열되어 있고 이를 사용하는 모든 발견 항목 옆에 표시됩니다.

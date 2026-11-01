@@ -399,5 +399,14 @@
   "Couldn't load the list of open-source projects. Reinstall Tsuba.": "オープンソースプロジェクトの一覧を読み込めませんでした。Tsuba を再インストールしてください。",
   "Search {count} projects": "{count} 件のプロジェクトを検索",
   "No project matches {query}": "{query} に一致するプロジェクトはありません",
-  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "このパッケージには独自のライセンスファイルがありません。{license} でライセンスされており、全文はソースコードにあります。"
+  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "このパッケージには独自のライセンスファイルがありません。{license} でライセンスされており、全文はソースコードにあります。",
+  "Anonymous usage stats tell the developer which defenses get used and what they catch. About once a day Tsuba sends the version, the chip, the language, how many checks ran by where they came from, their verdicts and what happened next, and which kind of AI review is set up, with a random install ID. Never commands, file names, paths, findings, settings or keys, and no IP address is kept.": "匿名の利用統計で、どの防御が使われ何を止めたかが開発者に分かります。Tsuba は 1 日に 1 回ほど、バージョン、チップ、言語、チェックの回数（発生元別）、判定とその後の処理、設定されている AI レビューの種類を、ランダムなインストール ID とともに送ります。コマンド、ファイル名、パス、検出内容、設定、キーは送らず、IP アドレスも保存しません。",
+  "Send Anonymous Usage Stats": "匿名の利用統計を送信",
+  "Counts only, about once a day. Off sends nothing.": "回数のみ、1 日に 1 回ほど。オフにすると何も送りません。",
+  "Privacy Notice": "プライバシーについて",
+  "Help improve Tsuba": "Tsuba の改善に協力",
+  "Tsuba sends anonymous counts, such as how many checks it ran. Never your commands, files or anything personal.": "Tsuba はチェックの回数などの匿名の集計を送ります。コマンドやファイル、個人的な情報は送りません。",
+  "Details": "詳細",
+  "Turn Off": "オフにする",
+  "OK": "OK"
 }

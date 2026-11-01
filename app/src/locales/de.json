@@ -399,5 +399,14 @@
   "Couldn't load the list of open-source projects. Reinstall Tsuba.": "Die Liste der Open-Source-Projekte konnte nicht geladen werden. Installiere Tsuba neu.",
   "Search {count} projects": "{count} Projekte durchsuchen",
   "No project matches {query}": "Kein Projekt passt zu {query}",
-  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "Dieses Paket hat keine eigene Lizenzdatei. Es steht unter {license}; der vollständige Text liegt in seinem Quellcode."
+  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "Dieses Paket hat keine eigene Lizenzdatei. Es steht unter {license}; der vollständige Text liegt in seinem Quellcode.",
+  "Anonymous usage stats tell the developer which defenses get used and what they catch. About once a day Tsuba sends the version, the chip, the language, how many checks ran by where they came from, their verdicts and what happened next, and which kind of AI review is set up, with a random install ID. Never commands, file names, paths, findings, settings or keys, and no IP address is kept.": "Anonyme Nutzungsstatistiken zeigen dem Entwickler, welche Schutzfunktionen genutzt werden und was sie aufhalten. Etwa einmal am Tag sendet Tsuba die Version, den Chip, die Sprache, wie viele Prüfungen nach Herkunft liefen, ihre Urteile und was danach geschah sowie die eingerichtete Art der KI-Prüfung, mit einer zufälligen Installations-ID. Nie Befehle, Dateinamen, Pfade, Funde, Einstellungen oder Schlüssel, und keine IP-Adresse wird gespeichert.",
+  "Send Anonymous Usage Stats": "Anonyme Nutzungsstatistiken senden",
+  "Counts only, about once a day. Off sends nothing.": "Nur Zählungen, etwa einmal am Tag. Aus sendet nichts.",
+  "Privacy Notice": "Datenschutzhinweis",
+  "Help improve Tsuba": "Hilf, Tsuba zu verbessern",
+  "Tsuba sends anonymous counts, such as how many checks it ran. Never your commands, files or anything personal.": "Tsuba sendet anonyme Zählungen, etwa wie viele Prüfungen liefen. Nie deine Befehle, Dateien oder etwas Persönliches.",
+  "Details": "Details",
+  "Turn Off": "Ausschalten",
+  "OK": "OK"
 }

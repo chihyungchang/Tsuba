@@ -22,3 +22,5 @@ serde.workspace = true
 serde_json.workspace = true
 notify = "8"
 tauri-plugin-updater = "2"
+# Same version and features as the engine's, so no second HTTP client is built
+ureq = { version = "2", features = ["json"] }

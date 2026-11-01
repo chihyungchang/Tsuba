@@ -5566,6 +5566,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-updater",
  "tsuba-engine",
+ "ureq",
 ]
 
 [[package]]

@@ -5,6 +5,7 @@ import { Icon, TsubaMark, type IconName } from "../icons";
 import { LANGS, loadLangPreference, setLangPreference, t, type LangPreference } from "../i18n";
 import { loadThemePreference, setThemePreference, type ThemePreference } from "../theme";
 import { Config, IntelManifest, Overview } from "../types";
+import { privacyUrl, setUsageStats } from "../usage";
 import { BackLink, Banner, Group, Row, modeLabel, Section, Spinner, Toggle, errText, formatNumber, interpolate, listSeparator, relativeTime, shortPath, toast, toastDone, PageSeal } from "../ui";
 
 type PresetGroup = "frontier" | "cloud" | "router" | "local" | "custom";
@@ -646,6 +647,18 @@ export function SettingsPage({ overview, reload, tab, onTab }: { overview: Overv
       invoke<string | null>("detect_codex_cli", { configured: c.codex.cli_path }).then(setCodexPath);
     });
   }, []);
+  // The first-launch notice can answer the usage stats question while this page is open: take only those two fields,
+  // so unsaved edits in the form survive
+  useEffect(() => {
+    const off = listen("status-changed", () =>
+      invoke<Config>("get_config").then((c) =>
+        setCfg((prev) => prev && { ...prev, has_seen_usage_notice: c.has_seen_usage_notice, is_usage_stats_off: c.is_usage_stats_off }),
+      ),
+    );
+    return () => {
+      off.then((f) => f());
+    };
+  }, []);
   if (!cfg) return null;
 
   const set = (patch: Partial<Config>) => {
@@ -1048,8 +1061,27 @@ export function SettingsPage({ overview, reload, tab, onTab }: { overview: Overv
       <Section title={t("Privacy")}>
         <div className="panel prose">
           <p>{t("Models receive only what a judgment needs: the command itself, downloaded remote scripts, public info about npm packages and extensions, package.json, and the file snippets that matched rules. Your other files, environment variables and secrets are never uploaded. With a local model, nothing leaves this Mac.")}</p>
+          <p>{t("Anonymous usage stats tell the developer which defenses get used and what they catch. About once a day Tsuba sends the version, the chip, the language, how many checks ran by where they came from, their verdicts and what happened next, and which kind of AI review is set up, with a random install ID. Never commands, file names, paths, findings, settings or keys, and no IP address is kept.")}</p>
           <p className="muted">{interpolate(t("History and settings are stored in {dir}."), { dir: <code>~/.tsuba</code> })}</p>
         </div>
+        <Group>
+          <Row
+            title={t("Send Anonymous Usage Stats")}
+            detail={t("Counts only, about once a day. Off sends nothing.")}
+            trailing={
+              <Toggle
+                label={t("Send Anonymous Usage Stats")}
+                on={cfg.has_seen_usage_notice && !cfg.is_usage_stats_off}
+                onChange={(on) =>
+                  setUsageStats(on)
+                    .then(() => setCfg({ ...cfg, has_seen_usage_notice: true, is_usage_stats_off: !on }))
+                    .catch((e) => toast(errText(e), "block"))
+                }
+              />
+            }
+          />
+        </Group>
+        <ExternalLink href={privacyUrl()}>{t("Privacy Notice")}</ExternalLink>
       </Section>
       )}
       {tab === "about" && (

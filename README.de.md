@@ -238,6 +238,10 @@ Signiert und beglaubigt wird, wenn diese Repository-Secrets gesetzt sind: `APPLE
 
 </details>
 
+## Datenschutz
+
+Einmal am Tag sendet die Tsuba-App anonyme Zahlen an den Entwickler: Version, Chip, Sprache der Oberfläche, wie viele Prüfungen nach Herkunft liefen, ihre Urteile und was danach geschah, sowie die eingerichtete Art der KI-Prüfung, mit einer zufälligen Installations-ID. Nie deine Befehle, Dateinamen, Pfade, Funde, Einstellungen oder API-Schlüssel, und keine IP-Adresse wird gespeichert. Der erste Start fragt, bevor irgendetwas gesendet wird; ausschalten unter **Einstellungen → Datenschutz**. Aus dem Quellcode gebaute Versionen senden nie ([`app/src-tauri/src/usage_stats.rs`](app/src-tauri/src/usage_stats.rs)). Der vollständige [Datenschutzhinweis](https://oliverz.dev/de/products/tsuba/privacy) listet alles, was Tsuba sendet und wohin.
+
 ## Lizenz
 
 Tsuba steht unter der [Apache License 2.0](LICENSE). Bedrohungsdaten, die zur Laufzeit geladen werden, behalten ihre eigene Lizenz; sie sind unter [Bedrohungsdaten](#threat-intel) aufgeführt und werden neben jedem Fund angezeigt, der sie nutzt.

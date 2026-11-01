@@ -7,6 +7,7 @@ macro_rules! tr {
 
 mod shell_hook;
 mod update;
+mod usage_stats;
 mod watch;
 mod watch_ai;
 
@@ -167,11 +168,34 @@ fn get_config(state: State<AppState>) -> Config {
 
 #[tauri::command]
 fn save_config(app: AppHandle, state: State<AppState>, mut config: Config) -> Result<(), String> {
-    // The language belongs to set_lang: a settings page loaded before a language switch must not write the old one back
-    config.language = state.config.lock().unwrap().language.clone();
+    // The language belongs to set_lang and the usage stats to set_usage_stats: a settings page loaded before either
+    // changed must not write the old value back
+    {
+        let current = state.config.lock().unwrap();
+        config.language = current.language.clone();
+        config.has_seen_usage_notice = current.has_seen_usage_notice;
+        config.is_usage_stats_off = current.is_usage_stats_off;
+    }
     config.save().map_err(|e| e.to_string())?;
     *state.config.lock().unwrap() = config;
     restart_watchers(&app);
+    let _ = app.emit("status-changed", ());
+    Ok(())
+}
+
+/// The answer to the first-launch notice, or the switch in Settings → Privacy (usage_stats.rs)
+#[tauri::command]
+fn set_usage_stats(app: AppHandle, state: State<AppState>, on: bool) -> Result<(), String> {
+    {
+        let mut config = state.config.lock().unwrap();
+        let was_on = config.has_seen_usage_notice && !config.is_usage_stats_off;
+        config.has_seen_usage_notice = true;
+        config.is_usage_stats_off = !on;
+        config.save().map_err(|e| e.to_string())?;
+        if on && !was_on {
+            usage_stats::start_counting_now();
+        }
+    }
     let _ = app.emit("status-changed", ());
     Ok(())
 }
@@ -664,6 +688,7 @@ pub fn run() {
             restart_watchers(app.handle());
             start_intel_updater(app.handle().clone(), app.state::<AppState>().config.clone());
             start_scan_scheduler(app.handle().clone(), app.state::<AppState>().config.clone());
+            usage_stats::start(app.state::<AppState>().config.clone(), app.package_info().version.to_string());
             // Show the window when the user opens the App; closing it later only hides it and protection continues in the background
             show_window(app.handle());
             Ok(())
@@ -685,6 +710,7 @@ pub fn run() {
             clear_history,
             get_config,
             save_config,
+            set_usage_stats,
             test_ai,
             list_models,
             detect_claude_cli,

@@ -238,6 +238,10 @@ Ele assina e notariza quando estes secrets de repositório estão definidos: `AP
 
 </details>
 
+## Privacidade
+
+Uma vez por dia, o App do Tsuba envia ao autor contagens anônimas: a versão, o chip, o idioma da interface, quantas verificações houve por origem, seus veredictos e o que aconteceu depois, e qual tipo de revisão por IA está configurado, com um ID de instalação aleatório. Nunca seus comandos, nomes de arquivo, caminhos, achados, configurações nem chaves de API, e nenhum endereço IP é guardado. A primeira abertura pergunta antes de enviar qualquer coisa; desative em **Configurações → Privacidade**. Builds a partir do código-fonte nunca enviam nada ([`app/src-tauri/src/usage_stats.rs`](app/src-tauri/src/usage_stats.rs)). O [aviso de privacidade](https://oliverz.dev/pt-br/products/tsuba/privacy) completo lista tudo o que o Tsuba envia e para onde.
+
 ## Licença
 
 O Tsuba é licenciado sob a [Apache License 2.0](LICENSE). A inteligência de ameaças que ele baixa durante a execução mantém a sua própria licença, listada em [Inteligência de ameaças](#threat-intel) e mostrada ao lado de cada achado que a utiliza.

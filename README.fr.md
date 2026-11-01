@@ -238,6 +238,10 @@ La signature et la notarisation se font quand ces secrets de dépôt sont défin
 
 </details>
 
+## Confidentialité
+
+Une fois par jour, l'App Tsuba envoie à son auteur des comptes anonymes : la version, la puce, la langue de l'interface, le nombre de vérifications selon leur origine, leurs verdicts et la suite donnée, et le type de revue par IA configuré, avec un identifiant d'installation aléatoire. Jamais vos commandes, noms de fichiers, chemins, détections, réglages ni clés d'API, et aucune adresse IP n'est conservée. Le premier lancement vous le demande avant tout envoi ; désactivez-le dans **Réglages → Confidentialité**. Les versions compilées depuis les sources n'envoient jamais rien ([`app/src-tauri/src/usage_stats.rs`](app/src-tauri/src/usage_stats.rs)). La [note de confidentialité](https://oliverz.dev/fr/products/tsuba/privacy) complète liste tout ce que Tsuba envoie et à qui.
+
 ## Licence
 
 Tsuba est distribué sous la [licence Apache 2.0](LICENSE). Le renseignement sur les menaces téléchargé à l'exécution conserve sa propre licence, indiquée dans [Renseignement sur les menaces](#threat-intel) et affichée à côté de chaque résultat qui l'utilise.

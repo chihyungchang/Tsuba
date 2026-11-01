@@ -399,5 +399,14 @@
   "Couldn't load the list of open-source projects. Reinstall Tsuba.": "Não foi possível carregar a lista de projetos de código aberto. Reinstale o Tsuba.",
   "Search {count} projects": "Pesquisar em {count} projetos",
   "No project matches {query}": "Nenhum projeto corresponde a {query}",
-  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "Este pacote não tem um arquivo de licença próprio. Ele é licenciado sob {license}; o texto completo está no código-fonte."
+  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "Este pacote não tem um arquivo de licença próprio. Ele é licenciado sob {license}; o texto completo está no código-fonte.",
+  "Anonymous usage stats tell the developer which defenses get used and what they catch. About once a day Tsuba sends the version, the chip, the language, how many checks ran by where they came from, their verdicts and what happened next, and which kind of AI review is set up, with a random install ID. Never commands, file names, paths, findings, settings or keys, and no IP address is kept.": "As estatísticas de uso anônimas mostram ao desenvolvedor quais defesas são usadas e o que elas barram. Cerca de uma vez por dia, o Tsuba envia a versão, o chip, o idioma, quantas verificações houve por origem, seus veredictos e o que aconteceu depois, e qual tipo de revisão por IA está configurado, com um ID de instalação aleatório. Nunca comandos, nomes de arquivo, caminhos, achados, configurações ou chaves, e nenhum endereço IP é guardado.",
+  "Send Anonymous Usage Stats": "Enviar estatísticas de uso anônimas",
+  "Counts only, about once a day. Off sends nothing.": "Só contagens, cerca de uma vez por dia. Desativado não envia nada.",
+  "Privacy Notice": "Aviso de privacidade",
+  "Help improve Tsuba": "Ajude a melhorar o Tsuba",
+  "Tsuba sends anonymous counts, such as how many checks it ran. Never your commands, files or anything personal.": "O Tsuba envia contagens anônimas, como quantas verificações fez. Nunca seus comandos, arquivos ou qualquer coisa pessoal.",
+  "Details": "Detalhes",
+  "Turn Off": "Desativar",
+  "OK": "OK"
 }

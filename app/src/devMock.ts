@@ -117,6 +117,9 @@ const config = {
   notify_sound: true,
   intel: { auto_update: true, abusech_key: "", online_lookup: true, rules_url: "", virustotal_key: "" },
   scan: { scheduled: true, folders: ["~/Downloads", "/Users/oliver/code"], interval_days: 7 },
+  // Unanswered, so the preview shows the first-launch notice
+  has_seen_usage_notice: false,
+  is_usage_stats_off: false,
 };
 
 const quarantine = [
@@ -150,6 +153,10 @@ const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
   }),
   get_history: () => historyEntries,
   get_config: () => config,
+  set_usage_stats: ({ on }) => {
+    config.has_seen_usage_notice = true;
+    config.is_usage_stats_off = !on;
+  },
   quarantine_list: () => quarantine,
   trusted_list: () => [{ key: "path:/Users/oliver/code/tsuba", fingerprint: "", label: "/Users/oliver/code/tsuba", time: ago(60 * 70) }],
   scan_schedule_status: () => ({ last: ago(60 * 30) }),

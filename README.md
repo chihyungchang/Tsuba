@@ -235,6 +235,10 @@ It signs and notarizes when these repository secrets are set: `APPLE_CERTIFICATE
 
 </details>
 
+## Privacy
+
+Once a day the Tsuba App sends anonymous counts to its maker: the version, the chip, the interface language, how many checks ran by where they came from, their verdicts and what happened next, and which kind of AI review is set up, with a random install ID. Never your commands, file names, paths, findings, settings or API keys, and no IP address is stored. The first launch asks before anything is sent; turn it off in **Settings → Privacy**. Builds from source never send ([`app/src-tauri/src/usage_stats.rs`](app/src-tauri/src/usage_stats.rs)). The full [privacy notice](https://oliverz.dev/products/tsuba/privacy) lists everything Tsuba sends and where.
+
 ## License
 
 Tsuba is licensed under the [Apache License 2.0](LICENSE). Threat intel it downloads at runtime keeps its own license, listed in [Threat intel](#threat-intel) and shown next to every finding that uses it.

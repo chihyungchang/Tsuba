@@ -12,6 +12,7 @@ import { SettingsPage, type SettingsTab } from "./pages/Settings";
 import { LogEntry, Overview, QuarantineItem } from "./types";
 import { runningTasks, useRunningTasks } from "./tasks";
 import { GoHome, Spinner, Toaster, modeLabel, toast } from "./ui";
+import { UsageNotice } from "./usage";
 import "./App.css";
 
 type Page = "overview" | "history" | "scan" | "doctor" | "settings";
@@ -227,6 +228,12 @@ export default function App() {
         </button>
       </footer>
       <Toaster />
+      <UsageNotice
+        details={() => {
+          setSettingsTab("privacy");
+          setPage("settings");
+        }}
+      />
       <Splash status={overview ? (overview.paused ? t("paused 0/4") : t("protecting {on}/4", { on: [overview.shell_hook.installed, overview.watch_downloads, overview.watch_extensions, overview.watch_ai_tools].filter(Boolean).length })) : t("starting")} />
     </div>
     </GoHome.Provider>

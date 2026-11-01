@@ -238,6 +238,10 @@ App 内更新来自同样的 Releases：“设置 → 关于与更新”会检�
 
 </details>
 
+## 隐私
+
+Tsuba App 每天最多一次向开发者发送匿名计数：版本、芯片架构、界面语言，按来源统计的检查次数、判定结果和之后的处理，以及设置了哪种 AI 审查，附一个随机的安装编号。绝不包含你的命令、文件名、路径、发现内容、设置或 API 密钥，也不保存 IP 地址。第一次启动时会先征求你的意见，之前什么都不发；在 **设置 → 隐私** 里可以关闭。从源码构建的版本永远不会发送（[`app/src-tauri/src/usage_stats.rs`](app/src-tauri/src/usage_stats.rs)）。完整的[隐私说明](https://oliverz.dev/zh/products/tsuba/privacy)列出了 Tsuba 发送的全部内容以及发往哪里。
+
 ## 许可证
 
 Tsuba 采用 [Apache License 2.0](LICENSE) 许可。运行时下载的威胁情报保留各自的许可证，列在[威胁情报](#threat-intel)中，并显示在每一条用到它的发现旁边。

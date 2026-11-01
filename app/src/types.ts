@@ -52,6 +52,9 @@ export interface Config {
   notify_sound: boolean;
   intel: { auto_update: boolean; abusech_key: string; online_lookup: boolean; rules_url: string; virustotal_key: string };
   scan: { scheduled: boolean; folders: string[]; interval_days: number };
+  // Anonymous usage stats (src-tauri/src/usage_stats.rs): changed only through set_usage_stats
+  has_seen_usage_notice: boolean;
+  is_usage_stats_off: boolean;
 }
 
 export interface IntelSource {

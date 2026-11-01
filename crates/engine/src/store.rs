@@ -176,6 +176,10 @@ pub struct Config {
     /// The language chosen in the App: empty follows the system, otherwise a language code ("en", "zh-Hans", "ja", ...). Stored here rather than
     /// only in the window, so the terminal check and AI answers in every process match the App.
     pub language: String,
+    /// The first-launch notice about the anonymous usage stats was answered; nothing is sent before that
+    pub has_seen_usage_notice: bool,
+    /// Anonymous usage stats (the App's usage_stats.rs) are on unless this is set
+    pub is_usage_stats_off: bool,
 }
 
 impl Default for Config {
@@ -195,6 +199,8 @@ impl Default for Config {
             intel: IntelConfig::default(),
             scan: ScanConfig::default(),
             language: String::new(),
+            has_seen_usage_notice: false,
+            is_usage_stats_off: false,
         }
     }
 }

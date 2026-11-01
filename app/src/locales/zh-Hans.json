@@ -399,5 +399,14 @@
   "Couldn't load the list of open-source projects. Reinstall Tsuba.": "无法加载开源项目列表。请重新安装 Tsuba。",
   "Search {count} projects": "搜索 {count} 个项目",
   "No project matches {query}": "没有与 {query} 匹配的项目",
-  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "这个包本身没有附带许可证文件。它采用 {license} 许可，完整文本见其源代码。"
+  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "这个包本身没有附带许可证文件。它采用 {license} 许可，完整文本见其源代码。",
+  "Anonymous usage stats tell the developer which defenses get used and what they catch. About once a day Tsuba sends the version, the chip, the language, how many checks ran by where they came from, their verdicts and what happened next, and which kind of AI review is set up, with a random install ID. Never commands, file names, paths, findings, settings or keys, and no IP address is kept.": "匿名使用统计让开发者知道哪些防护在被使用、拦下了什么。Tsuba 每天最多一次发送：版本、芯片架构、界面语言，按来源统计的检查次数、判定结果和之后的处理，以及设置了哪种 AI 审查，附一个随机的安装编号。绝不包含命令、文件名、路径、发现内容、设置或密钥，也不保存 IP 地址。",
+  "Send Anonymous Usage Stats": "发送匿名使用统计",
+  "Counts only, about once a day. Off sends nothing.": "只有计数，每天最多一次。关闭后什么都不发送。",
+  "Privacy Notice": "隐私说明",
+  "Help improve Tsuba": "帮助改进 Tsuba",
+  "Tsuba sends anonymous counts, such as how many checks it ran. Never your commands, files or anything personal.": "Tsuba 会发送匿名计数，比如做了多少次检查。绝不包含你的命令、文件或任何个人信息。",
+  "Details": "详情",
+  "Turn Off": "关闭",
+  "OK": "好的"
 }
