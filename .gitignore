@@ -3,6 +3,8 @@ __pycache__/
 target/
 node_modules/
 app/dist/
+# Written before every build by app/scripts/licenses.mjs from Cargo.lock and the pnpm lockfile
+app/public/licenses.json
 app/src-tauri/gen/
 # Release-only terminal checker built by app/scripts/build-cli-sidecar.sh
 app/src-tauri/binaries/

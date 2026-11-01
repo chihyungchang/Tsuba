@@ -391,5 +391,13 @@
   "{on} / 4": "{on} / 4",
   "{task} finished": "{task}: готово",
   "{task} keeps running in the background. Its progress is at the bottom left.": "{task}: продолжается в фоне. Ход выполнения — внизу слева.",
-  "{task} running…": "{task}: выполняется…"
+  "{task} running…": "{task}: выполняется…",
+  "Open Source": "Открытый код",
+  "Tsuba is open source under the Apache-2.0 license and builds on the projects below, each under its own license.": "Tsuba — проект с открытым кодом под лицензией Apache-2.0, построенный на проектах ниже, у каждого из которых своя лицензия.",
+  "Source Code": "Исходный код",
+  "Threat intel lists and signatures carry their own licenses, shown under {intel}.": "У списков угроз и сигнатур свои лицензии, они указаны в разделе «{intel}».",
+  "Couldn't load the list of open-source projects. Reinstall Tsuba.": "Не удалось загрузить список проектов с открытым кодом. Переустановите Tsuba.",
+  "Search {count} projects": "Поиск среди проектов: {count}",
+  "No project matches {query}": "Нет проектов, подходящих под «{query}»",
+  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "У этого пакета нет собственного файла лицензии. Он распространяется по лицензии {license}; полный текст есть в его исходном коде."
 }

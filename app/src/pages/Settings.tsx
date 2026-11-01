@@ -430,6 +430,84 @@ function AboutSection() {
   );
 }
 
+type ThirdParty = { name: string; version: string; license: string; url: string; texts: string[] };
+type LicenseList = { rust: ThirdParty[]; npm: ThirdParty[]; texts: Record<string, string> };
+
+/** Every third-party crate and npm package in Tsuba.app with its license text, as scripts/licenses.mjs wrote them at build time.
+ * Fetched only when this tab opens: the texts come to almost 1 MB. */
+function OpenSourceSection({ onIntel }: { onIntel: () => void }) {
+  const [list, setList] = useState<LicenseList | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/licenses.json")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(setList, () => setFailed(true));
+  }, []);
+
+  const all = list ? [...list.rust.map((p) => ({ ...p, ecosystem: "Rust" })), ...list.npm.map((p) => ({ ...p, ecosystem: "npm" }))] : [];
+  const needle = query.trim().toLowerCase();
+  const shown = needle ? all.filter((p) => p.name.toLowerCase().includes(needle) || p.license.toLowerCase().includes(needle)) : all;
+
+  return (
+    <Section title={t("Open Source")}>
+      <p className="section-lede">
+        {t("Tsuba is open source under the Apache-2.0 license and builds on the projects below, each under its own license.")}{" "}
+        <ExternalLink href="https://github.com/chihyungchang/Tsuba">{t("Source Code")}</ExternalLink>
+      </p>
+      <p className="muted small">
+        {interpolate(t("Threat intel lists and signatures carry their own licenses, shown under {intel}."), {
+          intel: (
+            <button type="button" className="link" onClick={onIntel}>
+              {t("Threat Intel")}
+            </button>
+          ),
+        })}
+      </p>
+      {failed && <p className="tone-block">{t("Couldn't load the list of open-source projects. Reinstall Tsuba.")}</p>}
+      {list && (
+        <>
+          <input className="license-search" type="search" placeholder={t("Search {count} projects", { count: formatNumber(all.length) })} value={query} onChange={(e) => setQuery(e.target.value)} />
+          {shown.length === 0 ? (
+            <p className="muted">{t("No project matches {query}", { query: query.trim() })}</p>
+          ) : (
+            <Group>
+              {shown.map((p) => {
+                const key = `${p.ecosystem}:${p.name}@${p.version}`;
+                return (
+                  <Row
+                    key={key}
+                    title={<span className="mono-title">{p.name}</span>}
+                    detail={`${p.ecosystem} · ${p.version} · ${p.license}`}
+                    trailing={<Icon.chevron size={14} className={`chevron ${open === key ? "is-open" : ""}`} />}
+                    onClick={() => setOpen(open === key ? null : key)}
+                  >
+                    {open === key && (
+                      <div className="row-expand license-expand">
+                        <ExternalLink href={p.url}>{t("Source Code")}</ExternalLink>
+                        {p.texts.length === 0 ? (
+                          <p className="muted small">{t("This package has no license file of its own. It is licensed under {license}; the full text is in its source code.", { license: p.license })}</p>
+                        ) : (
+                          p.texts.map((id) => (
+                            <pre key={id} className="license-text">
+                              {list.texts[id]}
+                            </pre>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </Row>
+                );
+              })}
+            </Group>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
 function IntelSection({ cfg, onChange }: { cfg: Config; onChange: (c: Config) => void }) {
   const [m, setM] = useState<IntelManifest | null>(null);
   const [progress, setProgress] = useState("");
@@ -974,7 +1052,12 @@ export function SettingsPage({ overview, reload, tab, onTab }: { overview: Overv
         </div>
       </Section>
       )}
-      {tab === "about" && <AboutSection />}
+      {tab === "about" && (
+        <>
+          <AboutSection />
+          <OpenSourceSection onIntel={() => onTab("intel")} />
+        </>
+      )}
         </div>
       </main>
     </div>

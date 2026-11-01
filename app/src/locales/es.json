@@ -391,5 +391,13 @@
   "{on} / 4": "{on} / 4",
   "{task} finished": "{task} terminado",
   "{task} keeps running in the background. Its progress is at the bottom left.": "{task} sigue ejecutándose en segundo plano. Su progreso está abajo a la izquierda.",
-  "{task} running…": "{task} en curso…"
+  "{task} running…": "{task} en curso…",
+  "Open Source": "Código abierto",
+  "Tsuba is open source under the Apache-2.0 license and builds on the projects below, each under its own license.": "Tsuba es de código abierto bajo la licencia Apache-2.0 y se basa en los proyectos siguientes, cada uno con su propia licencia.",
+  "Source Code": "Código fuente",
+  "Threat intel lists and signatures carry their own licenses, shown under {intel}.": "Las listas de inteligencia de amenazas y las firmas tienen sus propias licencias, que se muestran en {intel}.",
+  "Couldn't load the list of open-source projects. Reinstall Tsuba.": "No se pudo cargar la lista de proyectos de código abierto. Reinstala Tsuba.",
+  "Search {count} projects": "Buscar en {count} proyectos",
+  "No project matches {query}": "Ningún proyecto coincide con {query}",
+  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "Este paquete no incluye un archivo de licencia propio. Su licencia es {license}; el texto completo está en su código fuente."
 }

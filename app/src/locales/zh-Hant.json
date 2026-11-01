@@ -391,5 +391,13 @@
   "{on} / 4": "{on} / 4",
   "{task} finished": "{task}已完成",
   "{task} keeps running in the background. Its progress is at the bottom left.": "{task}會在背景繼續執行，進度顯示在左下角。",
-  "{task} running…": "{task}進行中…"
+  "{task} running…": "{task}進行中…",
+  "Open Source": "開源授權",
+  "Tsuba is open source under the Apache-2.0 license and builds on the projects below, each under its own license.": "Tsuba 以 Apache-2.0 授權開源，並以下列開源專案為基礎建構，它們各自遵循自己的授權。",
+  "Source Code": "原始碼",
+  "Threat intel lists and signatures carry their own licenses, shown under {intel}.": "威脅情報清單與特徵庫有各自的授權，見{intel}。",
+  "Couldn't load the list of open-source projects. Reinstall Tsuba.": "無法載入開源專案清單。請重新安裝 Tsuba。",
+  "Search {count} projects": "搜尋 {count} 個專案",
+  "No project matches {query}": "沒有符合 {query} 的專案",
+  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "這個套件本身沒有附帶授權檔案。它採用 {license} 授權，完整條文見其原始碼。"
 }

@@ -391,5 +391,13 @@
   "{on} / 4": "{on} / 4",
   "{task} finished": "{task} 완료",
   "{task} keeps running in the background. Its progress is at the bottom left.": "{task}은(는) 백그라운드에서 계속 진행됩니다. 진행 상황은 왼쪽 아래에 표시됩니다.",
-  "{task} running…": "{task} 진행 중…"
+  "{task} running…": "{task} 진행 중…",
+  "Open Source": "오픈 소스",
+  "Tsuba is open source under the Apache-2.0 license and builds on the projects below, each under its own license.": "Tsuba는 Apache-2.0 라이선스의 오픈 소스이며 아래 프로젝트를 기반으로 만들어졌습니다. 각 프로젝트는 고유한 라이선스를 따릅니다.",
+  "Source Code": "소스 코드",
+  "Threat intel lists and signatures carry their own licenses, shown under {intel}.": "위협 인텔리전스 목록과 시그니처에는 각각의 라이선스가 있으며 {intel}에 표시됩니다.",
+  "Couldn't load the list of open-source projects. Reinstall Tsuba.": "오픈 소스 프로젝트 목록을 불러오지 못했습니다. Tsuba를 다시 설치하세요.",
+  "Search {count} projects": "프로젝트 {count}개 검색",
+  "No project matches {query}": "{query}와(과) 일치하는 프로젝트가 없습니다",
+  "This package has no license file of its own. It is licensed under {license}; the full text is in its source code.": "이 패키지에는 자체 라이선스 파일이 없습니다. {license} 라이선스를 따르며, 전문은 소스 코드에 있습니다."
 }

@@ -2948,6 +2948,33 @@ button.icon-button.is-armed {
 
 /* ---------- Settings › About & Updates ---------- */
 
+/* Settings → About: the open-source list. License texts keep their own line breaks and scroll inside the row */
+.license-search {
+  width: 100%;
+  margin: 12px 0;
+}
+
+.license-expand {
+  align-items: flex-start;
+}
+
+.license-text {
+  margin: 0;
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--solid);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .panel.about {
   display: flex;
   flex-direction: column;

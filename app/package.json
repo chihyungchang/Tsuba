@@ -4,8 +4,8 @@
   "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && node scripts/check-i18n.mjs && vite build",
+    "dev": "node scripts/licenses.mjs && vite",
+    "build": "tsc && node scripts/check-i18n.mjs && node scripts/licenses.mjs && vite build",
     "check:i18n": "node scripts/check-i18n.mjs",
     "release": "tauri build --config src-tauri/tauri.release.conf.json",
     "preview": "vite preview",
